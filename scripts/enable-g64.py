@@ -61,6 +61,7 @@ edit("Qt/qml/Main.qml",
         }
         ShaderEffectSource {
             id: discTexture
+            anchors.fill: parent
             sourceItem: discPhoto
             hideSource: true
             live: true
