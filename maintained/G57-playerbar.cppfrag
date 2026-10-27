@@ -16,7 +16,9 @@ void NativeHud::playerBar(double, double y, double width) {
     const double position = duration > 0 ? std::clamp(player.state["position"].toDouble() / duration, 0., 1.) : 0;
     // A single inset track, rendered by the QML seek control. No duplicate
     // native line and no accidental clipping at the top of the capsule.
-    playerSeekRect = QRectF(86, y + 7, width - 172, 20);
+    // The top straight edge of the 78px glass stadium spans x=71..width-71.
+    // Slider is centered on y=990, exactly where the glass boundary sits.
+    playerSeekRect = QRectF(72, y - 4, width - 144, 22);
 
     const double coverX = 40, coverY = cy - 26;
     if (!player.coverImage.isEmpty()) { image(player.coverImage, coverX, coverY, 52, 52); }
