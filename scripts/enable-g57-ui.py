@@ -187,4 +187,33 @@ edit("Qt/qml/Main.qml",
     '            sampleX: 20 * root.stageScale; sampleY: 992 * root.stageScale\n            uiScale: root.stageScale; radius: 34 * root.stageScale',
     '            sampleX: 15 * root.stageScale; sampleY: 976 * root.stageScale\n            uiScale: root.stageScale; radius: 45 * root.stageScale')
 
+# Preserve the existing navigation regression assertion, but record exactly
+# which state is unexpected. Delayed Qt scene ticks may need a settling frame.
+checks = Path("Qt/tests/UiChecks.cpp")
+check_source = checks.read_text(encoding="utf-8")
+old_checkpoint = '''    backend.action("open");
+    folderWait.restart();
+    while (music.directoryLoading && folderWait.elapsed() < 10000) { settle(30); }
+    refresh();
+    check(music.directory && music.directoryInfo && music.current.value("kind") == "playlist" &&
+          hasHudAction("music:track:0"),
+          "the main playlist entry opens its detail page consistently with navigation and discovery");'''
+new_checkpoint = '''    backend.action("open");
+    folderWait.restart();
+    while (music.directoryLoading && folderWait.elapsed() < 10000) { settle(30); }
+    settle(100); refresh();
+    qInfo() << "G57 playlist reentry diagnostics:"
+            << "directory" << bool(music.directory)
+            << "directoryInfo" << music.directoryInfo
+            << "currentKind" << music.current.value("kind")
+            << "currentID" << music.current.value("id")
+            << "mode" << hud.frame.value("mode")
+            << "tracks" << (music.directory ? music.directory->songs.size() : -1)
+            << "hasFirstTrack" << hasHudAction("music:track:0");
+    check(music.directory && music.directoryInfo && music.current.value("kind") == "playlist" &&
+          hasHudAction("music:track:0"),
+          "the main playlist entry opens its detail page consistently with navigation and discovery");'''
+if check_source.count(old_checkpoint) != 1:
+    raise RuntimeError("Expected one playlist-reentry regression checkpoint")
+checks.write_text(check_source.replace(old_checkpoint,new_checkpoint,1),encoding="utf-8")
 print("G57 routed left navigation, live FM controls, capsule player and right-side queue.")
