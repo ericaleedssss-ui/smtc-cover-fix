@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rhine:
-    name: Rhine G56 sidebar labels and genuine personalized FM
+    name: Rhine G56 sidebar, personalized FM and playback scrobbling
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -92,6 +92,21 @@ jobs:
       run: npm ci --ignore-scripts --no-audit --no-fund
     - name: Check repository boundaries
       run: node scripts/check-repository.cjs
+    - name: Check scrobble and personal FM integration
+      shell: python
+      run: |
+        from pathlib import Path
+        p = Path("Qt/src/MusicPlayer.cpp").read_text(encoding="utf-8")
+        h = Path("Qt/src/MusicPlayer.h").read_text(encoding="utf-8")
+        bridge = Path("MusicBridge/worker.cjs").read_text(encoding="utf-8")
+        assert 'void MusicPlayer::updateScrobble(' in p
+        assert 'm_scrobbleAttempted = true;' in p
+        assert 'state["buffering"].toBool()' in p
+        assert 'scrobbleAccountId' in h
+        assert "'/scrobble': 'scrobble'" in bridge
+        assert "'/personal/fm/mode': 'personal_fm_mode'" in bridge
+        assert "route = \"/simi/song\";" not in Path("Qt/src/MusicDiscover.cpp").read_text(encoding="utf-8")
+        print("Validated real-playback scrobbles and private FM endpoint.")
     - name: Download standalone Node and verify checksum
       shell: bash
       env:
@@ -154,7 +169,7 @@ jobs:
       shell: python
       run: "import pathlib, shutil\nout = pathlib.Path('smtc-download')\nout.mkdir()\nsource = pathlib.Path('output/RhineMusicDatabase-v1.2.0-Windows-x64.zip')\n\
         assert source.is_file(), 'Expected portable application archive was not generated'\nshutil.copyfile(source, out /\
-        \ 'Rhine-G56-Sidebar-FM-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G56 visible created playlist header, NetEase private FM; G53 base, page\
+        \ 'Rhine-G56-Sidebar-FM-Scrobble-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G56 visible created playlist header, NetEase private FM; G53 base, page\
         \ history, reading sizes and glass player bar; based on Rhine v1.2.0\\n'\n    'Source: https://github.com/MikeQu223/Rhine-Music-Database/tree/b8b8ad5ed661fa32404731f1b09f7c37d34bf070\\\
         n'\n    'The application is modified with an SMTC thumbnail patch.\\n'\n    'CI build and offline tests must pass\
         \ before this artifact is uploaded.\\n'\n    'Interactive Windows playback and overlay behavior still need user verification.\\\
@@ -162,7 +177,7 @@ jobs:
     - name: Downloadable Rhine test build
       uses: actions/upload-artifact@v4
       with:
-        name: Rhine-G56-Sidebar-FM-Windows-x64
+        name: Rhine-G56-Sidebar-FM-Scrobble-Windows-x64
         path: smtc-download/
         if-no-files-found: error
         retention-days: 7
