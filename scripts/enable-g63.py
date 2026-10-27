@@ -35,7 +35,7 @@ edit("Qt/src/NativeHud.cpp",
                 }
                 return visible;
             }()},
-            {"queueOffset", queueOffset},
+            {"queueOffset", std::clamp(queueOffset, 0, std::max(0, int(m_music->player.queue.size()) - 40))},
             {"queuePageSize", 40},''')
 edit("Qt/src/NativeHudController.cpp",
     '''        queueOffset = std::clamp(queueOffset + (name == "queue-page-next" ? 10 : -10),
@@ -116,7 +116,7 @@ assert 'onClicked: rhine.action("player:queue-page-next")' in qml
 assert 'objectName: "playerQueueEdgeFade"' in qml
 cpp=Path("Qt/src/NativeHud.cpp").read_text(encoding="utf-8")
 assert 'first + 40' in cpp and 'player.queue : QJsonArray{}' not in cpp
-assert 'queueOffset", queueOffset' in cpp
+assert 'queueOffset", std::clamp(queueOffset' in cpp
 hud=Path("Qt/src/NativeHudPlayer.cpp").read_text(encoding="utf-8")
 assert "const double reactionX = infoX + infoWidth + 24;" in hud
 main=Path("Qt/qml/Main.qml").read_text(encoding="utf-8")
