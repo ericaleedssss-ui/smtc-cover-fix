@@ -12,7 +12,32 @@ Item {
     property real sampleY: 0
     property real unit: 1
     readonly property var hud: rhine.state
-    readonly property var songs: hud.queueRows || []
+    // The HUD may refresh every frame. Never rebind ListView to that fresh
+    // JSON array: keep a stable, capped ListModel until content really changes.
+    property var incomingRows: hud.queueRows || []
+    property string syncedRows: ""
+    readonly property int pageStart: Number(hud.queueOffset || 0)
+    readonly property int pageSize: Number(hud.queuePageSize || 40)
+    ListModel { id: stableQueueRows }
+    function syncRows() {
+        var rows = incomingRows || [];
+        var signature = JSON.stringify(rows);
+        if (signature === syncedRows) return;
+        syncedRows = signature;
+        stableQueueRows.clear();
+        for (var i = 0; i < rows.length; ++i) {
+            var song = rows[i] || {};
+            stableQueueRows.append({
+                trackTitle: String(song.title || "未知歌曲"),
+                trackArtist: String(song.artist || ""),
+                trackIndex: Number(song.index),
+                trackId: String(song.id || "")
+            });
+        }
+        if (songList) songList.positionViewAtBeginning();
+    }
+    onIncomingRowsChanged: syncRows()
+    Component.onCompleted: syncRows()
     readonly property color ink: hud.dark ? "#eef2e9" : "#282d27"
     readonly property color muted: hud.dark ? "#a4ada1" : "#747d72"
     readonly property color accent: hud.dark ? "#b7ceab" : "#6f8968"
@@ -114,7 +139,7 @@ Item {
         height: Math.max(80, parent.height - 313 * queue.unit)
         clip: true
         spacing: 3 * queue.unit
-        model: queue.songs
+        model: stableQueueRows
         cacheBuffer: 250
         boundsBehavior: Flickable.StopAtBounds
         flickDeceleration: 1400
@@ -128,8 +153,10 @@ Item {
         delegate: Item {
             id: track
             required property int index
-            required property var modelData
-            readonly property bool selected: index === Number(queue.hud.queueIndex)
+            required property string trackTitle
+            required property string trackArtist
+            required property int trackIndex
+            readonly property bool selected: trackIndex === Number(queue.hud.queueIndex)
             width: songList.width
             height: 62 * queue.unit
 
@@ -151,12 +178,12 @@ Item {
                 width: parent.width - 29 * queue.unit
                 color: queue.stroke
                 opacity: .20
-                visible: index < queue.songs.length - 1
+                visible: index < stableQueueRows.count - 1
             }
             Text {
                 x: 18 * queue.unit; y: 9 * queue.unit
                 width: parent.width - 132 * queue.unit
-                text: String(track.modelData.title || "未知歌曲")
+                text: track.trackTitle
                 color: queue.ink; elide: Text.ElideRight
                 font.family: rhineFontFamily; font.pixelSize: 15 * queue.unit
                 font.weight: track.selected ? Font.DemiBold : Font.Normal
@@ -164,7 +191,7 @@ Item {
             Text {
                 x: 18 * queue.unit; y: 34 * queue.unit
                 width: parent.width - 132 * queue.unit
-                text: String(track.modelData.artist || "")
+                text: track.trackArtist
                 color: queue.muted; elide: Text.ElideRight
                 font.family: rhineFontFamily
                 font.pixelSize: 11.5 * queue.unit
@@ -173,7 +200,7 @@ Item {
                 id: rowMouse
                 anchors.fill: parent; hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: rhine.action("player:queue-play:" + track.index)
+                onClicked: rhine.action("player:queue-play:" + track.trackIndex)
             }
             Rectangle {
                 x: parent.width - 92 * queue.unit; y: 12 * queue.unit
@@ -191,7 +218,7 @@ Item {
                 MouseArea {
                     id: playMouse; anchors.fill: parent; hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: rhine.action("player:queue-play:" + track.index)
+                    onClicked: rhine.action("player:queue-play:" + track.trackIndex)
                 }
             }
             Rectangle {
@@ -210,7 +237,7 @@ Item {
                 MouseArea {
                     id: removeMouse; anchors.fill: parent; hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: rhine.action("player:remove:" + track.index)
+                    onClicked: rhine.action("player:remove:" + track.trackIndex)
                 }
             }
         }
@@ -249,11 +276,38 @@ Item {
     Text {
         x: 28 * queue.unit; y: parent.height - 45 * queue.unit
         text: Number(queue.hud.queueCount || 0) > 0
-            ? (Math.min(Number(queue.hud.queueCount), Math.floor(songList.contentY / Math.max(1, 65 * queue.unit)) + 1)
-                + "–" + Math.min(Number(queue.hud.queueCount), Math.ceil((songList.contentY + songList.height) / Math.max(1, 65 * queue.unit))))
+            ? (queue.pageStart + 1) + "–" + Math.min(Number(queue.hud.queueCount), queue.pageStart + stableQueueRows.count)
             : "0"
         color: queue.muted; font.pixelSize: 12 * queue.unit
         font.family: rhineFontFamily
+    }
+    // Fixed-size pages keep a 4,000+ song queue cheap even during playback.
+    // Scrolling within a page remains smooth, the arrows browse the full queue.
+    Rectangle {
+        x: 100 * queue.unit; y: parent.height - 53 * queue.unit
+        width: 34 * queue.unit; height: 31 * queue.unit
+        radius: 11 * queue.unit
+        color: previousMouse.containsMouse && queue.pageStart > 0
+            ? (queue.hud.dark ? "#448d9b8c" : "#508c9977") : "transparent"
+        opacity: queue.pageStart > 0 ? 1 : .26
+        Text { anchors.centerIn: parent; text: "‹"; font.pixelSize: 24 * queue.unit; color: queue.ink }
+        MouseArea { id: previousMouse; anchors.fill: parent; hoverEnabled: true
+            enabled: queue.pageStart > 0
+            cursorShape: Qt.PointingHandCursor
+            onClicked: rhine.action("player:queue-page-prev") }
+    }
+    Rectangle {
+        x: 144 * queue.unit; y: parent.height - 53 * queue.unit
+        width: 34 * queue.unit; height: 31 * queue.unit
+        radius: 11 * queue.unit
+        color: nextMouse.containsMouse && queue.pageStart + queue.pageSize < Number(queue.hud.queueCount || 0)
+            ? (queue.hud.dark ? "#448d9b8c" : "#508c9977") : "transparent"
+        opacity: queue.pageStart + queue.pageSize < Number(queue.hud.queueCount || 0) ? 1 : .26
+        Text { anchors.centerIn: parent; text: "›"; font.pixelSize: 24 * queue.unit; color: queue.ink }
+        MouseArea { id: nextMouse; anchors.fill: parent; hoverEnabled: true
+            enabled: queue.pageStart + queue.pageSize < Number(queue.hud.queueCount || 0)
+            cursorShape: Qt.PointingHandCursor
+            onClicked: rhine.action("player:queue-page-next") }
     }
     Text {
         x: parent.width - 160 * queue.unit
