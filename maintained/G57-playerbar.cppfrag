@@ -39,7 +39,21 @@ void NativeHud::playerBar(double, double y, double width) {
     if (!player.current.isEmpty()) {
         hit(coverX, coverY, 52, 52, "player:song-lyrics", "歌曲歌词");
         hit(109, cy - 26, infoWidth, 26, "player:song-detail", "歌曲详情");
-        hit(109, cy + 1, infoWidth, 25, "player:song-lyrics", "查看歌词");
+        // Restore each actual artist's own clickable destination. A generic
+        // lyric hit over the artist line would silently break G53 navigation.
+        const auto artists = player.current.value("artists").toArray();
+        double ax = 109;
+        for (int i = 0; i < artists.size() && ax < 109 + infoWidth; ++i) {
+            const auto name = artists.at(i).toObject().value("name").toString();
+            if (name.isEmpty()) { continue; }
+            const double remaining = 109 + infoWidth - ax;
+            const double artistWidth = std::min(m_glyphs->width(name, 14), remaining);
+            hit(ax, cy + 1, artistWidth, 25, "player:song-artist:" + QString::number(i), name);
+            ax += artistWidth + m_glyphs->width(" / ", 14);
+        }
+        if (artists.isEmpty()) {
+            hit(109, cy + 1, infoWidth, 25, "player:song-lyrics", "查看歌词");
+        }
     }
 
     const auto icon = [this, cy](double x, const QString &shape, QJsonArray color = {}) {
