@@ -37,8 +37,7 @@ void MusicDiscover::load(QString nextTab, bool append) {
         accept({{}, QStringLiteral("请切换到网易云音乐来源"), {}}, tab, start, append);
         return;
     }
-    if ((tab == "following" || (tab == "roam" && m_store->player.current["id"].toString().isEmpty()))
-        && m_store->uid.isEmpty()) {
+    if ((tab == "following" || tab == "roam") && m_store->uid.isEmpty()) {
         accept({{}, QStringLiteral("登录网易云后查看个性化内容"), {}}, tab, start, append);
         return;
     }
@@ -97,16 +96,11 @@ void MusicDiscover::load(QString nextTab, bool append) {
         field = "follow";
         kind = "user";
     } else if (tab == "roam") {
-        // Start a contextual recommendation shelf from the currently playing track.
-        // When nothing is playing, show the account's real daily recommendations.
-        const auto songID = m_store->player.current["id"].toString();
-        if (!songID.isEmpty() && m_store->player.current["kind"].toString() == "song") {
-            route = "/simi/song";
-            parameters = {{"id", songID}};
-            field = "songs";
-        } else {
-            route = "/recommend/songs";
-        }
+        // Real NetEase private radio recommendations, independent from the playing
+        // song and never an alias to the song-details /simi/song endpoint.
+        route = "/personal/fm/mode";
+        parameters = {{"mode", "DEFAULT"}, {"limit", 30}};
+        field = "data";
         kind = "song";
     } else if (tab == "categories") {
         route = "/top/playlist";
@@ -130,10 +124,6 @@ void MusicDiscover::load(QString nextTab, bool append) {
             }
             const auto body = result.value.toObject();
             auto data = body[field].toArray();
-            if (currentTab == "roam" && body.contains("data") && field.isEmpty()) {
-                const auto recommended = body["data"].toObject()["dailySongs"];
-                data = recommended.isArray() ? recommended.toArray() : body["recommend"].toArray();
-            }
             if (currentTab == "daily") {
                 const auto daily = body["data"].toObject()["dailySongs"];
                 data = daily.isArray() ? daily.toArray() : body["recommend"].toArray();
