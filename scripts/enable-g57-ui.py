@@ -178,4 +178,13 @@ edit("Qt/src/NativeHudController.cpp",
 edit("Qt/src/MusicLibrary.cpp",
     '    player.scrobbleAccountId = [this] {',
     '''    player.scrobbleAccountId = [this] {''') if False else None
+# Align the blur-backed QML surface with the new independently rounded bar,
+# rather than using G53's shallower glass strip at y=992.
+edit("Qt/qml/Main.qml",
+    '        x: 20 * root.stageScale; y: 992 * root.stageScale\n        width: root.width - 40 * root.stageScale; height: 76 * root.stageScale',
+    '        x: 15 * root.stageScale; y: 976 * root.stageScale\n        width: root.width - 30 * root.stageScale; height: 102 * root.stageScale')
+edit("Qt/qml/Main.qml",
+    '            sampleX: 20 * root.stageScale; sampleY: 992 * root.stageScale\n            uiScale: root.stageScale; radius: 34 * root.stageScale',
+    '            sampleX: 15 * root.stageScale; sampleY: 976 * root.stageScale\n            uiScale: root.stageScale; radius: 45 * root.stageScale')
+
 print("G57 routed left navigation, live FM controls, capsule player and right-side queue.")
