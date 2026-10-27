@@ -116,6 +116,8 @@ edit("Qt/qml/Main.qml",
             anchors.fill: parent
             radius: width / 2
             color: "white"
+            layer.enabled: true
+            antialiasing: true
             visible: false
         }
         Image {
@@ -145,9 +147,10 @@ edit("Qt/qml/Main.qml",
             source: discPhoto
             maskEnabled: true
             maskSource: discMask
-            maskThreshold: 0.5
-            maskSpreadAtMin: 0
-            maskSpreadAtMax: 0.05
+            maskThresholdMin: 0.01
+            maskThresholdMax: 0.99
+            maskSpreadAtMin: 0.02
+            maskSpreadAtMax: 0.02
             visible: discPhoto.status === Image.Ready
         }
         Rectangle {
@@ -239,6 +242,8 @@ assert "const double reactionX = infoX + infoWidth + 8;" in native
 assert "image(player.coverImage, coverX" not in native.split("void NativeHud::playerBar(")[1].split("void NativeHud::playerPanel(")[0]
 assert "playerPanel(panelX, panelY, panelW);" not in modal
 assert 'objectName: "circularPlayerCover"' in qml
+assert "maskThreshold: 0.5" not in qml
+assert "maskThresholdMin: 0.01" in qml and "layer.enabled: true" in qml
 assert 'duration: 1270' in qml and "Easing.InOutCubic" in qml
 assert 'objectName: "glassQueueLoader"' in qml
 assert 'objectName: "playerQueueEdgeFade"' in target.read_text(encoding="utf-8")
