@@ -180,6 +180,9 @@ void MusicPlayer::dislikeRoam() {
             } else {
                 roamStatus.clear();
             }
+            // After a dislike, throw away prefetched successors. Let the
+            // service's new feedback inform the next request.
+            while (queue.size() > index + 1) { queue.removeLast(); }
             // An ordinary skip NEVER calls /fm_trash.
             next(1);
         }, alive);
@@ -203,7 +206,7 @@ void MusicPlayer::leaveRoam(bool restorePrevious) {
     m_roamAccountValid = {};
     mode = previousMode.isEmpty() ? "all" : previousMode;
     if (restorePrevious) {
-        if (!previousSong.isEmpty() && m_api->provider == previousSong["provider"]) {
+        if (!previousSong.isEmpty() && m_api->provider == previousSong["provider"].toString()) {
             m_roamInternalPlay = true;
             play(previousSong, previousQueue, previousIndex >= 0
                  ? std::optional<int>(previousIndex) : std::nullopt);
