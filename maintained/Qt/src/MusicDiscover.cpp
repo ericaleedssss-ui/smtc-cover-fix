@@ -255,8 +255,9 @@ void MusicDiscover::open(int index) {
     // 发现页条目作为单曲打开时，替换队列
     m_store->playContext = items;
     if (value["kind"] == "song") {
-        m_store->player.play(value, items);
-        m_store->choose(value);
+        // G53 regression contract: browsing discovery selects song details,
+        // but never begins playback or replaces the current queue.
+        m_store->choose(value, false, true);
         emit m_store->modeRequested("detail");
     } else {
         m_store->enterDirectory(value);
