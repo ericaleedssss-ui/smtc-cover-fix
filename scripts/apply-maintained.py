@@ -51,7 +51,7 @@ if worker_source.count(worker_anchor) != 1:
     raise RuntimeError("NetEase route whitelist anchor changed")
 worker_source = worker_source.replace(
     worker_anchor,
-    worker_anchor + "\n    '/dj/hot': 'dj_hot',\n    '/user/follows': 'user_follows',",
+    worker_anchor + "\n    '/dj/hot': 'dj_hot',\n    '/user/follows': 'user_follows',\n    '/personal/fm/mode': 'personal_fm_mode',",
     1,
 )
 worker.write_text(worker_source, encoding="utf-8")
@@ -89,4 +89,9 @@ assert 'label: "创建的歌单  " + parent.count' in nav
 assert '"播客"' in nav and '"漫游"' in nav and '"关注"' in nav
 assert 'text: "我的"' in nav
 assert '"创建的歌单  ("' not in nav
+assert 'opacity: 1' in nav.split('component NavRow: Item {', 1)[1]
+discover = Path("Qt/src/MusicDiscover.cpp").read_text(encoding="utf-8")
+assert 'route = "/personal/fm/mode";' in discover
+assert 'route = "/simi/song";' not in discover
+assert 'parameters = {{"mode", "DEFAULT"}, {"limit", 30}};' in discover
 print("Navigation invariants verified.")
