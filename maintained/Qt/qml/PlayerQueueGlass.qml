@@ -200,6 +200,7 @@ Item {
                 id: rowMouse
                 anchors.fill: parent; hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onWheel: function(wheel) { wheel.accepted = false }
                 onClicked: rhine.action("player:queue-play:" + track.trackIndex)
             }
             Rectangle {
@@ -218,6 +219,7 @@ Item {
                 MouseArea {
                     id: playMouse; anchors.fill: parent; hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onWheel: function(wheel) { wheel.accepted = false }
                     onClicked: rhine.action("player:queue-play:" + track.trackIndex)
                 }
             }
@@ -237,6 +239,7 @@ Item {
                 MouseArea {
                     id: removeMouse; anchors.fill: parent; hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onWheel: function(wheel) { wheel.accepted = false }
                     onClicked: rhine.action("player:remove:" + track.trackIndex)
                 }
             }
