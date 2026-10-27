@@ -72,6 +72,41 @@ edit("Qt/qml/Main.qml",
                         : fade * .94 * (.19 + .81 * f1 * f1);
                     ctx.strokeStyle = "rgba(" + red + "," + green + "," + blue + "," + opacity + ")";''')
 
+# Offline regression: simulate a 4,080-track playlist and ensure the
+# exposed model never scales with full library size, including last-page
+# navigation. Restore live player/queue state before continuing other tests.
+edit("Qt/tests/UiChecks.cpp",
+    '    check(hud.modal.isEmpty(), "close modal");',
+    '''    check(hud.modal.isEmpty(), "close modal");
+
+    {
+        const auto savedQueue = player.queue;
+        const auto savedModal = hud.modal;
+        const auto savedOffset = hud.queueOffset;
+        QJsonArray hugeQueue;
+        for (int i = 0; i < 4080; ++i) {
+            hugeQueue.append(QJsonObject{
+                {"id", QString::number(i + 1)},
+                {"title", QStringLiteral("测试队列歌曲")},
+                {"artist", QStringLiteral("测试歌手")},
+            });
+        }
+        player.queue = hugeQueue;
+        hud.modal = "player";
+        hud.queueOffset = 0;
+        const auto first = hud.state();
+        check(first.value("queueCount").toInt() == 4080 &&
+              first.value("queueRows").toArray().size() == 40,
+              "4080-song queue exports only 40 lightweight visible rows");
+        hud.queueOffset = 4040;
+        const auto last = hud.state().value("queueRows").toArray();
+        check(last.size() == 40 && last.first().toObject().value("index").toInt() == 4040,
+              "large queue end-page indexing remains exact");
+        player.queue = savedQueue;
+        hud.queueOffset = savedOffset;
+        hud.modal = savedModal;
+    }''')
+
 # G62 copies this versioned, reviewable QML module before G63 runs.
 qml=Path("Qt/qml/PlayerQueueGlass.qml").read_text(encoding="utf-8")
 assert "ListModel { id: stableQueueRows }" in qml
