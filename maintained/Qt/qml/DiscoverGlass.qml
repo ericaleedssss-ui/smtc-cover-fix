@@ -50,7 +50,7 @@ Item {
         MouseArea { anchors.fill: parent; onClicked: {} }
         Text {
             x: 35 * page.unit; y: 24 * page.unit
-            text: "精选"; font.pixelSize: 34 * page.unit; font.bold: true
+            text: page.customCategory ? page.tabTitles[page.hud.discoverTab] : "精选"; font.pixelSize: 34 * page.unit; font.bold: true
             color: page.hud.dark ? "#f4f1e9" : "#252820"
         }
         Rectangle {
