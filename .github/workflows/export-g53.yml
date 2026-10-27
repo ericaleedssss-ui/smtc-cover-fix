@@ -1,0 +1,34 @@
+name: Export G53 source patch
+on:
+  push:
+    branches: [rhine-rebuild-from-g53]
+    paths:
+      - .github/workflows/export-g53.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover historical G53 patch from build workflow
+        shell: python
+        run: |
+          import re, base64, gzip, pathlib, hashlib
+          workflow = pathlib.Path(".github/workflows/build-smtc.yml").read_text(encoding="utf-8")
+          first_job = workflow.split("    - name: Configure MSVC", 1)[0]
+          chunks = re.findall(r"^\s+PATCH_PART_(\d+): ([A-Za-z0-9+/=]+)\s*$", first_job, re.MULTILINE)
+          assert chunks, "G53 source patch not found"
+          chunks.sort(key=lambda x: int(x[0]))
+          patch = gzip.decompress(base64.b64decode("".join(chunk for _, chunk in chunks), validate=True))
+          expected = re.search(r"^\s+PATCH_SHA256: ([a-f0-9]{64})$", first_job, re.MULTILINE).group(1)
+          assert hashlib.sha256(patch).hexdigest() == expected, "G53 patch checksum mismatch"
+          out = pathlib.Path("g53-source.patch")
+          out.write_bytes(patch)
+          print(f"Extracted {len(patch)} bytes, sha256={expected}")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G53-readable-source-patch
+          path: g53-source.patch
+          retention-days: 7
