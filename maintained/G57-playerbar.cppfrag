@@ -1,0 +1,130 @@
+void NativeHud::playerBar(double, double y, double width) {
+    const auto &player = m_music->player;
+    const auto first = hits.size();
+    const double center = width / 2;
+    const double cy = y + 45;
+    const QJsonArray accent = dark ? QJsonArray{.72,.78,.65,1} : QJsonArray{.45,.50,.39,1};
+    const QJsonArray light{.98,.97,.94,1};
+    auto textInk = ink();
+    auto subtle = ink(); subtle[3] = .36;
+    // A single translucent, softly rounded capsule. Never a full-height bar.
+    const QString capsule = QString("M 42 %1 L %2 %1 C %3 %1 %4 %5 %4 %6 L %4 %7 C %4 %8 %3 %9 %2 %9 L 42 %9 C 15 %9 15 %8 15 %7 L 15 %6 C 15 %5 15 %1 42 %1 Z")
+       .arg(y - 8).arg(width - 42).arg(width - 23).arg(width - 15)
+       .arg(y + 1).arg(y + 15).arg(y + 66).arg(y + 86).arg(y + 94);
+    op({"fill-path", capsule,
+        dark ? QJsonArray{.20,.22,.20,.83} : QJsonArray{.91,.90,.86,.82}});
+    op({"path", capsule, 1.2,
+        dark ? QJsonArray{.96,.97,.92,.23} : QJsonArray{1,1,1,.70}, QJsonArray{}, 0});
+
+    const double duration = player.state["duration"].toDouble();
+    const double position = duration > 0 ? std::clamp(player.state["position"].toDouble() / duration, 0., 1.) : 0;
+    playerSeekRect = QRectF(45, y - 3, width - 90, 20);
+    fill(45, y + 2, width - 90, 2, subtle);
+    fill(45, y + 2, (width - 90) * position, 2, accent);
+
+    const double coverX = 40, coverY = cy - 26;
+    if (!player.coverImage.isEmpty()) { image(player.coverImage, coverX, coverY, 52, 52); }
+    else {
+        op({"ellipse", subtle, coverX, coverY, 52, 52});
+        op({"ellipse", textInk, coverX + 23, coverY + 23, 6, 6});
+    }
+
+    const double infoWidth = std::max(125., center - 560);
+    auto title = player.failed ? player.status : player.current.value("title").toString();
+    if (title.isEmpty() && !player.failed) { title = QStringLiteral("尚未播放"); }
+    centeredText(fit(title, 19, infoWidth, "demibold"), 109, cy - 11, 19, "demibold");
+    auto artist = player.current.value("artist").toString();
+    if (artist.isEmpty()) { artist = "RHINE LAB / MUSIC DATABASE"; }
+    centeredText(fit(artist, 14, infoWidth), 109, cy + 14, 14);
+    if (!player.current.isEmpty()) {
+        hit(coverX, coverY, 52, 52, "player:song-lyrics", "歌曲歌词");
+        hit(109, cy - 26, infoWidth, 26, "player:song-detail", "歌曲详情");
+        hit(109, cy + 1, infoWidth, 25, "player:song-lyrics", "查看歌词");
+    }
+
+    const auto icon = [this, cy](double x, const QString &shape, QJsonArray color = {}) {
+        save(); translate(x - 12, cy - 12);
+        op({"path", shape, 1.85, color.isEmpty() ? ink() : color, QJsonArray{}, 0});
+        restore();
+    };
+    const auto control = [this, cy](double x, const QString &action, const QString &tooltip) {
+        hit(x - 20, cy - 22, 40, 44, action, tooltip);
+    };
+
+    const double reactionX = std::max(385., center - 382);
+    if (!player.current.isEmpty() && m_music->canMutate("/like")) {
+        control(reactionX, "music:like-current", "喜欢 / 取消喜欢");
+        const bool liked = m_music->likedIDs &&
+             MusicData::indexOf(*m_music->likedIDs, player.current["id"]) >= 0;
+        icon(reactionX, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z",
+             liked ? QJsonArray{.83,.32,.38,1} : textInk);
+    }
+    if (!player.current.isEmpty() &&
+        player.current.value("provider").toString("netease") == "netease") {
+        control(reactionX + 47, "player:comments", "打开当前歌曲评论");
+        icon(reactionX + 47, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
+        if (commentsOpen && commentsSong["id"] == player.current["id"]) {
+            const auto count = std::max(0, commentsTotal);
+            const QString label = count >= 1000000 ? "100w+" : count >= 10000 ? "1w+" :
+                                  count >= 1000 ? "999+" : QString::number(count);
+            centeredText(label, reactionX + 70, cy + 17, 10, "regular", true);
+        }
+    }
+
+    const bool roaming = player.roamActive;
+    if (roaming) {
+        control(center - 156, "roam:exit", "退出漫游并恢复普通队列");
+        icon(center - 156, "M 12 3 A 9 9 0 1 0 12 21 A 9 9 0 1 0 12 3 M 7 12 H 17 M 12 7 L 17 12 L 12 17", accent);
+    } else {
+        static const QHash<QString, QString> modes{{"off","顺序"},{"all","循环"},{"one","单曲"},{"shuffle","随机"},{"heart","心动"}};
+        control(center - 156, "player:mode", modes.value(player.mode, "播放模式"));
+        if (player.mode == "heart") {
+            icon(center - 156, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z", accent);
+        } else {
+            icon(center - 156, "M 4 8 C 4 5 6 4 9 4 L 21 4 M 17 0 L 21 4 L 17 8 M 20 16 C 20 19 18 20 15 20 L 3 20 M 7 16 L 3 20 L 7 24",
+                 player.mode == "off" ? textInk : accent);
+            if (player.mode == "one") { centeredText("1", center - 156, cy, 10, "demibold", true); }
+        }
+    }
+    control(center - 81, "player:prev", "上一首");
+    icon(center - 81, "M 5 3 L 5 21 M 19 3 L 8 12 L 19 21 Z");
+    control(center + 81, "player:next", "下一首");
+    icon(center + 81, "M 19 3 L 19 21 M 5 3 L 16 12 L 5 21 Z");
+    op({"ellipse", QJsonArray{.45,.49,.38,1}, center - 29, cy - 29, 58, 58});
+    hit(center - 30, cy - 30, 60, 60, "player:toggle", player.state["playing"].toBool() ? "暂停" : "播放");
+    if (player.loading || (roaming && player.roamLoading)) {
+        for (int i = -1; i <= 1; ++i) { op({"ellipse", light, center + i*9 - 2, cy - 2, 4, 4}); }
+    } else if (player.state["playing"].toBool()) {
+        fill(center - 8, cy - 10, 5, 20, light);
+        fill(center + 3, cy - 10, 5, 20, light);
+    } else {
+        save(); translate(center, cy);
+        op({"fill-path", "M -6 -11 L 13 0 L -6 11 Z", light}); restore();
+    }
+    // Queue stays next to the main transport buttons, not at the far right.
+    control(center + 155, "player:open", "右侧播放队列");
+    icon(center + 155, "M 3 5 L 21 5 M 3 11 L 21 11 M 3 17 L 12 17 M 17 15 L 22 19 L 17 23 Z");
+    if (roaming) {
+        control(center + 218, "roam:dislike", "不喜欢：告诉网易云并跳到下一首");
+        icon(center + 218, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z M 3 2 L 22 23",
+             QJsonArray{.70,.42,.42,1});
+    }
+
+    // Time labels are above the bottom edge, separate from the progress track.
+    centeredText(clock(player.state["position"].toDouble()) + " / " + clock(duration),
+                 center, y + 78, 12, "regular", true);
+    const double vx = width - 270;
+    control(vx - 25, "player:mute", "静音 / 恢复");
+    icon(vx - 25, "M 2 9 L 6 9 L 12 4 L 12 20 L 6 15 L 2 15 Z M 16 8 C 19 10 19 14 16 16 M 19 4 C 25 9 25 15 19 20");
+    playerVolumeRect = QRectF(vx, cy - 22, 82, 44);
+    fill(vx, cy - 1, 82, 2, subtle);
+    const double volume = std::clamp(player.state["volume"].toDouble(), 0., 1.);
+    fill(vx, cy - 1, 82 * volume, 2, accent);
+    op({"ellipse", accent, vx + 82*volume - 4, cy - 4, 8, 8});
+    control(width - 108, "desktop:toggle", "桌面歌词开关");
+    icon(width - 108, "M 2 3 L 22 3 L 22 17 L 2 17 Z M 8 22 L 16 22 M 12 17 L 12 22 M 6 8 L 18 8 M 6 12 L 14 12",
+         desktopLyricsEnabled ? accent : textInk);
+    for (auto i = first; i < hits.size(); ++i) {
+        auto value = hits.at(i).toObject(); value["fixed"] = true; hits[i] = value;
+    }
+}
