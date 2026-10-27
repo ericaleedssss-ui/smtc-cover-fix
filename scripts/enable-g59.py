@@ -87,6 +87,19 @@ edit("Qt/shaders/lyricsEdge.frag",
     'smoothstep(0.0, min(112.0 * unit, size.y * .24), size.y - y)',
     'smoothstep(0.0, min(198.0 * unit, size.y * .38), size.y - y)')
 
+# Update the G53 hover regression to the G59 requirement, without weakening
+# any real interaction tests. The liquid-glass bead must be visible at rest,
+# enlarge on hover, and retain the original hover-only time tooltip.
+checks=Path("Qt/tests/UiChecks.cpp")
+test_source=checks.read_text(encoding="utf-8")
+old_idle='check(thumb && !thumb->isVisible() && time && !time->isVisible(), "normal progress line hides the thumb and time pill");'
+new_idle='check(thumb && thumb->isVisible() && time && !time->isVisible(), "normal progress shows a small glass bead but hides the time pill");'
+old_leave='check(thumb && !thumb->isVisible() && time && !time->isVisible(), "leaving restores the unobtrusive progress line");'
+new_leave='check(thumb && thumb->isVisible() && time && !time->isVisible(), "leaving restores the small glass bead and hides the hover time pill");'
+assert test_source.count(old_idle)==1 and test_source.count(old_leave)==1
+test_source=test_source.replace(old_idle,new_idle,1).replace(old_leave,new_leave,1)
+checks.write_text(test_source,encoding="utf-8")
+
 # Regressions for precisely the G58 visuals shown in user screenshots.
 q=Path("Qt/src/NativeHudPlayer.cpp").read_text(encoding="utf-8")
 assert 'const double reactionX = 109 + infoWidth + 25;' in q
