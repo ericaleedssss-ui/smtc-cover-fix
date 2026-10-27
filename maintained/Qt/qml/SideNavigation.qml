@@ -407,7 +407,9 @@ Item {
         signal invoked()
         width: list.width
         height: visible ? 43 * navigation.typeUnit : 0
-        opacity: Math.max(0, Math.min(1, (y - list.contentY + height) / (24 * navigation.unit), (list.height - (y - list.contentY)) / (24 * navigation.unit)))
+        // Nested title rows do not share the Column's coordinates. Flickable already clips,
+        // so don't fade them using the wrong Y-axis (which hid the created-playlist label).
+        opacity: 1
         Rectangle {
             anchors.fill: parent
             radius: 8 * navigation.unit
