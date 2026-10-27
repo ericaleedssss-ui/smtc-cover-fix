@@ -9,7 +9,7 @@ Item {
     required property Item background
     property real unit: 1
     property bool expanded: false
-    readonly property bool home: rhine.state.mode === "archive" && (!rhine.state.modal || rhine.state.modal === "player") && !rhine.state.directoryOpen && !rhine.state.lyricsMode && !rhine.state.viewer
+    readonly property bool home: rhine.state.mode === "archive" && !rhine.state.modal && !rhine.state.directoryOpen && !rhine.state.lyricsMode && !rhine.state.viewer
     readonly property real typeUnit: Math.max(.9, unit)
     readonly property real railWidth: 54 * typeUnit
     property bool musicOpen: true

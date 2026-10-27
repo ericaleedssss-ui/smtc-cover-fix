@@ -127,7 +127,7 @@ Item {
     QueueButton {
         objectName: "queueClose"
         x: parent.width - width - 18 * queue.unit; y: 18 * queue.unit
-        label: "关闭播放列表"; actionName: "close-modal"
+        label: "关闭播放列表"; actionName: "queue-close"
     }
     Row {
         anchors.right: parent.right; anchors.rightMargin: 22 * queue.unit

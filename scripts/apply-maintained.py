@@ -116,3 +116,5 @@ subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g66-lifecyc
 print("G57 UI and private radio applied successfully.")
 
 
+
+subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g67.py"))], check=True)

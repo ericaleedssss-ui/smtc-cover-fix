@@ -77,6 +77,7 @@ Item {
         }
         Flickable {
             id: scrolling
+            objectName: "discoverScroll"
             x: 35 * page.unit; y: 92 * page.unit + 44 * page.typeUnit
             width: panel.width - 70 * page.unit; height: panel.height - y - 18 * page.unit
             clip: true; contentWidth: width; contentHeight: grid.implicitHeight + status.height + 50 * page.unit

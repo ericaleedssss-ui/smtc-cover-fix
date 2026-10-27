@@ -1,0 +1,523 @@
+--- a/Qt/qml/Main.qml
++++ b/Qt/qml/Main.qml
+@@ -768,6 +768,7 @@
+     Connections {
+         target: rhine
+         function onPageNavigation(key) {
++            if (rhine.state.queueOpen) return;
+             if (profileLoader.active && profileLoader.item) profileLoader.item.navigateKey(key);
+             else if (!rhine.state.modal) {
+                 if (commentsLoader.active && commentsLoader.visible && commentsLoader.item) commentsLoader.item.navigateKey(key);
+@@ -778,6 +779,7 @@
+     }
+     Loader {
+         id: discoverGlassLoader
++        objectName: "discoverGlassLoader"
+         anchors.fill: parent
+         z: 180
+         active: rhine.state.modal === "discover"
+@@ -807,6 +809,91 @@
+                     textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
+                     live: true; smooth: true; hideSource: false
+                 }
++                Loader {
++                    anchors.fill: parent
++                    active: detailReaderLoader.active && detailReaderLoader.visible
++                    sourceComponent: Item {
++                        ShaderEffectSource {
++                            objectName: "queueReaderTile"
++                            x: glassQueueLoader.x - queueGlassBackdrop.pad
++                            y: glassQueueLoader.y - queueGlassBackdrop.pad
++                            width: glassQueueLoader.width + 2 * queueGlassBackdrop.pad
++                            height: glassQueueLoader.height + 2 * queueGlassBackdrop.pad
++                            sourceItem: detailReaderLoader
++                            sourceRect: Qt.rect(x - detailReaderLoader.x, y - detailReaderLoader.y, width, height)
++                            textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
++                            live: true; smooth: true; hideSource: false
++                        }
++                    }
++                }
++                Loader {
++                    anchors.fill: parent
++                    active: commentsLoader.active && commentsLoader.visible
++                    sourceComponent: Item {
++                        ShaderEffectSource {
++                            objectName: "queueCommentsTile"
++                            x: glassQueueLoader.x - queueGlassBackdrop.pad
++                            y: glassQueueLoader.y - queueGlassBackdrop.pad
++                            width: glassQueueLoader.width + 2 * queueGlassBackdrop.pad
++                            height: glassQueueLoader.height + 2 * queueGlassBackdrop.pad
++                            sourceItem: commentsLoader
++                            sourceRect: Qt.rect(x - commentsLoader.x, y - commentsLoader.y, width, height)
++                            textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
++                            live: true; smooth: true; hideSource: false
++                        }
++                    }
++                }
++                Loader {
++                    anchors.fill: parent
++                    active: recommendationsLoader.active && recommendationsLoader.visible
++                    sourceComponent: Item {
++                        ShaderEffectSource {
++                            objectName: "queueRecommendationsTile"
++                            x: glassQueueLoader.x - queueGlassBackdrop.pad
++                            y: glassQueueLoader.y - queueGlassBackdrop.pad
++                            width: glassQueueLoader.width + 2 * queueGlassBackdrop.pad
++                            height: glassQueueLoader.height + 2 * queueGlassBackdrop.pad
++                            sourceItem: recommendationsLoader
++                            sourceRect: Qt.rect(x - recommendationsLoader.x, y - recommendationsLoader.y, width, height)
++                            textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
++                            live: true; smooth: true; hideSource: false
++                        }
++                    }
++                }
++                Loader {
++                    anchors.fill: parent
++                    active: discoverGlassLoader.active && discoverGlassLoader.visible
++                    sourceComponent: Item {
++                        ShaderEffectSource {
++                            objectName: "queueDiscoverTile"
++                            x: glassQueueLoader.x - queueGlassBackdrop.pad
++                            y: glassQueueLoader.y - queueGlassBackdrop.pad
++                            width: glassQueueLoader.width + 2 * queueGlassBackdrop.pad
++                            height: glassQueueLoader.height + 2 * queueGlassBackdrop.pad
++                            sourceItem: discoverGlassLoader
++                            sourceRect: Qt.rect(x - discoverGlassLoader.x, y - discoverGlassLoader.y, width, height)
++                            textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
++                            live: true; smooth: true; hideSource: false
++                        }
++                    }
++                }
++                Loader {
++                    anchors.fill: parent
++                    active: profileLoader.active && profileLoader.visible
++                    sourceComponent: Item {
++                        ShaderEffectSource {
++                            objectName: "queueProfileTile"
++                            x: glassQueueLoader.x - queueGlassBackdrop.pad
++                            y: glassQueueLoader.y - queueGlassBackdrop.pad
++                            width: glassQueueLoader.width + 2 * queueGlassBackdrop.pad
++                            height: glassQueueLoader.height + 2 * queueGlassBackdrop.pad
++                            sourceItem: profileLoader
++                            sourceRect: Qt.rect(x - profileLoader.x, y - profileLoader.y, width, height)
++                            textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
++                            live: true; smooth: true; hideSource: false
++                        }
++                    }
++                }
+                 ShaderEffectSource {
+                     objectName: "queueNavigationTile"
+                     x: glassQueueLoader.x - queueGlassBackdrop.pad
+@@ -825,7 +912,7 @@
+         id: glassQueueLoader
+         objectName: "glassQueueLoader"
+         property var bounds: rhine.state.queueBounds
+-        active: rhine.state.modal === "player"
++        active: rhine.state.queueOpen === true
+         x: (bounds ? bounds.x : 0) * root.stageScale
+         y: (bounds ? bounds.y : 0) * root.stageScale
+         width: (bounds ? bounds.width : 430) * root.stageScale
+@@ -838,6 +925,51 @@
+             unit: root.stageScale
+         }
+     }
++    Item {
++        id: queueCollectionOverlay
++        objectName: "queueCollectionOverlay"
++        anchors.fill: parent
++        z: 360
++        visible: rhine.state.queueOpen === true && rhine.state.queueCollectionOpen === true
++        enabled: visible
++        MouseArea { anchors.fill: parent; onClicked: rhine.action("queue-collection-close"); onWheel: function(wheel) { wheel.accepted = true } }
++        Rectangle { anchors.fill: parent; color: "#20000000" }
++        Rectangle {
++            anchors.centerIn: parent
++            width: Math.min(parent.width - 48, 500 * Math.max(.85, root.stageScale))
++            height: Math.min(parent.height - 60, 580 * Math.max(.85, root.stageScale))
++            radius: 20 * root.stageScale
++            color: rhine.state.dark ? "#292d29" : "#f4f3eb"
++            MouseArea { anchors.fill: parent; onClicked: {} }
++            Text { x:24; y:22; text:"收藏到歌单"; color:rhine.state.dark ? "#e6e9df" : "#414a3c"
++                font.family:rhineFontFamily; font.pixelSize:20 }
++            Text { anchors.right:parent.right; anchors.rightMargin:24; y:24; text:"关闭"; color:"#77816d"
++                MouseArea { anchors.fill:parent; enabled:!rhine.state.queueWriteLoading
++                    cursorShape:Qt.PointingHandCursor; onClicked:rhine.action("queue-collection-close") } }
++            ListView {
++                id: queuePlaylistList
++                objectName:"queuePlaylistList"
++                anchors.fill:parent; anchors.topMargin:65; anchors.bottomMargin:70; anchors.leftMargin:16; anchors.rightMargin:16
++                clip:true; spacing:6
++                model:rhine.state.navigationCreated || []
++                delegate: Rectangle {
++                    required property var modelData
++                    objectName: "queuePlaylist_" + modelData.id
++                    width:queuePlaylistList.width; height:54; radius:9
++                    color:pickMouse.containsMouse ? (rhine.state.dark ? "#424b3d" : "#e3e9d9") : "transparent"
++                    Text { anchors.fill:parent; anchors.margins:12; verticalAlignment:Text.AlignVCenter
++                        text:parent.modelData.title || "未命名歌单"; elide:Text.ElideRight
++                        font.family:rhineFontFamily; font.pixelSize:16; color:rhine.state.dark ? "#e6e9df" : "#414a3c" }
++                    MouseArea { id:pickMouse; anchors.fill:parent; hoverEnabled:true; enabled:!rhine.state.queueWriteLoading
++                        cursorShape:Qt.PointingHandCursor
++                        onClicked:rhine.action("music:playlist-pick:" + parent.modelData.id) }
++                }
++            }
++            Text { x:24; y:parent.height-56; width:parent.width-48; height:40; wrapMode:Text.Wrap
++                text:rhine.state.queueWriteLoading ? "正在收藏…" : ((rhine.state.navigationCreated || []).length ? (rhine.state.queueWriteStatus || "选择要收藏到的歌单") : "暂无歌单，或正在加载")
++                color:"#77816d"; font.family:rhineFontFamily; font.pixelSize:13 }
++        }
++    }
+     SideNavigation {
+         id: sideNavigation
+         anchors.fill: parent
+--- a/Qt/src/NativeHud.cpp
++++ b/Qt/src/NativeHud.cpp
+@@ -155,10 +155,7 @@
+ 
+ QRectF NativeHud::modalBounds(double width) const {
+     if (modal == "desktop-settings") { return {59, 205, width - 118, 744}; }
+-    if (modal == "player") {
+-        const double panelWidth = std::min(430., std::max(320., width * .29));
+-        return {width - panelWidth - 18, 116, panelWidth, 842};
+-    }
++
+     if (modal == "lyrics-source") {
+         // 列表右缘与底部来源按钮对齐，向上展开并保留 8 px 间距。
+         return {width - 428, 674, 232, 232};
+@@ -185,8 +182,13 @@
+     const auto layout = containerLayout(width);
+     return {layout.left, layout.top, width - layout.left * 2, layout.bottom - layout.top};
+ }
++QRectF NativeHud::queueBounds(double width) const {
++    const double panelWidth = std::min(430., std::max(320., width * .29));
++    return {width - panelWidth - 18, 116, panelWidth, 842};
++}
+ QJsonObject NativeHud::state() const {
+     const auto bounds = modalBounds(width);
++    const auto queueRect = queueBounds(width);
+     const auto rect = [](const std::optional<QRectF> &value) -> QJsonValue {
+         if (!value) {
+             return QJsonValue::Null;
+@@ -197,7 +199,7 @@
+     // 只覆盖资料库右侧的阅读区；详情页和弹窗已有独立底色。
+     std::optional<QRectF> readingPanel;
+     if (textFrosted && frame["mode"] == "archive" && !frame["viewer"].toBool() &&
+-        (modal.isEmpty() || modal == "player") && !lyricsMode && !commentsOpen) {
++        modal.isEmpty() && !lyricsMode && !commentsOpen) {
+         const auto left = width * 0.50520833 - 28;
+         const bool list = trackListMode && m_music->current.value("kind") == "song";
+         readingPanel = QRectF(left, list ? 205 : 437, std::max(1.0, width - left - 31),
+@@ -205,7 +207,7 @@
+     }
+     std::optional<QRectF> discGlassPanel;
+     if (textFrosted && frame["mode"] == "detail" && !frame["viewer"].toBool() &&
+-        (modal.isEmpty() || modal == "player") && m_music->current.value("kind") == "song") {
++        modal.isEmpty() && m_music->current.value("kind") == "song") {
+         discGlassPanel = QRectF(40, 800, std::min(370.0, width * .46 - 40), 153);
+     }
+     return {{"inputX", bounds.x() + 53},
+@@ -244,12 +246,16 @@
+             {"formKind", formKind},
+             {"formPID", formPID},
+             {"modal", modal},
+-            {"queueBounds", modal == "player" ? QJsonObject{
+-                {"x", bounds.x()}, {"y", bounds.y()},
+-                {"width", bounds.width()}, {"height", bounds.height()}} : QJsonObject{}},
++            {"queueOpen", queueOpen},
++            {"queueCollectionOpen", queueCollectionOpen},
++            {"queueWriteLoading", m_music->writeLoading},
++            {"queueWriteStatus", m_music->status},
++            {"queueBounds", queueOpen ? QJsonObject{
++                {"x", queueRect.x()}, {"y", queueRect.y()},
++                {"width", queueRect.width()}, {"height", queueRect.height()}} : QJsonObject{}},
+             {"queueRows", [this] {
+                 QJsonArray visible;
+-                if (modal != "player") { return visible; }
++                if (!queueOpen) { return visible; }
+                 const auto &all = m_music->player.queue;
+                 const int first = std::clamp(queueOffset, 0, std::max(0, int(all.size()) - 40));
+                 const int end = std::min(int(all.size()), first + 40);
+@@ -289,7 +295,7 @@
+             {"textFrosted", textFrosted},
+             {"readingPanel", rect(readingPanel)},
+             {"discGlassPanel", rect(discGlassPanel)},
+-            {"readerBounds", (modal.isEmpty() || modal == "player") && !frame["viewer"].toBool() ? rect(readerBounds) : QJsonValue::Null},
++            {"readerBounds", modal.isEmpty() && !frame["viewer"].toBool() ? rect(readerBounds) : QJsonValue::Null},
+             {"readerText", readerText}, {"readerSession", readerSession},
+             {"readerFont", readerFont}, {"readerLeading", readerLeading},
+             {"recommendationsBounds", rect(recommendationsBounds)},
+@@ -353,10 +359,10 @@
+     const bool readingComments = frame["mode"] == "detail" && !frame["viewer"].toBool() &&
+         m_music->provider == "netease" &&
+         (m_music->current.value("kind") == "song" || m_music->current.value("kind") == "album") &&
+-        tab == "comments" && (modal.isEmpty() || modal == "player" || modal == "profile") && !lyricsMode;
++        tab == "comments" && (modal.isEmpty() || modal == "profile") && !lyricsMode;
+     const bool readingRecommendations = frame["mode"] == "detail" && !frame["viewer"].toBool() &&
+         m_music->provider == "netease" && m_music->current.value("kind") == "song" &&
+-        tab == "recommendations" && (modal.isEmpty() || modal == "player") && !lyricsMode;
++        tab == "recommendations" && modal.isEmpty() && !lyricsMode;
+     if (readingRecommendations) { openRecommendations(); }
+     else if (recommendationsOpen) { recommendationsOpen = false; recommendationsPending = 0; ++m_recommendationGeneration; }
+     if (readingComments) {
+--- a/Qt/src/NativeHud.h
++++ b/Qt/src/NativeHud.h
+@@ -61,6 +61,7 @@
+     bool supportsTrackList() const;
+     QVector<Row> rows(int lane);
+     QRectF modalBounds(double width) const;
++    QRectF queueBounds(double width) const;
+     QRectF detailBounds(double width) const;
+     Layout containerLayout(double width) const;
+     QJsonArray commands;
+@@ -90,6 +91,8 @@
+     QString readerSession;
+     double readerFont = 16;
+     double readerLeading = 31;
++    bool queueOpen = false;
++    bool queueCollectionOpen = false;
+     int queueOffset = 0;
+     QJsonArray queueCollectionTracks;
+     quint64 queueCollectionAccount = 0;
+--- a/Qt/src/NativeHudController.cpp
++++ b/Qt/src/NativeHudController.cpp
+@@ -143,6 +143,8 @@
+ }
+ 
+ void NativeHud::openModal(QString kind) {
++    // Legacy callers may request player, but it never enters the page modal stack.
++    if (kind == "player") { queueOpen = true; return; }
+     if (kind == "playlist-picker") { queueCollectionTracks = {}; }
+     if (commentsOpen && kind != "profile" && kind != "player") {
+         closeComments();
+@@ -432,7 +434,7 @@
+     }
+     if (name == "queue-collect" || name == "queue-collect-all") {
+         if (music.provider != "netease" || music.writeLoading) { return; }
+-        if (music.uid.isEmpty()) { openModal("login"); return; }
++        if (music.uid.isEmpty()) { queueOpen = false; openModal("login"); return; }
+         const QJsonArray selected = name == "queue-collect-all" ? player.queue : QJsonArray{player.queue.at(index)};
+         QJsonArray eligible;
+         QSet<QString> seen;
+@@ -443,7 +445,7 @@
+                 !seen.contains(key)) { eligible.append(song); seen.insert(key); }
+         }
+         if (eligible.isEmpty()) { return; }
+-        openModal("playlist-picker");
++        queueCollectionOpen = true;
+         queueCollectionTracks = eligible; // immutable selection, not music.current
+         queueCollectionAccount = music.accountGeneration();
+         if (music.lists[2].isEmpty()) { music.loadMoreSource(2); }
+@@ -453,6 +455,8 @@
+         const auto source = MusicData::queueSource(player.queue.at(index).toObject().value("queueSource").toObject());
+         if (source.isEmpty() || source.value("provider").toString() != music.provider) { return; }
+         const auto route = source.value("route").toString();
++        if (route == "likes" && source.value("id").toString() != music.uid) { return; }
++        queueOpen = false; queueCollectionOpen = false; queueCollectionTracks = {};
+         if (route == "directory") {
+             auto destination = MusicData::item(source.value("kind").toString(), source.value("id").toString(),
+                 source.value("title").toString(), {}, music.provider);
+@@ -521,11 +525,8 @@
+             m_lyricsBrowse.reset();
+         }
+     } else if (name == "open") {
+-        if (modal == "player" && !closing) {
+-            closeModal();
+-        } else {
+-            openModal("player");
+-        }
++        queueOpen = !queueOpen;
++        if (!queueOpen) { queueCollectionOpen = false; queueCollectionTracks = {}; }
+     } else if (name == "toggle") {
+         player.toggle();
+     } else if (name == "prev" || name == "next") {
+@@ -798,6 +799,14 @@
+ 
+ /** 动作字符串保持原有输入协议，控制器直接更新原生音乐状态和场景。 */
+ void NativeHud::action(QString value) {
++    if (value == "queue-collection-close") {
++        if (!m_music->writeLoading) { queueCollectionOpen = false; queueCollectionTracks = {}; }
++        return;
++    }
++    if (value == "queue-close" || ((value == "back" || value == "close-modal") && queueOpen)) {
++        if (queueCollectionOpen) { action("queue-collection-close"); return; }
++        queueOpen = false; return;
++    }
+     if (value == "back" && frame["viewer"].toBool()) { m_scene.viewerKey("Escape"); return; }
+     if (value == "back" && !modal.isEmpty() && !closing) {
+         if (profileAction(value)) { return; }
+--- a/Qt/src/NativeHudInput.cpp
++++ b/Qt/src/NativeHudInput.cpp
+@@ -15,6 +15,7 @@
+ }
+ 
+ bool NativeHud::navigatePage(QString key) {
++    if (queueOpen) { return key.startsWith("Arrow") || key == "Enter"; }
+     const bool arrow = key.startsWith("Arrow");
+     if (!arrow && key != "Enter") { return false; }
+     if (modal.isEmpty() && frame["mode"] == "archive" && !lyricsMode) { return false; }
+--- a/Qt/src/NativeHudMusic.cpp
++++ b/Qt/src/NativeHudMusic.cpp
+@@ -373,6 +373,17 @@
+     } else if (name == "playlist-pick") {
+         const QPointer<NativeHud> owner(this);
+         const auto token = m_searchGeneration;
++        if (queueCollectionOpen) {
++            if (music.writeLoading || queueCollectionAccount != music.accountGeneration()) { return; }
++            const auto account = queueCollectionAccount;
++            music.playlistTracks(parts.value(2), queueCollectionTracks, [owner, account](bool ok) {
++                if (ok && owner && owner->queueCollectionOpen &&
++                    owner->queueCollectionAccount == account && owner->m_music->accountGeneration() == account) {
++                    owner->queueCollectionOpen = false; owner->queueCollectionTracks = {};
++                }
++            });
++            return;
++        }
+         const auto complete = [owner, token](bool ok) {
+             if (ok && owner && owner->m_searchGeneration == token && owner->modal == "playlist-picker") {
+                 owner->queueCollectionTracks = {};
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -11,6 +11,7 @@
+ #include <QFile>
+ #include <QJsonDocument>
+ #include <QQuickItem>
++#include <QPointer>
+ #include <QThread>
+ #include <QQuickWindow>
+ #include <QDebug>
+@@ -187,7 +188,7 @@
+             });
+         }
+         player.queue = hugeQueue;
+-        hud.modal = "player";
++        hud.queueOpen = true;
+         hud.queueOffset = 0;
+         const auto first = hud.state();
+         check(first.value("queueCount").toInt() == 4080 &&
+@@ -197,6 +198,7 @@
+         const auto last = hud.state().value("queueRows").toArray();
+         check(last.size() == 40 && last.first().toObject().value("index").toInt() == 4040,
+               "large queue end-page indexing remains exact");
++        hud.queueOpen = false;
+         player.queue = savedQueue;
+         hud.queueOffset = savedOffset;
+         hud.modal = savedModal;
+@@ -1055,6 +1057,7 @@
+         check(MusicPlayer::chorusStart(chorusReply, "3447996825") == 69.5, "real NetEase chorus milliseconds become seconds");
+         check(MusicPlayer::chorusStart(chorusReply, "1") < 0 && MusicPlayer::chorusStart({}, "3447996825") < 0,
+               "missing or mismatched chorus data does not create a marker");
++        hud.queueOpen = false; hud.queueCollectionOpen = false;
+         hud.modal.clear(); hud.closing = false;
+         music.player.state["position"] = 172000.; music.player.state["duration"] = 198640.;
+         music.player.state["seekable"] = true; music.player.chorusSeconds = 69.5;
+@@ -1325,6 +1328,59 @@
+         window->grabWindow().save(output + "/preview-discover-covers.png");
+         discover.items = previousItems; hud.modal = previousModal; hud.listOffset = previousOffset;
+     }
++    // G67: keep the actual Following Loader, data and scroll alive throughout queue/picker use.
++    {
++        auto &discover = *music.discover;
++        const auto oldItems = discover.items; const auto oldTab = discover.tab;
++        const auto oldCategory = discover.category; const auto oldModal = hud.modal;
++        const auto oldQuery = hud.query; const auto oldOffset = hud.listOffset;
++        const auto oldQueue = player.queue; const auto oldCurrent = player.current; const auto oldIndex = player.index;
++        const auto oldUid = music.uid;
++        QJsonArray cards;
++        for (int i=0; i<90; ++i) cards.append(MusicData::item("playlist", QString::number(67000+i), "关注歌单 " + QString::number(i), "听众"));
++        discover.items = cards; discover.tab = "following"; discover.category = "测试筛选";
++        hud.openModal("discover"); hud.query = "保留查询"; hud.listOffset = 7; music.uid = "67";
++        auto song = MusicData::item("song", "670001", "队列叠加测试", "歌手");
++        player.queue = QJsonArray{song, MusicData::item("song", "670002", "第二首", "歌手")};
++        player.current = song; player.index=0; refresh();
++        auto *loader = findVisual(window->contentItem(), "discoverGlassLoader");
++        QPointer<QObject> page = loader ? loader->property("item").value<QObject *>() : nullptr;
++        auto *scroll = findVisual(window->contentItem(), "discoverScroll");
++        if (scroll) {
++            const auto point = scroll->mapToScene(QPointF(80, scroll->height()/2));
++            QWheelEvent wheel(point, window->mapToGlobal(point.toPoint()), QPoint(), QPoint(0,-480), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
++            QCoreApplication::sendEvent(window,&wheel); settle(400);
++        }
++        const auto y = scroll ? scroll->property("contentY").toDouble() : 0.;
++        check(page && scroll && y>0, "Following page actually scrolls before opening the queue");
++        for (int i=0; i<3; ++i) {
++            backend.action("player:open"); refresh();
++            check(hud.queueOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data() &&
++                scroll->property("contentY").toDouble()==y && discover.items==cards && discover.tab=="following" &&
++                discover.category=="测试筛选" && hud.query=="保留查询" && hud.listOffset==7,
++                "queue retains the same Following instance, scroll, filter, query and loaded data");
++            if (i==0) {
++                backend.action("player:queue-collect:1:netease%3A670002"); refresh();
++                check(hud.queueCollectionOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data(),
++                    "queue collection overlays Following without replacing its Loader");
++                backend.action("queue-collection-close"); refresh();
++                check(hud.queueOpen && !hud.queueCollectionOpen && scroll->property("contentY").toDouble()==y,
++                    "closing collection returns to the same open queue and Following scroll");
++            }
++            backend.action("queue-close"); refresh();
++            check(!hud.queueOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data() &&
++                scroll->property("contentY").toDouble()==y && player.current==song && player.queue.size()==2,
++                "ordinary queue close changes neither navigation, playback nor queue contents");
++        }
++        backend.action("player:open"); refresh();
++        window->grabWindow().save(output + "/preview-g67-following-queue.png");
++        backend.action("back"); refresh();
++        check(!hud.queueOpen && hud.modal=="discover" && page, "Escape/back dismisses only the foreground queue");
++        discover.items=oldItems; discover.tab=oldTab; discover.category=oldCategory;
++        hud.modal=oldModal; hud.query=oldQuery; hud.listOffset=oldOffset;
++        player.queue=oldQueue; player.current=oldCurrent; player.index=oldIndex; music.uid=oldUid;
++        refresh();
++    }
+     // G65: dispatch real window mouse/wheel events through Main.qml, not
+     // backend.action shortcuts. In G64 the queue was trapped below inputLayer.
+     {
+@@ -1417,18 +1473,18 @@
+         check(player.index == 41, "stale queue identity cannot play a shifted row");
+         move(findVisual(window->contentItem(), "queueRow_43"));
+         writtenIds.clear();
+-        check(click("queueCollect_43") && hud.modal == "playlist-picker", "row collection click opens existing playlist picker");
++        check(click("queueCollect_43") && hud.queueCollectionOpen, "row collection click opens existing playlist picker");
+         const auto chosenId = player.queue.at(43).toObject().value("id").toString();
+         music.current = huge.first().toObject(); // browsing selection deliberately differs
+         backend.action("music:playlist-pick:6501"); waitQueueWrite();
+         check(writtenIds == chosenId, "playlist write uses the queue selection, not the browsed or playing song");
+         hud.openModal("player"); refresh();
+-        check(click("queueCollectAll") && hud.modal == "playlist-picker" && hud.queueCollectionTracks.size() == player.queue.size(),
++        check(click("queueCollectAll") && hud.queueCollectionOpen && hud.queueCollectionTracks.size() == player.queue.size(),
+               "collect-all click captures the complete queue across all pages");
+         const auto snapshotSize = hud.queueCollectionTracks.size();
+         rejectQueueWrite = true;
+         backend.action("music:playlist-pick:6501"); waitQueueWrite();
+-        check(hud.modal == "playlist-picker" && !hud.queueCollectionTracks.isEmpty(), "failed collection keeps picker open for a deliberate retry");
++        check(hud.queueCollectionOpen && !hud.queueCollectionTracks.isEmpty(), "failed collection keeps picker open for a deliberate retry");
+         rejectQueueWrite = false;
+         backend.action("music:playlist-pick:6501"); waitQueueWrite();
+         check(writtenIds.split(',').size() == snapshotSize && hud.queueCollectionTracks.isEmpty(), "bulk collection writes all unique queue IDs through the existing mutation API");
+@@ -1436,12 +1492,13 @@
+         check(click("queuePrevious") && hud.queueOffset == int(player.queue.size())-80, "previous-page click works from the final page");
+         check(click("queueClear") && player.queue.size() == 1 && player.index == 0 && hud.queueOffset == 0,
+               "clear click removes queued tracks, keeps current playback and resets the page");
+-        check(click("queueClose") && (hud.closing || hud.modal != "player"), "close click actually dismisses the queue");
++        check(click("queueClose") && !hud.queueOpen, "close click actually dismisses the queue");
+         settle(300);
+         player.queue = savedQueue; player.current = savedCurrent; player.index = savedIndex;
+         music.current = savedSelected; music.directory = savedDirectory;
+         music.lists[2] = savedPlaylists; music.uid = savedUid;
+         backend.host.fixture = savedFixture;
++        hud.queueOpen = false; hud.queueCollectionOpen = false;
+         hud.modal.clear(); hud.closing = false; hud.queueOffset = 0; refresh();
+     }
+     // G66: real source records survive queue operations and navigate internally.
+@@ -1545,12 +1602,13 @@
+         check(queue && queue->property("active").toBool() && queue->z() > 300,
+               "queue remains foreground above navigation and page glasses");
+         window->grabWindow().save(output + "/preview-g66-layered-glass.png");
+-        hud.closeModal(false); refresh();
++        backend.action("queue-close"); refresh();
+         check(glass && glass->property("item").value<QObject *>() == material,
+               "closing queue keeps the original page glass instance");
+         music.directory = savedDirectory; music.current = savedSelection; music.playContext = savedContext;
+         music.details = savedDetails; music.keyword = savedKeyword; music.uid = savedUid;
+         player.queue = savedQueue; player.current = savedCurrent; player.index = savedIndex; player.mode = savedMode;
++        hud.queueOpen = false; hud.queueCollectionOpen = false;
+         hud.modal.clear(); hud.closing = false;
+     }
+     qInfo() << "Frosted UI rendering and settings:" << (ok ? "passed" : "FAILED");
