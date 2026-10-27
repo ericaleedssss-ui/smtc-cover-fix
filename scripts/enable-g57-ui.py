@@ -166,8 +166,10 @@ compact=r'''void NativeHud::playerPanel(double x, double y, double width) {
 '''
 p.write_text(s[:begin]+compact,encoding="utf-8")
 edit("Qt/src/NativeHudController.cpp",
-    '    } else if (name == "remove") {',
-    '''    } else if (name == "queue-page-prev" || name == "queue-page-next") {
+    '    } else if (name == "queue-play") {\n        if (index >= 0 && index < player.queue.size()) { player.play(player.queue.at(index).toObject(), std::nullopt, index); }\n    } else if (name == "remove") {',
+    '''    } else if (name == "queue-play") {
+        if (index >= 0 && index < player.queue.size()) { player.play(player.queue.at(index).toObject(), std::nullopt, index); }
+    } else if (name == "queue-page-prev" || name == "queue-page-next") {
         queueOffset = std::clamp(queueOffset + (name == "queue-page-next" ? 10 : -10),
                                  0, std::max(0, int(player.queue.size()) - 10));
     } else if (name == "remove") {''')
