@@ -111,7 +111,7 @@ assert "maskSource: discMask" not in qml
 assert 'sourceItem: discPhoto' in qml and 'hideSource: true' in qml
 frag = destination.read_text(encoding="utf-8")
 assert "float circularAlpha = 1.0 - smoothstep(" in frag
-assert "photo.a * circularAlpha" in frag
+assert "fragColor = photo * circularAlpha * qt_Opacity;" in frag
 assert "layout(binding = 1) uniform sampler2D coverSource;" in frag
 
 # The circle equation is continuous around all 4 corners. With the same
