@@ -224,8 +224,8 @@ edit("Qt/qml/Main.qml",
 # sccache available; no cached build output is blindly reused. Ninja still
 # checks source dependencies and changed C++/QML files are rebuilt correctly.
 edit("scripts/build.cjs",
-    "        \`-DRHINE_RELEASE_BUILD=\${version.release ? 'ON' : 'OFF'}\`,\n    ]);",
-    """        \`-DRHINE_RELEASE_BUILD=\${version.release ? 'ON' : 'OFF'}\`,
+    "        `-DRHINE_RELEASE_BUILD=${version.release ? 'ON' : 'OFF'}`,\n    ]);",
+    """        `-DRHINE_RELEASE_BUILD=${version.release ? 'ON' : 'OFF'}`,
         ...(process.env.RHINE_USE_COMPILER_CACHE === '1'
             ? ['-DCMAKE_C_COMPILER_LAUNCHER=sccache',
                '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache']
