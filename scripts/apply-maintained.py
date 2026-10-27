@@ -42,6 +42,45 @@ if count != 1:
 controller.write_text(content.replace(old, new, 1), encoding="utf-8")
 print("Routed followed users to profile viewer")
 
+# The G53 bridge whitelists explicit upstream NetEase API modules.
+# Browsing podcast stations and followed users needs two more real routes.
+worker = Path("MusicBridge/worker.cjs")
+worker_source = worker.read_text(encoding="utf-8")
+worker_anchor = "const routes = Object.freeze({"
+if worker_source.count(worker_anchor) != 1:
+    raise RuntimeError("NetEase route whitelist anchor changed")
+worker_source = worker_source.replace(
+    worker_anchor,
+    worker_anchor + "\n    '/dj/hot': 'dj_hot',\n    '/user/follows': 'user_follows',",
+    1,
+)
+worker.write_text(worker_source, encoding="utf-8")
+print("Enabled podcasts and followed-user NetEase endpoints")
+
+# Podcast stations are not ordinary music playlists. Fetch their program tracks
+# using the dj/program API already authorized in the historical G53 bridge.
+netease = Path("MusicBridge/client/netease.mjs")
+client_source = netease.read_text(encoding="utf-8")
+client_anchor = """    async detail(value, valid = () => true) {
+        if (value.kind === 'song') {"""
+client_change = """    async detail(value, valid = () => true) {
+        if (value.kind === 'radio') {
+            const result = await this.request(
+                '/dj/program',
+                { rid: value.id, limit: 30, offset: 0 },
+                [200],
+                valid,
+            );
+            const programs = Array.isArray(result.programs) ? result.programs : [];
+            const tracks = parsed(programs.map((p) => p.mainSong || {}), 'song');
+            return [value, tracks, tracks.map((song) => String(song.id))];
+        }
+        if (value.kind === 'song') {"""
+if client_source.count(client_anchor) != 1:
+    raise RuntimeError("NetEase detail route anchor changed")
+netease.write_text(client_source.replace(client_anchor, client_change, 1), encoding="utf-8")
+print("Enabled real NetEase podcast program lists")
+
 nav = Path("Qt/qml/SideNavigation.qml").read_text(encoding="utf-8")
 assert "import QtQuick.Shapes" in nav
 assert "PathSvg { path: navigation.iconPath(glyph.name) }" in nav
