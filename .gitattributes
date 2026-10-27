@@ -1,0 +1,5 @@
+# Keep reviewable patches stable across Windows and Linux checkouts.
+* text=auto eol=lf
+*.png -text
+*.otf -text
+*.ttf -text
