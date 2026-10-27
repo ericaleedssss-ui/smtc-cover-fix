@@ -27,6 +27,36 @@ edit("Qt/qml/Main.qml",
     '            sampleX: 15 * root.stageScale; sampleY: 976 * root.stageScale\n            uiScale: root.stageScale; radius: 51 * root.stageScale',
     '            sampleX: 32 * root.stageScale; sampleY: 990 * root.stageScale\n            uiScale: root.stageScale; radius: 39 * root.stageScale')
 
+# Visibly tactile glass bead at the end of the REAL timeline. A subtle bead
+# remains visible when idle; hovering enlarges it and shows the time tooltip.
+edit("Qt/qml/Main.qml",
+    '''                visible: adjustment.interacting && adjustment.duration > 0
+                width: 15 * root.stageScale; height: width; radius: width / 2
+                x: Math.max(0, Math.min(parent.width - width, parent.width * adjustment.shownFraction - width/2))
+                y: 10 * root.stageScale - height / 2
+                color: "#faf8ef"
+                border.width: Math.max(.6, root.stageScale)
+                border.color: "#b5b6a6"''',
+    '''                visible: adjustment.isSeek && adjustment.duration > 0
+                width: (adjustment.pressed ? 20 : adjustment.interacting ? 16 : 11) * root.stageScale
+                height: width
+                radius: width / 2
+                x: Math.max(0, Math.min(parent.width - width, parent.width * adjustment.shownFraction - width / 2))
+                y: 10 * root.stageScale - height / 2
+                color: rhine.state.dark ? "#bed0c5" : "#e0e9e0"
+                opacity: .95
+                border.width: 1.15 * root.stageScale
+                border.color: "#fafffa"
+                Behavior on width { NumberAnimation { duration: rhine.state.reduced ? 0 : 140; easing.type: Easing.OutCubic } }
+                Rectangle {
+                    x: 2.5 * root.stageScale; y: 2.1 * root.stageScale
+                    width: parent.width * .32; height: parent.height * .25
+                    radius: height / 2
+                    color: "#ffffff"
+                    opacity: .90
+                    rotation: -25
+                }''')
+
 # The two pause stages are deliberate. Title moves left to end, rests,
 # returns right to start, rests again. It never teleports or wraps.
 edit("Qt/qml/PlayerTitleMarquee.qml",
