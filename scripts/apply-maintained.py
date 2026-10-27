@@ -101,4 +101,8 @@ print("Navigation invariants verified.")
 import subprocess
 import sys
 subprocess.run([sys.executable, str(Path(__file__).with_name("enable-scrobble.py"))], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g57.py"))], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g57-ui.py"))], check=True)
+print("G57 UI and private radio applied successfully.")
+
 
