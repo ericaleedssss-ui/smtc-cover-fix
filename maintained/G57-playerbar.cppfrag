@@ -18,7 +18,7 @@ void NativeHud::playerBar(double, double y, double width) {
     // native line and no accidental clipping at the top of the capsule.
     // The top straight edge of the 78px glass stadium spans x=71..width-71.
     // Slider is centered on y=990, exactly where the glass boundary sits.
-    playerSeekRect = QRectF(72, y - 4, width - 144, 22);
+    playerSeekRect = QRectF(71, y - 4, width - 142, 20);
 
     const double coverX = 40, coverY = cy - 26;
     if (!player.coverImage.isEmpty()) { image(player.coverImage, coverX, coverY, 52, 52); }
@@ -27,12 +27,11 @@ void NativeHud::playerBar(double, double y, double width) {
         op({"ellipse", textInk, coverX + 23, coverY + 23, 6, 6});
     }
 
-    // Let a *short* title pull the actions closer. Long titles are capped:
-    // that fixed viewport makes the ping-pong marquee visible and testable.
+    // Fixed-width title viewport: short and long tracks use IDENTICAL
+    // layout coordinates; overflow is handled by PlayerTitleMarquee only.
     auto title = player.failed ? player.status : player.current.value("title").toString();
     if (title.isEmpty() && !player.failed) { title = QStringLiteral("尚未播放"); }
-    const double infoWidth = std::clamp(m_glyphs->width(title, 19, "demibold") + 14.,
-                                        116., 252.);
+    const double infoWidth = 204.;  // fixed metadata viewport; title overflows only inside its marquee
     // The QML ping-pong marquee owns title pixels; native click hits remain.
     auto artist = player.current.value("artist").toString();
     if (artist.isEmpty()) { artist = "RHINE LAB / MUSIC DATABASE"; }
@@ -68,10 +67,10 @@ void NativeHud::playerBar(double, double y, double width) {
 
     // An always-available per-song social cluster. Count is global red hearts,
     // distinct from whether the signed-in listener liked the current song.
-    const double reactionX = 109 + infoWidth + 24;
+    const double reactionX = 109 + infoWidth + 18;
     const bool neteaseSong = player.current.value("kind") == "song" &&
         player.current.value("provider").toString("netease") == "netease";
-    const bool showSocial = neteaseSong && reactionX + 166 < center - 172;
+    const bool showSocial = neteaseSong && reactionX + 142 < center - 172;
     const auto countText = [](double number, bool pending) {
         if (number < 0) { return pending ? QStringLiteral("···") : QStringLiteral("—"); }
         if (number >= 100000) { return QString::number(int(number / 10000)) + QStringLiteral("w+"); }
@@ -87,11 +86,11 @@ void NativeHud::playerBar(double, double y, double width) {
         const QJsonArray red = liked ? QJsonArray{.91,.24,.33,1} : textInk;
         icon(reactionX, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z", red);
         const auto redLabel = countText(socialRedCount, socialRedLoading);
-        centeredText(redLabel, reactionX + 34, cy - 11, 11, "demibold");
-        control(reactionX + 91, "player:comments", "打开当前歌曲评论");
-        icon(reactionX + 91, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
+        centeredText(redLabel, reactionX + 29, cy + 1, 10, "demibold");
+        control(reactionX + 81, "player:comments", "打开当前歌曲评论");
+        icon(reactionX + 81, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
         const auto commentLabel = countText(socialCommentCount, socialCommentLoading);
-        centeredText(commentLabel, reactionX + 125, cy - 11, 11, "demibold");
+        centeredText(commentLabel, reactionX + 110, cy + 1, 10, "demibold");
     }
 
     const bool roaming = player.roamActive;
