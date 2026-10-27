@@ -73,6 +73,12 @@ edit("Qt/qml/SideNavigation.qml",
      '{label:"漫游", icon:"shuffle", tab:"roam"}',
      '{label:"漫游", icon:"infinity", tab:"roam"}')
 
+# Remove the legacy per-playlist-row fade before drawing the entire list
+# through one mask, avoiding double fading and nested-coordinate bugs.
+edit("Qt/qml/SideNavigation.qml",
+    '        opacity: Math.max(0, Math.min(1, (y - list.contentY + height) / (24 * navigation.unit), (list.height - (y - list.contentY)) / (24 * navigation.unit)))',
+    '        opacity: 1')
+
 # Source the entire scroll viewport in an offscreen texture. This keeps its
 # original interactive hierarchy untouched and masks the composited pixels,
 # rather than fading individual row opacities (the G55 regression).
