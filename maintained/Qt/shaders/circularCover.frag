@@ -17,5 +17,5 @@ void main() {
     float radius = length(point);
     float circularAlpha = 1.0 - smoothstep(0.966, 1.005, radius);
     vec4 photo = texture(coverSource, qt_TexCoord0);
-    fragColor = vec4(photo.rgb, photo.a * circularAlpha) * qt_Opacity;
+    fragColor = photo * circularAlpha * qt_Opacity;
 }
