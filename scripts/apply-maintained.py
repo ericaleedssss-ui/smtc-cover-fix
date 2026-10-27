@@ -1,81 +1,53 @@
-"""Small, reviewed UI changes applied after the pinned G53 source patch."""
+"""Apply source-controlled UI and discovery changes onto the pinned G53 codebase.
+
+This runs *after* the original G53 patch was applied to the upstream Rhine sources.
+Our maintained files are readable and reviewable instead of another packed blob.
+"""
 from pathlib import Path
+import shutil
 
-nav = Path("Qt/qml/SideNavigation.qml")
-source = nav.read_text(encoding="utf-8")
+maintained = Path(__file__).resolve().parents[1] / "maintained"
 
-def replace_once(old: str, new: str) -> None:
-    global source
-    count = source.count(old)
-    if count != 1:
-        raise RuntimeError(f"Expected exactly one G53 anchor, found {count}: {old[:90]!r}")
-    source = source.replace(old, new, 1)
+for relative in (
+    "Qt/qml/SideNavigation.qml",
+    "Qt/qml/DiscoverGlass.qml",
+    "Qt/src/MusicDiscover.cpp",
+):
+    origin = maintained / relative
+    target = Path(relative)
+    if not origin.is_file() or not target.is_file():
+        raise RuntimeError(f"Missing maintained source or G53 target: {relative}")
+    shutil.copyfile(origin, target)
+    print("Maintained", relative)
 
-replace_once(
-    '                NavRow { label: navigation.createdOpen ? "创建的歌单  ﹀" : "创建的歌单  ›"; icon: "♫"; onInvoked: navigation.createdOpen = !navigation.createdOpen }',
-    '''                Rectangle {
-                    width: parent.width - 16 * navigation.unit
-                    x: 8 * navigation.unit
-                    height: 1 * navigation.unit
-                    color: rhine.state.dark ? "#f0f1e8" : "#62695e"
-                    opacity: 0.16
-                }
-                Item {
-                    width: list.width
-                    height: 43 * navigation.typeUnit
-                    readonly property int count: (rhine.state.navigationCreated || []).length
-                    NavRow {
-                        width: parent.width - 39 * navigation.unit
-                        label: navigation.createdOpen ? "创建的歌单  (" + parent.count + ") ﹀" : "创建的歌单  (" + parent.count + ") ›"
-                        icon: "♫"
-                        onInvoked: navigation.createdOpen = !navigation.createdOpen
-                    }
-                    Rectangle {
-                        id: createPlaylistSurface
-                        width: 30 * navigation.unit
-                        height: 30 * navigation.unit
-                        anchors.right: parent.right
-                        anchors.rightMargin: 5 * navigation.unit
-                        anchors.verticalCenter: parent.verticalCenter
-                        radius: 9 * navigation.unit
-                        color: createPlaylistMouse.containsMouse ? (rhine.state.dark ? "#33cbd5b9" : "#24929f7e") : "transparent"
-                        Text {
-                            anchors.centerIn: parent
-                            text: "+"
-                            font.pixelSize: 21 * navigation.typeUnit
-                            color: rhine.state.dark ? "#eeeee8" : "#43473d"
-                        }
-                        Controls.ToolTip.visible: createPlaylistMouse.containsMouse
-                        Controls.ToolTip.text: "创建歌单"
-                        MouseArea {
-                            id: createPlaylistMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                rhine.action("music:create-playlist")
-                                navigation.scheduleClose()
-                            }
-                        }
-                    }
-                }''')
+controller = Path("Qt/src/NativeHudController.cpp")
+content = controller.read_text(encoding="utf-8")
+old = """            discover.open(parts.value(2).toInt());
+            closeModal(false);"""
+new = """            const auto index = parts.value(2).toInt();
+            // Discover's followed-user cards navigate to the real user profile,
+            // rather than attempting to open a user as a music directory.
+            if (index >= 0 && index < discover.items.size() &&
+                discover.items.at(index).toObject()["kind"].toString() == "user") {
+                const auto uid = discover.items.at(index).toObject()["id"].toString();
+                closeModal(false);
+                if (!uid.isEmpty()) { action("profile:open:" + uid); }
+            } else {
+                discover.open(index);
+                closeModal(false);
+            }"""
+count = content.count(old)
+if count != 1:
+    raise RuntimeError(f"Expected exactly one G53 discover routing anchor, found {count}")
+controller.write_text(content.replace(old, new, 1), encoding="utf-8")
+print("Routed followed users to profile viewer")
 
-replace_once(
-    '                NavRow { label: navigation.collectedOpen ? "收藏的歌单  ﹀" : "收藏的歌单  ›"; icon: "☆"; onInvoked: navigation.collectedOpen = !navigation.collectedOpen }',
-    '''                Rectangle {
-                    width: parent.width - 16 * navigation.unit
-                    x: 8 * navigation.unit
-                    height: 1 * navigation.unit
-                    color: rhine.state.dark ? "#f0f1e8" : "#62695e"
-                    opacity: 0.16
-                }
-                NavRow {
-                    label: navigation.collectedOpen
-                        ? "收藏的歌单  (" + (rhine.state.navigationCollected || []).length + ") ﹀"
-                        : "收藏的歌单  (" + (rhine.state.navigationCollected || []).length + ") ›"
-                    icon: "☆"
-                    onInvoked: navigation.collectedOpen = !navigation.collectedOpen
-                }''')
-
-nav.write_text(source, encoding="utf-8")
-print("Applied G53 maintained navigation: playlist counts, separators, create-playlist button.")
+nav = Path("Qt/qml/SideNavigation.qml").read_text(encoding="utf-8")
+assert "import QtQuick.Shapes" in nav
+assert "PathSvg { path: navigation.iconPath(glyph.name) }" in nav
+assert "navigation.expanded ? 18 * navigation.unit : -navigation.drawerWidth" in nav
+assert 'label: "创建的歌单  " + parent.count' in nav
+assert '"播客"' in nav and '"漫游"' in nav and '"关注"' in nav
+assert 'text: "我的"' in nav
+assert '"创建的歌单  ("' not in nav
+print("Navigation invariants verified.")
