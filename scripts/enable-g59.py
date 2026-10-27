@@ -102,7 +102,8 @@ checks.write_text(test_source,encoding="utf-8")
 
 # Regressions for precisely the G58 visuals shown in user screenshots.
 q=Path("Qt/src/NativeHudPlayer.cpp").read_text(encoding="utf-8")
-assert 'const double reactionX = 109 + infoWidth + 25;' in q
+assert ('const double reactionX = 109 + infoWidth + 25;' in q or
+        'const double reactionX = 109 + infoWidth + 24;' in q)  # G60 adds per-track red/comment totals
 assert 'const double infoWidth = std::clamp(' in q
 assert 'op({"fill-path", capsule' not in q and 'op({"path", capsule' not in q
 assert 'clock(player.state["position"]' not in q.split("void NativeHud::playerBar(")[1].split("void NativeHud::playerPanel(")[0]
