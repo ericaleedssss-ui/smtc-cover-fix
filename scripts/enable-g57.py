@@ -135,7 +135,10 @@ void MusicPlayer::fetchRoam() {
                 if (MusicData::indexOfId(queue, track["id"].toString()) >= 0) {
                     continue;
                 }
+                // Only admit one new station pick per feedback cycle. A larger
+                // response is a server candidate batch, NOT an immutable playlist.
                 queue.append(track);
+                break;
             }
             if (queue.size() == originalCount) {
                 roamStatus = QStringLiteral("暂无新推荐，可以点击下一首重试");
