@@ -220,6 +220,18 @@ edit("Qt/qml/Main.qml",
     // Lyrics/detail hit areas still come from the native HUD. Only the
     // text pixels move, so a long title never blocks the click handlers.''')
 
+# Use a content-addressed MSVC compiler cache when the Actions runner has
+# sccache available; no cached build output is blindly reused. Ninja still
+# checks source dependencies and changed C++/QML files are rebuilt correctly.
+edit("scripts/build.cjs",
+    "        \`-DRHINE_RELEASE_BUILD=\${version.release ? 'ON' : 'OFF'}\`,\n    ]);",
+    """        \`-DRHINE_RELEASE_BUILD=\${version.release ? 'ON' : 'OFF'}\`,
+        ...(process.env.RHINE_USE_COMPILER_CACHE === '1'
+            ? ['-DCMAKE_C_COMPILER_LAUNCHER=sccache',
+               '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache']
+            : []),
+    ]);""")
+
 native=Path("Qt/src/NativeHudPlayer.cpp").read_text(encoding="utf-8")
 modal=Path("Qt/src/NativeHudModal.cpp").read_text(encoding="utf-8")
 qml=Path("Qt/qml/Main.qml").read_text(encoding="utf-8")
