@@ -66,31 +66,38 @@ void NativeHud::playerBar(double, double y, double width) {
         hit(x - 20, cy - 22, 40, 44, action, tooltip);
     };
 
-    // Reactions belong immediately after the song metadata, as in NetEase.
-    const double reactionX = 109 + infoWidth + 25;
-    if (width > 1200 && !player.current.isEmpty() && m_music->canMutate("/like")) {
-        control(reactionX, "music:like-current", "喜欢 / 取消喜欢");
+    // An always-available per-song social cluster. Count is global red hearts,
+    // distinct from whether the signed-in listener liked the current song.
+    const double reactionX = 109 + infoWidth + 24;
+    const bool neteaseSong = player.current.value("kind") == "song" &&
+        player.current.value("provider").toString("netease") == "netease";
+    const bool showSocial = neteaseSong && reactionX + 166 < center - 172;
+    const auto countText = [](double number, bool pending) {
+        if (number < 0) { return pending ? QStringLiteral("···") : QStringLiteral("—"); }
+        if (number >= 100000) { return QString::number(int(number / 10000)) + QStringLiteral("w+"); }
+        if (number >= 10000) { return QString::number(number / 10000., 'f', 1) + QStringLiteral("w"); }
+        return QString::number(qint64(number));
+    };
+    if (showSocial) {
         const bool liked = m_music->likedIDs &&
-             MusicData::indexOf(*m_music->likedIDs, player.current["id"]) >= 0;
-        icon(reactionX, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z",
-             liked ? QJsonArray{.83,.32,.38,1} : textInk);
-    }
-    if (width > 1200 && !player.current.isEmpty() &&
-        player.current.value("provider").toString("netease") == "netease") {
-        control(reactionX + 47, "player:comments", "打开当前歌曲评论");
-        icon(reactionX + 47, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
-        if (commentsOpen && commentsSong["id"] == player.current["id"]) {
-            const auto count = std::max(0., commentsTotal);
-            const QString label = count >= 1000000 ? "100w+" : count >= 10000 ? "1w+" :
-                                  count >= 1000 ? "999+" : QString::number(count);
-            centeredText(label, reactionX + 70, cy + 17, 10, "regular", true);
+            MusicData::indexOf(*m_music->likedIDs, player.current["id"]) >= 0;
+        if (m_music->canMutate("/like")) {
+            control(reactionX, "music:like-current", "喜欢 / 取消喜欢");
         }
+        const QJsonArray red = liked ? QJsonArray{.91,.24,.33,1} : textInk;
+        icon(reactionX, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z", red);
+        const auto redLabel = countText(socialRedCount, socialRedLoading);
+        centeredText(redLabel, reactionX + 34, cy - 11, 11, "demibold");
+        control(reactionX + 91, "player:comments", "打开当前歌曲评论");
+        icon(reactionX + 91, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
+        const auto commentLabel = countText(socialCommentCount, socialCommentLoading);
+        centeredText(commentLabel, reactionX + 125, cy - 11, 11, "demibold");
     }
 
     const bool roaming = player.roamActive;
     if (roaming) {
         control(center - 156, "roam:exit", "退出漫游并恢复普通队列");
-        icon(center - 156, "M 12 3 A 9 9 0 1 0 12 21 A 9 9 0 1 0 12 3 M 7 12 H 17 M 12 7 L 17 12 L 12 17", accent);
+        icon(center - 156, "M 6 16 C 2 16 2 8 6 8 C 9 8 10 11 12 12 C 14 13 15 16 18 16 C 22 16 22 8 18 8 C 15 8 14 11 12 12 C 10 13 9 16 6 16 Z", accent);
     } else {
         static const QHash<QString, QString> modes{{"off","顺序"},{"all","循环"},{"one","单曲"},{"shuffle","随机"},{"heart","心动"}};
         control(center - 156, "player:mode", modes.value(player.mode, "播放模式"));
@@ -122,7 +129,7 @@ void NativeHud::playerBar(double, double y, double width) {
     icon(center + 155, "M 3 5 L 21 5 M 3 11 L 21 11 M 3 17 L 12 17 M 17 15 L 22 19 L 17 23 Z");
     if (roaming) {
         control(center + 218, "roam:dislike", "不喜欢：告诉网易云并跳到下一首");
-        icon(center + 218, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z M 3 2 L 22 23",
+        icon(center + 218, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z M 4 4 L 20 20",
              QJsonArray{.70,.42,.42,1});
     }
 
