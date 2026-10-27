@@ -7,31 +7,16 @@ void NativeHud::playerBar(double, double y, double width) {
     const QJsonArray light{.98,.97,.94,1};
     auto textInk = ink();
     auto subtle = ink(); subtle[3] = .36;
-    // An actual stadium silhouette: left/right ends are exact half-circles
-    // with control points calculated from the bar's full height.
-    // Glass itself comes from the QML LiquidGlass layer below this outline.
-    const double left = 15., right = width - 15., top = y - 8., bottom = y + 94.;
-    const double radius = (bottom - top) / 2., k = 0.5522847498307936 * radius;
-    const auto pt = [](double xx, double yy) {
-        return QString::number(xx, 'f', 2) + " " + QString::number(yy, 'f', 2);
-    };
-    const QString capsule = "M " + pt(left + radius, top) +
-        " L " + pt(right - radius, top) +
-        " C " + pt(right - radius + k, top) + " " + pt(right, top + radius - k) + " " + pt(right, top + radius) +
-        " C " + pt(right, top + radius + k) + " " + pt(right - radius + k, bottom) + " " + pt(right - radius, bottom) +
-        " L " + pt(left + radius, bottom) +
-        " C " + pt(left + radius - k, bottom) + " " + pt(left, bottom - radius + k) + " " + pt(left, bottom - radius) +
-        " C " + pt(left, top + radius - k) + " " + pt(left + radius - k, top) + " " + pt(left + radius, top) + " Z";
-    op({"fill-path", capsule,
-        dark ? QJsonArray{.21,.25,.20,.17} : QJsonArray{.94,.94,.90,.20}});
-    op({"path", capsule, 1.25,
-        dark ? QJsonArray{.93,.96,.89,.33} : QJsonArray{1,1,1,.82}, QJsonArray{}, 0});
+    // G59: LiquidGlass QML is the ONLY physical panel. Previous versions
+    // painted a second native capsule on top, producing doubled corners and
+    // a visible rectangular/dark lower layer. Transport icons stay native.
+    // The glass material and edge highlight are owned by glassPlayerBar.
 
     const double duration = player.state["duration"].toDouble();
     const double position = duration > 0 ? std::clamp(player.state["position"].toDouble() / duration, 0., 1.) : 0;
     // A single inset track, rendered by the QML seek control. No duplicate
     // native line and no accidental clipping at the top of the capsule.
-    playerSeekRect = QRectF(67, y - 3, width - 134, 20);
+    playerSeekRect = QRectF(86, y + 7, width - 172, 20);
 
     const double coverX = 40, coverY = cy - 26;
     if (!player.coverImage.isEmpty()) { image(player.coverImage, coverX, coverY, 52, 52); }
@@ -40,9 +25,12 @@ void NativeHud::playerBar(double, double y, double width) {
         op({"ellipse", textInk, coverX + 23, coverY + 23, 6, 6});
     }
 
-    const double infoWidth = std::max(125., center - 560);
+    // Let a *short* title pull the actions closer. Long titles are capped:
+    // that fixed viewport makes the ping-pong marquee visible and testable.
     auto title = player.failed ? player.status : player.current.value("title").toString();
     if (title.isEmpty() && !player.failed) { title = QStringLiteral("尚未播放"); }
+    const double infoWidth = std::clamp(m_glyphs->width(title, 19, "demibold") + 14.,
+                                        116., 252.);
     // The QML ping-pong marquee owns title pixels; native click hits remain.
     auto artist = player.current.value("artist").toString();
     if (artist.isEmpty()) { artist = "RHINE LAB / MUSIC DATABASE"; }
@@ -77,7 +65,7 @@ void NativeHud::playerBar(double, double y, double width) {
     };
 
     // Reactions belong immediately after the song metadata, as in NetEase.
-    const double reactionX = 109 + infoWidth + 35;
+    const double reactionX = 109 + infoWidth + 25;
     if (width > 1200 && !player.current.isEmpty() && m_music->canMutate("/like")) {
         control(reactionX, "music:like-current", "喜欢 / 取消喜欢");
         const bool liked = m_music->likedIDs &&
