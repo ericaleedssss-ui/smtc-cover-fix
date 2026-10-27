@@ -65,6 +65,7 @@ Item {
             PathSvg { path: {
                 switch (glyph.kind) {
                 case "play": return "M9 5 L19 12 L9 19 Z";
+                case "link": return "M9 15 L15 9 M8 12 L5 15 C1 19 5 23 9 19 L12 16 M12 8 L15 5 C19 1 23 5 19 9 L16 12";
                 case "add": return "M4 4 H20 V20 H4 Z M12 8 V16 M8 12 H16";
                 case "trash": return "M4 6 H20 M9 6 V3 H15 V6 M6 6 L7 21 H17 L18 6 M10 10 V17 M14 10 V17";
                 case "prev": return "M15 5 L8 12 L15 19";
@@ -80,15 +81,17 @@ Item {
         property string icon: "close"
         property string label: ""
         property string actionName: ""
+        property bool actionable: true
         signal activated()
         width: 31 * queue.typeUnit; height: width; radius: 9 * queue.unit
         color: buttonMouse.containsMouse ? (queue.hud.dark ? "#328ca07c" : "#21919c81") : "transparent"
-        opacity: enabled ? 1 : .3
+        opacity: enabled && actionable ? 1 : .3
         QueueIcon { anchors.centerIn: parent; kind: button.icon }
         Accessible.role: Accessible.Button
         Accessible.name: label
         Accessible.onPressAction: button.activate()
         function activate() {
+            if (!enabled || !actionable) return;
             if (actionName) rhine.action(actionName);
             activated();
         }
@@ -96,7 +99,7 @@ Item {
         ToolTip.text: label; ToolTip.delay: 550
         MouseArea {
             id: buttonMouse; anchors.fill: parent; hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: button.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
             onWheel: function(wheel) { wheel.accepted = false }
             onClicked: button.activate()
         }
@@ -211,7 +214,7 @@ Item {
             objectName: "queueRow_" + trackIndex
             readonly property bool selected: trackIndex === Number(queue.hud.queueIndex)
             readonly property bool hovered: rowHover.hovered
-            width: songList.width; height: Math.max(82 * queue.unit, 74 * queue.typeUnit)
+            width: songList.width; height: Math.max(74 * queue.unit, 64 * queue.typeUnit)
             HoverHandler { id: rowHover }
             Rectangle {
                 objectName: "queueRowHighlight"
@@ -253,7 +256,7 @@ Item {
             }
             Column {
                 x: 76 * queue.unit; anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - x - 86 * queue.unit
+                width: parent.width - x - (track.hovered ? 110 * queue.typeUnit : 60 * queue.unit)
                 spacing: 3 * queue.unit
                 Text {
                     width: parent.width; text: track.trackTitle; elide: Text.ElideRight
@@ -264,18 +267,6 @@ Item {
                 Text {
                     width: parent.width; text: track.trackArtist; elide: Text.ElideRight
                     color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
-                }
-                Text {
-                    objectName: "queueSource_" + track.trackIndex
-                    width: parent.width; text: "来源：" + track.trackSource; elide: Text.ElideRight
-                    color: queue.muted; opacity: .8
-                    font.family: rhineFontFamily; font.pixelSize: 10.5 * queue.typeUnit
-                    MouseArea {
-                        anchors.fill: parent; enabled: track.sourceLink
-                        cursorShape: Qt.PointingHandCursor
-                        onWheel: function(wheel) { wheel.accepted = false }
-                        onClicked: queue.rowAction("queue-source", track.trackIndex, track.trackKey)
-                    }
                 }
             }
             Text {
@@ -289,6 +280,13 @@ Item {
                 visible: track.hovered
                 anchors.right: parent.right; anchors.rightMargin: 9 * queue.unit
                 anchors.verticalCenter: parent.verticalCenter; spacing: 3 * queue.unit
+                QueueButton {
+                    objectName: "queueSource_" + track.trackIndex
+                    icon: "link"
+                    label: track.sourceLink ? "来源：" + track.trackSource : "暂无可追溯来源"
+                    actionable: track.sourceLink
+                    onActivated: queue.rowAction("queue-source", track.trackIndex, track.trackKey)
+                }
                 QueueButton {
                     objectName: "queueCollect_" + track.trackIndex
                     icon: "add"; label: "收藏到歌单"; enabled: queue.hud.queueCanCollect === true

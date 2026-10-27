@@ -87,7 +87,7 @@ Item { width:1100; height:720
         return item, point
     def click(view, spy, name, expected):
         # Hidden hover actions become visible by moving over their row first.
-        if name.startswith(('queueRemove_', 'queueCollect_')):
+        if name.startswith(('queueRemove_', 'queueCollect_', 'queueSource_')):
             move(view, 'queueRow_'+name.split('_')[1])
         item, point = move(view, name)
         assert item.isEnabled(), name

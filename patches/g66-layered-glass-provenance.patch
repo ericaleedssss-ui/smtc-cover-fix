@@ -1,0 +1,628 @@
+diff --git a/Qt/qml/Main.qml b/Qt/qml/Main.qml
+index 994f55e..4fa51a2 100644
+--- a/Qt/qml/Main.qml
++++ b/Qt/qml/Main.qml
+@@ -779,6 +779,30 @@ Window {
+         active: rhine.state.modal === "discover"
+         sourceComponent: DiscoverGlass { background: backgroundLayer; unit: root.stageScale; scrollMemory: root.discoverScrollMemory }
+     }
++    // Acyclic, queue-sized lower-layer capture. These sources contain the
++    // actual page and navigation glasses, but never the foreground queue.
++    // Half-resolution tiles bound the extra texture cost to the panel area.
++    Item {
++        id: queueGlassBackdrop
++        objectName: "queueGlassBackdrop"
++        anchors.fill: parent
++        visible: false
++        readonly property real pad: 22 * root.stageScale
++        Repeater {
++            model: glassQueueLoader.active ? [baseVisual, sideNavigation] : []
++            delegate: ShaderEffectSource {
++                required property var modelData
++                x: glassQueueLoader.x - queueGlassBackdrop.pad
++                y: glassQueueLoader.y - queueGlassBackdrop.pad
++                width: glassQueueLoader.width + 2 * queueGlassBackdrop.pad
++                height: glassQueueLoader.height + 2 * queueGlassBackdrop.pad
++                sourceItem: modelData
++                sourceRect: Qt.rect(x, y, width, height)
++                textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
++                live: true; smooth: true; hideSource: false
++            }
++        }
++    }
+     Loader {
+         id: glassQueueLoader
+         objectName: "glassQueueLoader"
+@@ -788,15 +812,16 @@ Window {
+         y: (bounds ? bounds.y : 0) * root.stageScale
+         width: (bounds ? bounds.width : 430) * root.stageScale
+         height: (bounds ? bounds.height : 842) * root.stageScale
+-        z: 245
++        z: 350
+         sourceComponent: PlayerQueueGlass {
+-            background: backgroundLayer
++            background: queueGlassBackdrop
+             sampleX: glassQueueLoader.x
+             sampleY: glassQueueLoader.y
+             unit: root.stageScale
+         }
+     }
+     SideNavigation {
++        id: sideNavigation
+         anchors.fill: parent
+         z: 300
+         background: backgroundLayer
+diff --git a/Qt/src/MusicData.cpp b/Qt/src/MusicData.cpp
+index 840730b..cc27d2b 100644
+--- a/Qt/src/MusicData.cpp
++++ b/Qt/src/MusicData.cpp
+@@ -155,4 +155,39 @@ QString time(const QJsonObject &track) {
+     }
+     return pad(int(duration / 60000)) + ":" + pad(int(duration / 1000) % 60);
+ }
++QJsonObject queueSource(const QJsonObject &item) {
++    const auto provider = item.value("provider").toString();
++    const auto id = item.value("id").toString();
++    const auto title = item.value("title").toString();
++    if (provider.isEmpty() || id.isEmpty() || title.isEmpty()) { return {}; }
++    auto route = item.value("route").toString();
++    auto type = item.value("type").toString(item.value("originType").toString(item.value("kind").toString()));
++    if (route.isEmpty()) {
++        if (item.value("virtual").toBool() && id == "daily") { route = "discover"; type = "daily"; }
++        else if (QStringList{"playlist", "album", "artist", "radio"}.contains(item.value("kind").toString())) { route = "directory"; }
++        else { return {}; }
++    }
++    if (!QStringList{"directory", "discover", "search", "likes", "profile"}.contains(route)) { return {}; }
++    const auto kind = item.value("kind").toString();
++    if (route == "directory" && !QStringList{"playlist", "album", "artist", "radio"}.contains(kind)) { return {}; }
++    // Whitelist route parameters. Never persist whole directory objects or infer an album.
++    QJsonObject result{{"version", 1}, {"route", route}, {"type", type},
++        {"kind", kind}, {"id", id}, {"title", title}, {"provider", provider}};
++    for (const auto &field : {"tab", "query", "searchKind", "category", "area", "section", "filter"}) {
++        if (item.value(field).isString()) { result[field] = item.value(field); }
++    }
++    if (route == "discover" && !result.contains("tab")) { result["tab"] = id; }
++    return result;
++}
++QJsonObject withQueueSource(QJsonObject song, const QJsonObject &origin) {
++    const auto source = queueSource(origin);
++    if (song.value("kind") == "song" && !source.isEmpty()) { song["queueSource"] = source; }
++    return song;
++}
++QJsonArray withQueueSource(QJsonArray songs, const QJsonObject &origin) {
++    if (queueSource(origin).isEmpty()) { return songs; }
++    for (int i = 0; i < songs.size(); ++i) { songs.replace(i, withQueueSource(songs.at(i).toObject(), origin)); }
++    return songs;
++}
++
+ }
+diff --git a/Qt/src/MusicData.h b/Qt/src/MusicData.h
+index e757f8b..4c6926b 100644
+--- a/Qt/src/MusicData.h
++++ b/Qt/src/MusicData.h
+@@ -15,4 +15,7 @@ int indexOf(const QJsonArray &values, const QJsonValue &value);
+ int indexOfId(const QJsonArray &values, const QString &id);
+ QString pad(int value, int width = 2);
+ QString time(const QJsonObject &track);
++QJsonObject queueSource(const QJsonObject &item);
++QJsonObject withQueueSource(QJsonObject song, const QJsonObject &origin);
++QJsonArray withQueueSource(QJsonArray songs, const QJsonObject &origin);
+ }
+diff --git a/Qt/src/MusicDirectory.cpp b/Qt/src/MusicDirectory.cpp
+index f75de53..91eb7fb 100644
+--- a/Qt/src/MusicDirectory.cpp
++++ b/Qt/src/MusicDirectory.cpp
+@@ -74,6 +74,7 @@ void MusicLibrary::enterDirectory(QJsonObject value) {
+             }
+             const auto values = result.value.toArray();
+             next->item = values.at(0).toObject();
++            if (value.contains("originType")) { next->item["originType"] = value.value("originType"); }
+             if (value["kind"] == "artist" && provider == "netease") {
+                 api.request("/artist/detail", {{"id", value["id"]}}, [this, next](MusicReply reply) {
+                     const auto user = reply.value.toObject()["data"].toObject()["user"].toObject();
+@@ -96,7 +97,7 @@ void MusicLibrary::enterDirectory(QJsonObject value) {
+                 showDirectoryInfo();
+             } else if (!next->songs.isEmpty()) {
+                 next->index = 0;
+-                choose(next->songs.first().toObject());
++                choose(MusicData::withQueueSource(next->songs.first().toObject(), next->item));
+             } else {
+                 changed();
+             }
+@@ -258,7 +259,7 @@ void MusicLibrary::observeDirectory(int physical) {
+             // 选中槽位后不再通知
+             folder->index = index;
+             folder->page = index / 40 * 40;
+-            choose(folder->songs.at(index).toObject());
++            choose(MusicData::withQueueSource(folder->songs.at(index).toObject(), folder->item));
+         }
+     }
+ }
+@@ -277,7 +278,7 @@ void MusicLibrary::selectDirectory(int index, QString mode, QString axis, int di
+         axis.isEmpty() ? QJsonObject{} : QJsonObject{{"axis", axis}, {"direction", direction}};
+     emit selectionRequested(physical, navigation);
+     selectedPhysical = physical;
+-    choose(directory->songs.at(index).toObject(), false, mode == "detail");
++    choose(MusicData::withQueueSource(directory->songs.at(index).toObject(), directory->item), false, mode == "detail");
+     emit modeRequested(mode);
+     changed();
+ }
+diff --git a/Qt/src/MusicDiscover.cpp b/Qt/src/MusicDiscover.cpp
+index 79aa02c..1e41fe9 100644
+--- a/Qt/src/MusicDiscover.cpp
++++ b/Qt/src/MusicDiscover.cpp
+@@ -240,10 +240,17 @@ void MusicDiscover::open(int index) {
+     if (index < 0 || index >= items.size()) {
+         return;
+     }
+-    const auto value = items.at(index).toObject();
++    auto value = items.at(index).toObject();
++    if (tab == "charts") { value["originType"] = "chart"; }
+     m_store->privateSelection = tab == "daily" || tab == "artists";
+     // 发现页条目作为单曲打开时，替换队列
+-    m_store->playContext = items;
++    const QJsonObject origin{{"route", "discover"}, {"type", tab}, {"id", tab},
++        {"tab", tab}, {"category", category}, {"area", newSongArea},
++        {"title", tab == "daily" ? QStringLiteral("每日推荐") :
++            tab == "history" ? QStringLiteral("最近播放") : tab == "new-songs" ? QStringLiteral("新歌速递") : QStringLiteral("发现音乐 · ") + tab},
++        {"provider", m_store->provider}};
++    m_store->playContext = MusicData::withQueueSource(items, origin);
++    value = MusicData::withQueueSource(value, origin);
+     if (value["kind"] == "song") {
+         // G53 regression contract: browsing discovery selects song details,
+         // but never begins playback or replaces the current queue.
+diff --git a/Qt/src/MusicLibrary.cpp b/Qt/src/MusicLibrary.cpp
+index bae73a0..4f917ac 100644
+--- a/Qt/src/MusicLibrary.cpp
++++ b/Qt/src/MusicLibrary.cpp
+@@ -230,8 +230,8 @@ void MusicLibrary::observe(int selected) {
+     rowMemory[lane] = row;
+     const auto values = sourceItems(lane);
+     // 当前栏目选中单曲，替换队列。
+-    playContext = values;
+-    choose(values.isEmpty() ? QJsonObject{} : values.at(wrap(offsets[lane] + row, values.size())).toObject());
++    playContext = MusicData::withQueueSource(values, sourceOrigin(lane));
++    choose(playContext.isEmpty() ? QJsonObject{} : playContext.at(wrap(offsets[lane] + row, playContext.size())).toObject());
+     if (lane > 0 && values.isEmpty()) {
+         loadMoreSource(lane);
+     }
+@@ -259,6 +259,8 @@ void MusicLibrary::choose(QJsonObject input, bool containerDetails, std::optiona
+         return;
+     }
+     current = details.value(input.value("key").toString(), input);
++    current.remove("queueSource");
++    current = MusicData::withQueueSource(current, input.value("queueSource").toObject());
+     loadCover(current);
+     if (isLocal()) {
+         detailLoading = false;
+@@ -318,6 +320,8 @@ void MusicLibrary::choose(QJsonObject input, bool containerDetails, std::optiona
+                     }
+                 }
+                 current = value;
++                current.remove("queueSource");
++                current = MusicData::withQueueSource(current, input.value("queueSource").toObject());
+                 const auto songs = values.at(1).toArray();
+                 if (value["kind"] != "song" || !albumLoaded) {
+                     tracks = songs;
+@@ -876,21 +880,9 @@ void MusicLibrary::play(bool byUser) {
+     }
+     const bool replaceQueue = byUser && host->preference("single-play-mode") != "append";
+     if (replaceQueue) {
+-        auto songs = currentSongList();
+-        QJsonObject origin;
+-        if (directory) {
+-            const auto item = directory->item;
+-            origin = MusicData::item(item.value("kind").toString(), item.value("id").toString(),
+-                item.value("title").toString(), item.value("artist").toString(), provider);
+-        }
+-        if (!origin.isEmpty()) {
+-            for (int i = 0; i < songs.size(); ++i) {
+-                auto song = songs.at(i).toObject(); song["queueSource"] = origin; songs.replace(i, song);
+-            }
+-        }
+-        auto song = current;
+-        if (!origin.isEmpty()) { song["queueSource"] = origin; }
+-        player.play(song, songs);
++        // Each entry already owns its selection-time provenance. A context
++        // opened from the queue can contain several different origins.
++        player.play(current, currentSongList());
+         return;
+     }
+     player.play(current);
+@@ -899,6 +891,9 @@ void MusicLibrary::play(bool byUser) {
+ /** 当前单曲所在的歌曲列表 */
+ QJsonArray MusicLibrary::currentSongList() const {
+     const auto id = current.value("id").toString();
++    const auto origin = MusicData::queueSource(current.value("queueSource").toObject());
++    if (!origin.isEmpty() && MusicData::indexOfId(playContext, id) >= 0 &&
++        (!directory || origin != MusicData::queueSource(directory->item))) { return playContext; }
+     const auto queue = directoryQueue();
+     if (MusicData::indexOfId(queue, id) >= 0) {
+         return queue;
+@@ -917,7 +912,7 @@ QJsonArray MusicLibrary::directoryQueue() const {
+         ids = *likedIDs;
+     }
+     if (ids.isEmpty()) {
+-        return libraryItems();
++        return MusicData::withQueueSource(libraryItems(), directory ? directory->item : sourceOrigin(selectedLane));
+     }
+     QHash<QString, QJsonObject> loaded;
+     for (const auto &value : libraryItems()) {
+@@ -932,7 +927,8 @@ QJsonArray MusicLibrary::directoryQueue() const {
+         }
+         queue.append(value);
+     }
+-    return queue;
++    const auto origin = directory ? MusicData::queueSource(directory->item) : sourceOrigin(1);
++    return MusicData::withQueueSource(queue, origin);
+ }
+ 
+ /** 一键播放 */
+@@ -998,3 +994,16 @@ QString MusicLibrary::sourceURL(QJsonObject value) const {
+     return "https://y.qq.com/n/ryqq/" + paths.value(value["kind"].toString()) + "/" +
+            QString::fromLatin1(QUrl::toPercentEncoding(value["id"].toString(), "!'()*"));
+ }
++
++QJsonObject MusicLibrary::sourceOrigin(int lane) const {
++    if (lane == 0 && !keyword.isEmpty()) {
++        return {{"route", "search"}, {"type", "search"}, {"id", keyword},
++            {"query", keyword}, {"searchKind", searchKind},
++            {"title", QStringLiteral("搜索：") + keyword}, {"provider", provider}};
++    }
++    if (lane == 1 && !uid.isEmpty()) {
++        return {{"route", "likes"}, {"type", "playlist"}, {"id", uid},
++            {"title", QStringLiteral("我喜欢的音乐")}, {"provider", provider}};
++    }
++    return {};
++}
+diff --git a/Qt/src/MusicLibrary.h b/Qt/src/MusicLibrary.h
+index 5e0d5df..99c6a9f 100644
+--- a/Qt/src/MusicLibrary.h
++++ b/Qt/src/MusicLibrary.h
+@@ -63,6 +63,7 @@ class MusicLibrary : public QObject {
+     void playDirectory();
+     void playOfficial(QJsonObject value = {});
+     QJsonArray directoryQueue() const;
++    QJsonObject sourceOrigin(int lane) const;
+     QJsonArray currentSongList() const;
+     QString sourceURL(QJsonObject value = {}) const;
+     void setGroupView(QString name, QVector<int> indices = {}, int lane = 0);
+diff --git a/Qt/src/MusicPlayer.cpp b/Qt/src/MusicPlayer.cpp
+index ec0d941..bcebf85 100644
+--- a/Qt/src/MusicPlayer.cpp
++++ b/Qt/src/MusicPlayer.cpp
+@@ -335,6 +335,11 @@ void MusicPlayer::play(QJsonObject track, std::optional<QJsonArray> source, std:
+         selected = int(queue.size());
+         queue.append(track);
+     }
++    if (!queueIndex && selected >= 0) { queue.replace(selected, track); }
++    if (queueIndex && *queueIndex >= 0 && *queueIndex < queue.size()) {
++        track.remove("queueSource");
++        track = MusicData::withQueueSource(track, queue.at(*queueIndex).toObject().value("queueSource").toObject());
++    }
+     index = queueIndex.value_or(selected);
+     const auto generation = ++m_generation;
+     // A manual replay or a new song starts a new, independent listening session.
+diff --git a/Qt/src/NativeHud.cpp b/Qt/src/NativeHud.cpp
+index af87e3e..520782a 100644
+--- a/Qt/src/NativeHud.cpp
++++ b/Qt/src/NativeHud.cpp
+@@ -197,7 +197,7 @@ QJsonObject NativeHud::state() const {
+     // 只覆盖资料库右侧的阅读区；详情页和弹窗已有独立底色。
+     std::optional<QRectF> readingPanel;
+     if (textFrosted && frame["mode"] == "archive" && !frame["viewer"].toBool() &&
+-        modal.isEmpty() && !lyricsMode && !commentsOpen) {
++        (modal.isEmpty() || modal == "player") && !lyricsMode && !commentsOpen) {
+         const auto left = width * 0.50520833 - 28;
+         const bool list = trackListMode && m_music->current.value("kind") == "song";
+         readingPanel = QRectF(left, list ? 205 : 437, std::max(1.0, width - left - 31),
+@@ -205,7 +205,7 @@ QJsonObject NativeHud::state() const {
+     }
+     std::optional<QRectF> discGlassPanel;
+     if (textFrosted && frame["mode"] == "detail" && !frame["viewer"].toBool() &&
+-        modal.isEmpty() && m_music->current.value("kind") == "song") {
++        (modal.isEmpty() || modal == "player") && m_music->current.value("kind") == "song") {
+         discGlassPanel = QRectF(40, 800, std::min(370.0, width * .46 - 40), 153);
+     }
+     return {{"inputX", bounds.x() + 53},
+@@ -255,6 +255,9 @@ QJsonObject NativeHud::state() const {
+                 const int end = std::min(int(all.size()), first + 40);
+                 for (int i = first; i < end; ++i) {
+                     const auto song = all.at(i).toObject();
++                    const auto origin = MusicData::queueSource(song.value("queueSource").toObject());
++                    const bool navigable = !origin.isEmpty() && origin.value("provider").toString() == m_music->provider &&
++                        (origin.value("route") != "likes" || origin.value("id").toString() == m_music->uid);
+                     visible.append(QJsonObject{
+                         {"index", i}, {"id", song.value("id")},
+                         {"title", song.value("title")},
+@@ -262,11 +265,8 @@ QJsonObject NativeHud::state() const {
+                         {"key", MusicPlayer::identity(song)},
+                         {"cover", song.value("cover")},
+                         {"durationLabel", MusicData::time(song)},
+-                        {"sourceTitle", song.value("queueSource").toObject().value("title").toString(
+-                            song.value("provider").toString("netease") == "local" ? QStringLiteral("本地音乐") :
+-                            song.value("provider").toString("netease") == "netease" ? QStringLiteral("网易云音乐") :
+-                            song.value("provider").toString())},
+-                        {"sourceLink", !song.value("queueSource").toObject().value("id").toString().isEmpty()}
++                        {"sourceTitle", origin.value("title")},
++                        {"sourceLink", navigable}
+                     });
+                 }
+                 return visible;
+@@ -289,7 +289,7 @@ QJsonObject NativeHud::state() const {
+             {"textFrosted", textFrosted},
+             {"readingPanel", rect(readingPanel)},
+             {"discGlassPanel", rect(discGlassPanel)},
+-            {"readerBounds", modal.isEmpty() && !frame["viewer"].toBool() ? rect(readerBounds) : QJsonValue::Null},
++            {"readerBounds", (modal.isEmpty() || modal == "player") && !frame["viewer"].toBool() ? rect(readerBounds) : QJsonValue::Null},
+             {"readerText", readerText}, {"readerSession", readerSession},
+             {"readerFont", readerFont}, {"readerLeading", readerLeading},
+             {"recommendationsBounds", rect(recommendationsBounds)},
+@@ -353,10 +353,10 @@ void NativeHud::draw(QJsonObject next, double stageWidth, double time) {
+     const bool readingComments = frame["mode"] == "detail" && !frame["viewer"].toBool() &&
+         m_music->provider == "netease" &&
+         (m_music->current.value("kind") == "song" || m_music->current.value("kind") == "album") &&
+-        tab == "comments" && (modal.isEmpty() || modal == "profile") && !lyricsMode;
++        tab == "comments" && (modal.isEmpty() || modal == "player" || modal == "profile") && !lyricsMode;
+     const bool readingRecommendations = frame["mode"] == "detail" && !frame["viewer"].toBool() &&
+         m_music->provider == "netease" && m_music->current.value("kind") == "song" &&
+-        tab == "recommendations" && modal.isEmpty() && !lyricsMode;
++        tab == "recommendations" && (modal.isEmpty() || modal == "player") && !lyricsMode;
+     if (readingRecommendations) { openRecommendations(); }
+     else if (recommendationsOpen) { recommendationsOpen = false; recommendationsPending = 0; ++m_recommendationGeneration; }
+     if (readingComments) {
+diff --git a/Qt/src/NativeHudController.cpp b/Qt/src/NativeHudController.cpp
+index a890ef1..b57e3f8 100644
+--- a/Qt/src/NativeHudController.cpp
++++ b/Qt/src/NativeHudController.cpp
+@@ -144,7 +144,7 @@ void NativeHud::loadSocialCounts(QJsonObject song) {
+ 
+ void NativeHud::openModal(QString kind) {
+     if (kind == "playlist-picker") { queueCollectionTracks = {}; }
+-    if (commentsOpen && kind != "profile") {
++    if (commentsOpen && kind != "profile" && kind != "player") {
+         closeComments();
+     }
+     if (m_music->isLocal() &&
+@@ -450,10 +450,29 @@ void NativeHud::playerAction(const QStringList &parts) {
+         return;
+     }
+     if (name == "queue-source") {
+-        const auto source = player.queue.at(index).toObject().value("queueSource").toObject();
+-        if (!source.value("id").toString().isEmpty()) {
+-            closeModal(false);
+-            music.enterDirectory(source); tab = "overview"; trackOffset = 0;
++        const auto source = MusicData::queueSource(player.queue.at(index).toObject().value("queueSource").toObject());
++        if (source.isEmpty() || source.value("provider").toString() != music.provider) { return; }
++        const auto route = source.value("route").toString();
++        if (route == "directory") {
++            auto destination = MusicData::item(source.value("kind").toString(), source.value("id").toString(),
++                source.value("title").toString(), {}, music.provider);
++            destination["originType"] = source.value("type");
++            closeModal(false); music.enterDirectory(destination); tab = "overview"; trackOffset = 0;
++        } else if (route == "discover") {
++            closeModal(false); openModal("discover");
++            music.discover->category = source.value("category").toString("全部");
++            music.discover->newSongArea = source.value("area").toString("5");
++            music.discover->load(source.value("tab").toString());
++        } else if (route == "search") {
++            closeModal(false); openModal("search");
++            query = source.value("query").toString();
++            music.search(query, source.value("searchKind").toString("song"));
++        } else if (route == "likes" && source.value("id").toString() == music.uid) {
++            action("navigation:likes");
++        } else if (route == "profile") {
++            closeModal(false); action("profile:open:" + source.value("id").toString());
++            profileSection = source.value("section").toString("music");
++            profileFilter = source.value("filter").toString("created"); loadProfileRows();
+         }
+         return;
+     }
+diff --git a/Qt/src/NativeHudMusic.cpp b/Qt/src/NativeHudMusic.cpp
+index 716ec7b..c6bcd95 100644
+--- a/Qt/src/NativeHudMusic.cpp
++++ b/Qt/src/NativeHudMusic.cpp
+@@ -82,15 +82,15 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
+         closeModal(false);
+     } else if (name == "track") {
+         if (frame["mode"] == "detail" && music.current["kind"] == "song" && tab == "history" && last >= 0 && last < music.tracks.size()) {
+-            music.playContext = music.tracks;
+-            music.choose(music.tracks.at(last).toObject(), false, true);
++            music.playContext = MusicData::withQueueSource(music.tracks, music.current);
++            music.choose(MusicData::withQueueSource(music.tracks.at(last).toObject(), music.current), false, true);
+         } else if (music.directory && last >= 0 && last < music.directory->songs.size()) {
+             music.directory->hudOffset = trackOffset;
+             music.selectDirectory(last, "detail");
+         } else if (last >= 0 && last < music.tracks.size()) {
+             // 详情页曲目列表就是当前单曲所在的歌曲列表。
+-            music.playContext = music.tracks;
+-            music.choose(music.tracks.at(last).toObject(), false, true);
++            music.playContext = MusicData::withQueueSource(music.tracks, music.current);
++            music.choose(MusicData::withQueueSource(music.tracks.at(last).toObject(), music.current), false, true);
+         }
+         tab = "overview";
+         trackOffset = 0;
+@@ -122,8 +122,8 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
+         }
+     } else if (name == "first-track") {
+         if (trackOffset >= 0 && trackOffset < music.tracks.size()) {
+-            music.playContext = music.tracks;
+-            music.choose(music.tracks.at(trackOffset).toObject());
++            music.playContext = MusicData::withQueueSource(music.tracks, music.current);
++            music.choose(MusicData::withQueueSource(music.tracks.at(trackOffset).toObject(), music.current));
+         }
+         tab = "overview";
+         trackOffset = 0;
+diff --git a/Qt/src/NativeHudProfile.cpp b/Qt/src/NativeHudProfile.cpp
+index 8bc4740..5ea056b 100644
+--- a/Qt/src/NativeHudProfile.cpp
++++ b/Qt/src/NativeHudProfile.cpp
+@@ -263,12 +263,15 @@ bool NativeHud::profileAction(const QString &value) {
+             profilePlayKey.clear();
+             QJsonArray songs;
+             for (const auto &row : profileRows) { if (row.toObject()["kind"] == "song") { songs.append(row); } }
+-            m_music->player.play(item, songs);
++            const QJsonObject origin{{"route", "profile"}, {"type", "profile"}, {"id", profileID},
++                {"title", QStringLiteral("用户主页")}, {"provider", m_music->provider},
++                {"section", profileSection}, {"filter", profileFilter}};
++            m_music->player.play(MusicData::withQueueSource(item, origin), MusicData::withQueueSource(songs, origin));
+         } else {
+             const auto account = m_music->accountGeneration();
+             profilePlayKey = item["key"].toString(); profileError.clear();
+             QPointer<NativeHud> owner(this);
+-            m_music->api.call("detail", QJsonArray{item}, [this](MusicReply reply) {
++            m_music->api.call("detail", QJsonArray{item}, [this, item](MusicReply reply) {
+                 profilePlayKey.clear();
+                 const auto data = reply.value.toArray();
+                 const auto songs = data.size() > 1 ? data.at(1).toArray() : QJsonArray();
+@@ -287,7 +290,7 @@ bool NativeHud::profileAction(const QString &value) {
+                             queue.append(track);
+                         }
+                     }
+-                    m_music->player.play(songs.first().toObject(), queue);
++                    m_music->player.play(MusicData::withQueueSource(songs.first().toObject(), item), MusicData::withQueueSource(queue, item));
+                 }
+                 m_host->invalidate();
+             }, [owner, token, account] { return owner && owner->profilePlayGeneration == token && owner->m_music->accountGeneration() == account; });
+@@ -309,8 +312,11 @@ bool NativeHud::profileAction(const QString &value) {
+         if (item["kind"] == "song") {
+             QJsonArray context;
+             for (const auto &row : profileRows) { if (row.toObject()["kind"] == "song") { context.append(row); } }
+-            m_music->playContext = context;
+-            m_music->choose(item, false, true); m_scene.mode("detail"); frame["mode"] = "detail";
++            const QJsonObject origin{{"route", "profile"}, {"type", "profile"}, {"id", profileID},
++                {"title", QStringLiteral("用户主页")}, {"provider", m_music->provider},
++                {"section", profileSection}, {"filter", profileFilter}};
++            m_music->playContext = MusicData::withQueueSource(context, origin);
++            m_music->choose(MusicData::withQueueSource(item, origin), false, true); m_scene.mode("detail"); frame["mode"] = "detail";
+ 
+         } else {
+             m_music->enterDirectory(item);
+diff --git a/Qt/tests/UiChecks.cpp b/Qt/tests/UiChecks.cpp
+index ce8399d..c4d455f 100644
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -1390,6 +1390,7 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         check(click("queueCoverPlay_2") && player.index == 2, "cover overlay click plays its own song");
+         // Clickable source navigates without replacing or starting playback.
+         const auto beforeSource = player.current.value("id");
++        move(findVisual(window->contentItem(), "queueRow_1"));
+         check(click("queueSource_1") && music.directory && music.directory->item.value("id") == "6501" &&
+               player.current.value("id") == beforeSource, "source opens its playlist and preserves playback");
+         music.directory.reset(); // collection target need not be the browsed source
+@@ -1440,6 +1441,115 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         backend.host.fixture = savedFixture;
+         hud.modal.clear(); hud.closing = false; hud.queueOffset = 0; refresh();
+     }
++    // G66: real source records survive queue operations and navigate internally.
++    {
++        const auto savedQueue = player.queue; const auto savedCurrent = player.current;
++        const auto savedIndex = player.index; const auto savedMode = player.mode; player.mode = "all";
++        const auto savedDirectory = music.directory;
++        const auto savedSelection = music.current; const auto savedContext = music.playContext;
++        const auto savedUid = music.uid; const auto savedKeyword = music.keyword;
++        const auto savedDetails = music.details;
++        const auto fixture = backend.host.fixture;
++        auto song = MusicData::item("song", "660001", "来源回归测试", "测试歌手");
++        song["duration"] = 180000; song["albumID"] = "660200";
++        auto second = MusicData::item("song", "660002", "追加歌曲", "测试歌手");
++        music.uid = "42";
++        auto listA = MusicData::item("playlist", "660101", "歌单 A");
++        auto listB = MusicData::item("playlist", "660102", "歌单 B");
++        const auto sourceA = MusicData::queueSource(listA), sourceB = MusicData::queueSource(listB);
++        check(MusicData::queueSource(song).isEmpty(), "a song's album ID never becomes an inferred queue origin");
++        auto folder = std::make_shared<MusicDirectory>();
++        folder->item = listA; folder->songs = QJsonArray{song}; folder->ids = QJsonArray{song.value("id")};
++        music.directory = folder; music.playContext = {};
++        music.playDirectory();
++        check(player.queue.size() == 1 && player.queue.first().toObject().value("queueSource").toObject() == sourceA,
++              "one-click playlist playback stamps every queued entry's actual origin");
++        music.current = MusicData::withQueueSource(second, listB);
++        backend.action("music:enqueue");
++        check(player.queue.size() == 2 && player.queue.at(0).toObject().value("queueSource").toObject() == sourceA &&
++              player.queue.at(1).toObject().value("queueSource").toObject() == sourceB,
++              "single-song append preserves distinct sources on adjacent queue entries");
++        music.directory.reset(); music.playContext = player.queue;
++        music.current = MusicData::withQueueSource(song, listA);
++        music.play(true);
++        check(player.queue.at(0).toObject().value("queueSource").toObject() == sourceA &&
++              player.queue.at(1).toObject().value("queueSource").toObject() == sourceB,
++              "replaying a mixed queue must not stamp one song's origin onto every entry");
++        player.play(MusicData::withQueueSource(song, listB));
++        check(player.queue.first().toObject().value("queueSource").toObject() == sourceB,
++              "manually selecting the same song from another playlist records the new entry context");
++        player.next(1); player.next(-1);
++        check(player.current.value("queueSource").toObject() == sourceB,
++              "next and previous retain each entry's stored origin");
++        music.details[song.value("key").toString()] = MusicData::withQueueSource(song, listA);
++        music.choose(MusicData::withQueueSource(song, listB), false, false);
++        check(music.current.value("queueSource").toObject() == sourceB,
++              "metadata cache cannot overwrite the newly selected source with an older song context");
++        backend.host.fixture = [fixture, song](QString route, QJsonObject args) {
++            if (route == "/native/netease/songs") {
++                return QJsonObject{{"body", QJsonObject{{"code", 200}, {"value", QJsonArray{song}}}}};
++            }
++            return fixture(route, args);
++        };
++        auto deferred = MusicData::withQueueSource(song, listA); deferred["deferred"] = true;
++        player.play(deferred, QJsonArray{deferred});
++        QElapsedTimer deferredWait; deferredWait.start();
++        while (player.current.value("deferred").toBool() && deferredWait.elapsed() < 5000) { settle(20); }
++        check(!player.current.value("deferred").toBool(), "deferred metadata actually completes before source verification");
++        check(player.current.value("queueSource").toObject() == sourceA &&
++              player.queue.first().toObject().value("queueSource").toObject() == sourceA,
++              "asynchronous song metadata enrichment retains queue origin");
++        backend.host.fixture = fixture;
++        for (const auto &kind : {QString("playlist"), QString("album"), QString("artist")}) {
++            auto origin = MusicData::item(kind, "660111", "真实来源 " + kind);
++            if (kind == "playlist") { origin["originType"] = "chart"; }
++            const auto entry = MusicData::withQueueSource(song, origin);
++            player.queue = QJsonArray{entry}; player.current = entry; player.index = 0;
++            const auto before = player.queue; const auto playing = player.current;
++            backend.action("player:queue-source:0:netease%3A660001");
++            check(music.directory && music.directory->item.value("id") == "660111" &&
++                  music.directory->item.value("kind") == kind && player.queue == before && player.current == playing,
++                  "source action navigates to the real playlist/chart/album/artist without changing playback");
++        }
++        player.queue = QJsonArray{song}; player.current = song;
++        const auto beforeFolder = music.directory;
++        backend.action("player:queue-source:0:netease%3A660001");
++        check(music.directory == beforeFolder && !hud.state().value("queueRows").toArray().size(),
++              "missing provenance cannot navigate to an invented album or platform page");
++        const QJsonObject search{{"route", "search"}, {"type", "search"}, {"id", "音乐"},
++            {"query", "音乐"}, {"searchKind", "song"}, {"title", "搜索：音乐"}, {"provider", "netease"}};
++        player.queue = QJsonArray{MusicData::withQueueSource(song, search)};
++        backend.action("player:queue-source:0:netease%3A660001");
++        check(hud.modal == "search" && hud.query == "音乐" && player.current.value("id") == song.value("id"),
++              "search origin restores the saved query without replaying a song");
++        const QJsonObject daily{{"route", "discover"}, {"type", "daily"}, {"id", "daily"},
++            {"tab", "daily"}, {"title", "每日推荐"}, {"provider", "netease"}};
++        player.queue = QJsonArray{MusicData::withQueueSource(song, daily)};
++        backend.action("player:queue-source:0:netease%3A660001");
++        check(hud.modal == "discover" && music.discover->tab == "daily", "daily source returns to its actual discovery list");
++        // Glass visibility and Loader identity remain stable under queue toggles.
++        music.directory.reset(); music.current = song; hud.modal.clear(); hud.closing = false;
++        hud.lyricsMode = false; hud.commentsOpen = false; hud.tab = "overview";
++        backend.scene.setMode("archive"); hud.textFrosted = true; refresh();
++        auto *glass = findVisual(window->contentItem(), "textFrostedLoader");
++        auto *rail = findVisual(window->contentItem(), "sideNavigationRail");
++        auto *material = glass ? glass->property("item").value<QObject *>() : nullptr;
++        check(material && rail && rail->isVisible(), "page glass and navigation glass are present before queue opens");
++        hud.openModal("player"); refresh();
++        check(glass && glass->property("item").value<QObject *>() == material && rail && rail->isVisible(),
++              "queue does not destroy or hide either underlying glass panel");
++        auto *queue = findVisual(window->contentItem(), "glassQueueLoader");
++        check(queue && queue->property("active").toBool() && queue->z() > 300,
++              "queue remains foreground above navigation and page glasses");
++        window->grabWindow().save(output + "/preview-g66-layered-glass.png");
++        hud.closeModal(false); refresh();
++        check(glass && glass->property("item").value<QObject *>() == material,
++              "closing queue keeps the original page glass instance");
++        music.directory = savedDirectory; music.current = savedSelection; music.playContext = savedContext;
++        music.details = savedDetails; music.keyword = savedKeyword; music.uid = savedUid;
++        player.queue = savedQueue; player.current = savedCurrent; player.index = savedIndex; player.mode = savedMode;
++        hud.modal.clear(); hud.closing = false;
++    }
+     qInfo() << "Frosted UI rendering and settings:" << (ok ? "passed" : "FAILED");
+     return ok ? 0 : 1;
+ }
