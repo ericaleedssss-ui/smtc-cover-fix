@@ -97,6 +97,7 @@ Item {
         width: navigation.railWidth
         height: 164 * navigation.typeUnit
         visible: navigation.home
+        enabled: !navigation.expanded
         opacity: navigation.expanded ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: 140 } }
         LiquidGlass {
