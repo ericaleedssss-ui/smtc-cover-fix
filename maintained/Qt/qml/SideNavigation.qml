@@ -96,7 +96,9 @@ Item {
         y: (navigation.height - 100 * navigation.unit - height) / 2
         width: navigation.railWidth
         height: 164 * navigation.typeUnit
-        visible: navigation.home && !navigation.expanded
+        visible: navigation.home
+        opacity: navigation.expanded ? 0 : 1
+        Behavior on opacity { NumberAnimation { duration: 140 } }
         LiquidGlass {
             anchors.fill: parent
             background: navigation.background
@@ -235,20 +237,6 @@ Item {
                     visible: navigation.musicOpen
                     selected: navigation.selected === "profile:collected"
                     onInvoked: navigation.profile("collected")
-                }
-                NavRow {
-                    label: "排行榜"
-                    icon: "chart"
-                    visible: navigation.musicOpen
-                    selected: navigation.selected === "charts"
-                    onInvoked: navigation.discover("charts")
-                }
-                NavRow {
-                    label: "新专辑"
-                    icon: "disc"
-                    visible: navigation.musicOpen
-                    selected: navigation.selected === "albums"
-                    onInvoked: navigation.discover("albums")
                 }
                 NavRow {
                     label: navigation.musicOpen ? "收起" : "展开"
