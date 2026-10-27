@@ -64,7 +64,7 @@ void NativeHud::playerBar(double, double y, double width) {
         control(reactionX + 47, "player:comments", "打开当前歌曲评论");
         icon(reactionX + 47, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
         if (commentsOpen && commentsSong["id"] == player.current["id"]) {
-            const auto count = std::max(0, commentsTotal);
+            const auto count = std::max(0., commentsTotal);
             const QString label = count >= 1000000 ? "100w+" : count >= 10000 ? "1w+" :
                                   count >= 1000 ? "999+" : QString::number(count);
             centeredText(label, reactionX + 70, cy + 17, 10, "regular", true);
