@@ -1,9 +1,7 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Effects
+import QtQuick.Shapes
 
-// G62: A real, scrollable queue rather than native text/lines/button positions.
-// The same row owns its title, artist, divider, hover focus and actions.
 Item {
     id: queue
     objectName: "playerQueueGlass"
@@ -11,144 +9,193 @@ Item {
     property real sampleX: 0
     property real sampleY: 0
     property real unit: 1
+    readonly property real typeUnit: Math.max(.9, unit)
     readonly property var hud: rhine.state
-    // The HUD may refresh every frame. Never rebind ListView to that fresh
-    // JSON array: keep a stable, capped ListModel until content really changes.
     property var incomingRows: hud.queueRows || []
     property string syncedRows: ""
+    property int syncedPage: -1
     readonly property int pageStart: Number(hud.queueOffset || 0)
     readonly property int pageSize: Number(hud.queuePageSize || 40)
+    readonly property color ink: hud.dark ? "#eef2e9" : "#343a33"
+    readonly property color muted: hud.dark ? "#a6ae9f" : "#858d80"
+    readonly property color accent: hud.dark ? "#b7ceab" : "#6f8968"
     ListModel { id: stableQueueRows }
     function syncRows() {
         var rows = incomingRows || [];
         var signature = JSON.stringify(rows);
         if (signature === syncedRows) return;
         syncedRows = signature;
-        stableQueueRows.clear();
+        var pageChanged = syncedPage !== pageStart;
+        syncedPage = pageStart;
+        // Update in place: artwork arriving or a removed song must not jump
+        // the viewport to the top or destroy a hovered delegate every frame.
+        while (stableQueueRows.count > rows.length) stableQueueRows.remove(stableQueueRows.count - 1);
         for (var i = 0; i < rows.length; ++i) {
             var song = rows[i] || {};
-            stableQueueRows.append({
-                trackTitle: String(song.title || "未知歌曲"),
-                trackArtist: String(song.artist || ""),
-                trackIndex: Number(song.index),
-                trackId: String(song.id || "")
-            });
+            var entry = {trackTitle: String(song.title || "未知歌曲"),
+                trackArtist: String(song.artist || "未知歌手"),
+                trackIndex: Number(song.index), trackId: String(song.id || ""),
+                trackKey: String(song.key || ""), trackCover: String(song.cover || ""),
+                trackDuration: String(song.durationLabel || "—"),
+                trackSource: String(song.sourceTitle || ""),
+                sourceLink: song.sourceLink === true};
+            if (i < stableQueueRows.count) stableQueueRows.set(i, entry);
+            else stableQueueRows.append(entry);
         }
-        if (songList) songList.positionViewAtBeginning();
+        if (pageChanged && songList) songList.positionViewAtBeginning();
+    }
+    function rowAction(operation, index, key) {
+        rhine.action("player:" + operation + ":" + index + ":" + encodeURIComponent(key));
     }
     onIncomingRowsChanged: syncRows()
     Component.onCompleted: syncRows()
-    readonly property color ink: hud.dark ? "#eef2e9" : "#282d27"
-    readonly property color muted: hud.dark ? "#a4ada1" : "#747d72"
-    readonly property color accent: hud.dark ? "#b7ceab" : "#6f8968"
-    readonly property color stroke: hud.dark ? "#447d8776" : "#70828c7c"
+
+    component QueueIcon: Item {
+        id: glyph
+        property string kind: "close"
+        property color tint: queue.ink
+        width: 20 * queue.typeUnit; height: width
+        Shape {
+            anchors.centerIn: parent; width: 24; height: 24
+            scale: glyph.width / 24
+        ShapePath {
+            strokeColor: glyph.tint; strokeWidth: 1.6
+            fillColor: glyph.kind === "play" ? glyph.tint : "transparent"
+            capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+            PathSvg { path: {
+                switch (glyph.kind) {
+                case "play": return "M9 5 L19 12 L9 19 Z";
+                case "add": return "M4 4 H20 V20 H4 Z M12 8 V16 M8 12 H16";
+                case "trash": return "M4 6 H20 M9 6 V3 H15 V6 M6 6 L7 21 H17 L18 6 M10 10 V17 M14 10 V17";
+                case "prev": return "M15 5 L8 12 L15 19";
+                case "next": return "M9 5 L16 12 L9 19";
+                default: return "M6 6 L18 18 M18 6 L6 18";
+                }
+            } }
+        }
+        }
+    }
+    component QueueButton: Rectangle {
+        id: button
+        property string icon: "close"
+        property string label: ""
+        property string actionName: ""
+        signal activated()
+        width: 31 * queue.typeUnit; height: width; radius: 9 * queue.unit
+        color: buttonMouse.containsMouse ? (queue.hud.dark ? "#328ca07c" : "#21919c81") : "transparent"
+        opacity: enabled ? 1 : .3
+        QueueIcon { anchors.centerIn: parent; kind: button.icon }
+        Accessible.role: Accessible.Button
+        Accessible.name: label
+        Accessible.onPressAction: button.activate()
+        function activate() {
+            if (actionName) rhine.action(actionName);
+            activated();
+        }
+        ToolTip.visible: buttonMouse.containsMouse
+        ToolTip.text: label; ToolTip.delay: 550
+        MouseArea {
+            id: buttonMouse; anchors.fill: parent; hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onWheel: function(wheel) { wheel.accepted = false }
+            onClicked: button.activate()
+        }
+    }
 
     LiquidGlass {
-        anchors.fill: parent
-        background: queue.background
-        sampleX: queue.sampleX
-        sampleY: queue.sampleY
-        uiScale: queue.unit
-        radius: 27 * queue.unit
-        dark: queue.hud.dark === true
+        anchors.fill: parent; background: queue.background
+        sampleX: queue.sampleX; sampleY: queue.sampleY
+        uiScale: queue.unit; radius: 27 * queue.unit; dark: queue.hud.dark === true
     }
-
-    MouseArea { anchors.fill: parent; onClicked: {} }
-
+    // This component is a root-level input surface, above the page input
+    // layer. Decorative materials never own a MouseArea.
+    MouseArea { anchors.fill: parent; onWheel: function(wheel) { wheel.accepted = true } }
     Text {
-        x: 25 * queue.unit; y: 23 * queue.unit
-        text: "播放队列"
-        font.family: rhineFontFamily
-        font.pixelSize: 24 * queue.unit
-        font.weight: Font.DemiBold
-        color: queue.ink
+        id: heading
+        x: 25 * queue.unit; y: 24 * queue.unit
+        text: "播放列表"; color: queue.ink
+        font.family: rhineFontFamily; font.pixelSize: 21 * queue.typeUnit; font.weight: Font.DemiBold
     }
-
-    Rectangle {
-        x: parent.width - 57 * queue.unit
-        y: 18 * queue.unit; width: 38 * queue.unit; height: 38 * queue.unit
-        radius: height / 2
-        color: closeMouse.containsMouse
-            ? (queue.hud.dark ? "#4267775e" : "#5ba4ad91")
-            : "transparent"
+    Text {
+        x: heading.x + heading.implicitWidth + 7 * queue.unit; y: heading.y + 3 * queue.unit
+        text: Number(queue.hud.queueCount || 0).toLocaleString()
+        color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+    }
+    QueueButton {
+        objectName: "queueClose"
+        x: parent.width - width - 18 * queue.unit; y: 18 * queue.unit
+        label: "关闭播放列表"; actionName: "close-modal"
+    }
+    Row {
+        anchors.right: parent.right; anchors.rightMargin: 22 * queue.unit
+        y: 65 * queue.unit; spacing: 8 * queue.unit
+        QueueButton {
+            objectName: "queueCollectAll"; icon: "add"; label: "收藏全部到歌单"
+            enabled: queue.hud.queueCanCollect === true && Number(queue.hud.queueCount || 0) > 0
+            actionName: "player:queue-collect-all"
+        }
         Text {
-            anchors.centerIn: parent
-            text: "×"; color: queue.ink
-            font.pixelSize: 27 * queue.unit
+            anchors.verticalCenter: parent.verticalCenter
+            text: "收藏全部"; color: queue.muted
+            font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+            MouseArea {
+                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                enabled: queue.hud.queueCanCollect === true && Number(queue.hud.queueCount || 0) > 0
+                onClicked: rhine.action("player:queue-collect-all")
+            }
         }
-        MouseArea {
-            id: closeMouse; anchors.fill: parent; hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: rhine.action("close-modal")
+        QueueButton {
+            objectName: "queueClear"; icon: "trash"
+            label: queue.hud.queueRoaming ? "退出漫游" : "清空待播，保留当前播放"
+            actionName: queue.hud.queueRoaming ? "roam:exit" : "player:clear"
         }
-    }
-
-    Text {
-        x: 27 * queue.unit; y: 97 * queue.unit
-        width: parent.width - 54 * queue.unit
-        text: String(queue.hud.queueCurrentTitle || "尚未播放")
-        elide: Text.ElideRight
-        color: queue.ink
-        font.family: rhineFontFamily
-        font.pixelSize: 18 * queue.unit; font.weight: Font.DemiBold
-    }
-    Text {
-        x: 27 * queue.unit; y: 127 * queue.unit
-        width: parent.width - 54 * queue.unit
-        text: String(queue.hud.queueCurrentArtist || "")
-        elide: Text.ElideRight
-        color: queue.muted
-        font.family: rhineFontFamily
-        font.pixelSize: 13 * queue.unit
-    }
-    Rectangle {
-        x: 26 * queue.unit; y: 166 * queue.unit
-        width: parent.width - 52 * queue.unit
-        height: Math.max(1, queue.unit)
-        color: queue.stroke; opacity: .38
-    }
-    Text {
-        x: 27 * queue.unit; y: 190 * queue.unit
-        text: "QUEUE  /  " + Number(queue.hud.queueCount || 0).toLocaleString() + " 首"
-        color: queue.muted; font.family: rhineFontFamily
-        font.pixelSize: 12 * queue.unit; font.letterSpacing: .5 * queue.unit
-    }
-    Rectangle {
-        x: parent.width - 132 * queue.unit; y: 180 * queue.unit
-        width: 110 * queue.unit; height: 35 * queue.unit; radius: 12 * queue.unit
-        color: clearMouse.containsMouse ? (queue.hud.dark ? "#2f8a947f" : "#4d9aa78f") : "transparent"
         Text {
-            anchors.centerIn: parent
-            text: queue.hud.queueRoaming ? "退出漫游" : "清空待播"
-            color: queue.ink; font.pixelSize: 13 * queue.unit
-            font.family: rhineFontFamily
-        }
-        MouseArea {
-            id: clearMouse; anchors.fill: parent; hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: rhine.action(queue.hud.queueRoaming ? "roam:exit" : "player:clear")
+            anchors.verticalCenter: parent.verticalCenter
+            text: queue.hud.queueRoaming ? "退出漫游" : "清空待播"; color: queue.muted
+            font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                onClicked: rhine.action(queue.hud.queueRoaming ? "roam:exit" : "player:clear") }
         }
     }
-
+    Rectangle {
+        x: 25 * queue.unit; y: 109 * queue.unit; width: parent.width - 50 * queue.unit
+        height: Math.max(.6, queue.unit); color: queue.muted; opacity: .18
+    }
     ListView {
         id: songList
         objectName: "playerQueueList"
-        x: 19 * queue.unit
-        y: 238 * queue.unit
-        width: parent.width - 38 * queue.unit
-        height: Math.max(80, parent.height - 313 * queue.unit)
-        clip: true
-        spacing: 3 * queue.unit
-        model: stableQueueRows
-        cacheBuffer: 250
-        boundsBehavior: Flickable.StopAtBounds
+        x: 15 * queue.unit; y: 122 * queue.unit
+        width: parent.width - 30 * queue.unit
+        height: Math.max(50, parent.height - 188 * queue.unit)
+        clip: true; model: stableQueueRows; reuseItems: true
+        cacheBuffer: 180 * queue.unit; boundsBehavior: Flickable.StopAtBounds
         flickDeceleration: 1400
-        ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
-            width: 3 * queue.unit
-            contentItem: Rectangle {
-                radius: width / 2; color: queue.accent; opacity: .36
+        WheelHandler {
+            target: null
+            onWheel: function(event) {
+                var delta = event.pixelDelta.y || event.angleDelta.y / 120 * 64 * queue.unit;
+                var maximum = Math.max(0, songList.contentHeight - songList.height);
+                songList.contentY = Math.max(0, Math.min(maximum, songList.contentY - delta));
+                event.accepted = true;
             }
+        }
+        // Fade the list's own layer. It remains the event source; there is
+        // no duplicate texture surface or invisible input proxy over it.
+        layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
+        layer.effect: ShaderEffect {
+            objectName: "playerQueueEdgeFade"
+            property variant source
+            property size panelSize: Qt.size(songList.width, songList.height)
+            property real horizontal: 0
+            property real fadePx: 40 * queue.unit
+            property real fadeStart: songList.contentY > 4 * queue.unit ? 1 : 0
+            property real fadeEnd: songList.contentY + songList.height < songList.contentHeight - 4 * queue.unit ? 1 : 0
+            property real blurStrength: 1.7 * queue.unit
+            fragmentShader: "qrc:/shaders/softEdgeFade.frag.qsb"
+        }
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded; width: 3 * queue.unit
+            contentItem: Rectangle { radius: width / 2; color: queue.accent; opacity: .35 }
         }
         delegate: Item {
             id: track
@@ -156,167 +203,140 @@ Item {
             required property string trackTitle
             required property string trackArtist
             required property int trackIndex
+            required property string trackKey
+            required property string trackCover
+            required property string trackDuration
+            required property string trackSource
+            required property bool sourceLink
+            objectName: "queueRow_" + trackIndex
             readonly property bool selected: trackIndex === Number(queue.hud.queueIndex)
-            width: songList.width
-            height: 62 * queue.unit
-
+            readonly property bool hovered: rowHover.hovered
+            width: songList.width; height: Math.max(82 * queue.unit, 74 * queue.typeUnit)
+            HoverHandler { id: rowHover }
             Rectangle {
-                anchors.fill: parent
-                anchors.leftMargin: 1 * queue.unit
-                anchors.rightMargin: 1 * queue.unit
-                radius: 13 * queue.unit
-                color: rowMouse.containsMouse
-                    ? (queue.hud.dark ? "#4a9db18d" : "#6899a58d")
-                    : track.selected
-                      ? (queue.hud.dark ? "#338caa85" : "#3b829477")
-                      : "transparent"
-                Behavior on color { ColorAnimation { duration: queue.hud.reduced ? 0 : 140 } }
-            }
-            Rectangle {
-                x: 14 * queue.unit; y: parent.height - 1.5 * queue.unit
-                height: Math.max(.65, queue.unit * .65)
-                width: parent.width - 29 * queue.unit
-                color: queue.stroke
-                opacity: .20
-                visible: index < stableQueueRows.count - 1
-            }
-            Text {
-                x: 18 * queue.unit; y: 9 * queue.unit
-                width: parent.width - 132 * queue.unit
-                text: track.trackTitle
-                color: queue.ink; elide: Text.ElideRight
-                font.family: rhineFontFamily; font.pixelSize: 15 * queue.unit
-                font.weight: track.selected ? Font.DemiBold : Font.Normal
-            }
-            Text {
-                x: 18 * queue.unit; y: 34 * queue.unit
-                width: parent.width - 132 * queue.unit
-                text: track.trackArtist
-                color: queue.muted; elide: Text.ElideRight
-                font.family: rhineFontFamily
-                font.pixelSize: 11.5 * queue.unit
+                objectName: "queueRowHighlight"
+                anchors.fill: parent; anchors.margins: 2 * queue.unit
+                radius: 12 * queue.unit
+                color: track.hovered ? (queue.hud.dark ? "#329db18d" : "#21919c81")
+                       : track.selected ? (queue.hud.dark ? "#268caa85" : "#18829477") : "transparent"
+                Behavior on color { ColorAnimation { duration: queue.hud.reduced ? 0 : 100 } }
             }
             MouseArea {
-                id: rowMouse
-                anchors.fill: parent; hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
+                objectName: "queueRowPlay_" + track.trackIndex
+                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                 onWheel: function(wheel) { wheel.accepted = false }
-                onClicked: rhine.action("player:queue-play:" + track.trackIndex)
+                onClicked: queue.rowAction("queue-play", track.trackIndex, track.trackKey)
             }
             Rectangle {
-                x: parent.width - 92 * queue.unit; y: 12 * queue.unit
-                width: 33 * queue.unit; height: 35 * queue.unit
-                radius: 11 * queue.unit
-                color: playMouse.containsMouse
-                    ? (queue.hud.dark ? "#559ab487" : "#5990a582")
-                    : "transparent"
+                id: artwork
+                x: 12 * queue.unit; y: (parent.height - height) / 2
+                width: 50 * queue.unit; height: width
+                color: queue.hud.dark ? "#3e483b" : "#d8dcce"
+                Text { anchors.centerIn: parent; text: "♪"; color: queue.muted; font.pixelSize: 24 * queue.unit }
+                Image {
+                    anchors.fill: parent; source: track.trackCover
+                    sourceSize: Qt.size(100, 100); asynchronous: true; cache: true
+                    fillMode: Image.PreserveAspectCrop
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    visible: track.hovered || track.selected
+                    color: track.hovered ? "#66000000" : "#33000000"
+                    QueueIcon { anchors.centerIn: parent; kind: "play"; tint: "#ffffff" }
+                }
+                MouseArea {
+                    objectName: "queueCoverPlay_" + track.trackIndex
+                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                    onWheel: function(wheel) { wheel.accepted = false }
+                    onClicked: queue.rowAction("queue-play", track.trackIndex, track.trackKey)
+                }
+            }
+            Column {
+                x: 76 * queue.unit; anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - x - 86 * queue.unit
+                spacing: 3 * queue.unit
                 Text {
-                    anchors.centerIn: parent
-                    text: track.selected ? "♫" : "▶"
+                    width: parent.width; text: track.trackTitle; elide: Text.ElideRight
                     color: track.selected ? queue.accent : queue.ink
-                    font.pixelSize: track.selected ? 20 * queue.unit : 16 * queue.unit
+                    font.family: rhineFontFamily; font.pixelSize: 15.5 * queue.typeUnit
+                    font.weight: track.selected ? Font.DemiBold : Font.Normal
                 }
-                MouseArea {
-                    id: playMouse; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onWheel: function(wheel) { wheel.accepted = false }
-                    onClicked: rhine.action("player:queue-play:" + track.trackIndex)
+                Text {
+                    width: parent.width; text: track.trackArtist; elide: Text.ElideRight
+                    color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+                }
+                Text {
+                    objectName: "queueSource_" + track.trackIndex
+                    width: parent.width; text: "来源：" + track.trackSource; elide: Text.ElideRight
+                    color: queue.muted; opacity: .8
+                    font.family: rhineFontFamily; font.pixelSize: 10.5 * queue.typeUnit
+                    MouseArea {
+                        anchors.fill: parent; enabled: track.sourceLink
+                        cursorShape: Qt.PointingHandCursor
+                        onWheel: function(wheel) { wheel.accepted = false }
+                        onClicked: queue.rowAction("queue-source", track.trackIndex, track.trackKey)
+                    }
+                }
+            }
+            Text {
+                anchors.right: parent.right; anchors.rightMargin: 15 * queue.unit
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !track.hovered
+                text: track.trackDuration; color: queue.muted
+                font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+            }
+            Row {
+                visible: track.hovered
+                anchors.right: parent.right; anchors.rightMargin: 9 * queue.unit
+                anchors.verticalCenter: parent.verticalCenter; spacing: 3 * queue.unit
+                QueueButton {
+                    objectName: "queueCollect_" + track.trackIndex
+                    icon: "add"; label: "收藏到歌单"; enabled: queue.hud.queueCanCollect === true
+                    onActivated: queue.rowAction("queue-collect", track.trackIndex, track.trackKey)
+                }
+                QueueButton {
+                    objectName: "queueRemove_" + track.trackIndex
+                    label: track.selected ? "当前播放歌曲保留在队列" : "从播放队列移除"
+                    enabled: !track.selected && !queue.hud.queueRoaming
+                    onActivated: queue.rowAction("remove", track.trackIndex, track.trackKey)
                 }
             }
             Rectangle {
-                x: parent.width - 50 * queue.unit; y: 12 * queue.unit
-                width: 33 * queue.unit; height: 35 * queue.unit
-                radius: 11 * queue.unit
-                visible: !track.selected && !queue.hud.queueRoaming
-                color: removeMouse.containsMouse
-                    ? (queue.hud.dark ? "#5ea17870" : "#4eb4b09a")
-                    : "transparent"
-                Text {
-                    anchors.centerIn: parent
-                    text: "×"; color: queue.ink
-                    font.pixelSize: 20 * queue.unit
-                }
-                MouseArea {
-                    id: removeMouse; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onWheel: function(wheel) { wheel.accepted = false }
-                    onClicked: rhine.action("player:remove:" + track.trackIndex)
-                }
+                x: 76 * queue.unit; y: parent.height - height
+                width: parent.width - x - 14 * queue.unit
+                height: Math.max(.6, queue.unit * .6); color: queue.muted; opacity: .13
+                visible: index < stableQueueRows.count - 1 && !track.hovered
             }
         }
     }
-
-    // Use the same soft-edge shader as the left navigation. Only the
-    // visual texture is faded/softened: ListView stays the interactive source.
-    ShaderEffectSource {
-        id: listTexture
-        sourceItem: songList
-        hideSource: true
-        visible: false
-        live: true
-        smooth: true
+    Text {
+        anchors.centerIn: songList; visible: stableQueueRows.count === 0
+        text: "播放列表是空的"; color: queue.muted
+        font.family: rhineFontFamily; font.pixelSize: 15 * queue.typeUnit
     }
-    ShaderEffect {
-        id: edgeFeather
-        objectName: "playerQueueEdgeFade"
-        x: songList.x; y: songList.y
-        width: songList.width; height: songList.height
-        property variant source: listTexture
-        property size panelSize: Qt.size(width, height)
-        property real horizontal: 0
-        property real fadePx: 78 * queue.unit
-        property real fadeStart: songList.contentY > 4 * queue.unit ? 1 : 0
-        property real fadeEnd: songList.contentY + songList.height < songList.contentHeight - 4 * queue.unit ? 1 : 0
-        property real blurStrength: 1.7 * queue.unit
-        fragmentShader: "qrc:/shaders/softEdgeFade.frag.qsb"
-    }
-
     Rectangle {
-        x: 26 * queue.unit; y: parent.height - 63 * queue.unit
-        width: parent.width - 52 * queue.unit; height: Math.max(.7, queue.unit)
-        color: queue.stroke; opacity: .25
+        x: 25 * queue.unit; y: parent.height - 57 * queue.unit
+        width: parent.width - 50 * queue.unit; height: Math.max(.6, queue.unit)
+        color: queue.muted; opacity: .18
     }
     Text {
-        x: 28 * queue.unit; y: parent.height - 45 * queue.unit
+        x: 27 * queue.unit; y: parent.height - 39 * queue.unit
         text: Number(queue.hud.queueCount || 0) > 0
             ? (queue.pageStart + 1) + "–" + Math.min(Number(queue.hud.queueCount), queue.pageStart + stableQueueRows.count)
-            : "0"
-        color: queue.muted; font.pixelSize: 12 * queue.unit
-        font.family: rhineFontFamily
+              + " / " + Number(queue.hud.queueCount).toLocaleString() : "0 首"
+        color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
     }
-    // Fixed-size pages keep a 4,000+ song queue cheap even during playback.
-    // Scrolling within a page remains smooth, the arrows browse the full queue.
-    Rectangle {
-        x: 100 * queue.unit; y: parent.height - 53 * queue.unit
-        width: 34 * queue.unit; height: 31 * queue.unit
-        radius: 11 * queue.unit
-        color: previousMouse.containsMouse && queue.pageStart > 0
-            ? (queue.hud.dark ? "#448d9b8c" : "#508c9977") : "transparent"
-        opacity: queue.pageStart > 0 ? 1 : .26
-        Text { anchors.centerIn: parent; text: "‹"; font.pixelSize: 24 * queue.unit; color: queue.ink }
-        MouseArea { id: previousMouse; anchors.fill: parent; hoverEnabled: true
-            enabled: queue.pageStart > 0
-            cursorShape: Qt.PointingHandCursor
-            onClicked: rhine.action("player:queue-page-prev") }
-    }
-    Rectangle {
-        x: 144 * queue.unit; y: parent.height - 53 * queue.unit
-        width: 34 * queue.unit; height: 31 * queue.unit
-        radius: 11 * queue.unit
-        color: nextMouse.containsMouse && queue.pageStart + queue.pageSize < Number(queue.hud.queueCount || 0)
-            ? (queue.hud.dark ? "#448d9b8c" : "#508c9977") : "transparent"
-        opacity: queue.pageStart + queue.pageSize < Number(queue.hud.queueCount || 0) ? 1 : .26
-        Text { anchors.centerIn: parent; text: "›"; font.pixelSize: 24 * queue.unit; color: queue.ink }
-        MouseArea { id: nextMouse; anchors.fill: parent; hoverEnabled: true
+    Row {
+        anchors.right: parent.right; anchors.rightMargin: 22 * queue.unit
+        y: parent.height - 47 * queue.unit; spacing: 9 * queue.unit
+        QueueButton {
+            objectName: "queuePrevious"; icon: "prev"; label: "上一页"
+            enabled: queue.pageStart > 0; actionName: "player:queue-page-prev"
+        }
+        QueueButton {
+            objectName: "queueNext"; icon: "next"; label: "下一页"
             enabled: queue.pageStart + queue.pageSize < Number(queue.hud.queueCount || 0)
-            cursorShape: Qt.PointingHandCursor
-            onClicked: rhine.action("player:queue-page-next") }
-    }
-    Text {
-        x: parent.width - 160 * queue.unit
-        y: parent.height - 45 * queue.unit
-        text: "SCROLL  /  QUEUE"
-        color: queue.muted; opacity: .76
-        font.pixelSize: 10 * queue.unit; font.letterSpacing: 1 * queue.unit
+            actionName: "player:queue-page-next"
+        }
     }
 }

@@ -110,6 +110,7 @@ subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g61.py"))],
 subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g62.py"))], check=True)
 subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g63.py"))], check=True)
 subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g64.py"))], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g65.py"))], check=True)
 print("G57 UI and private radio applied successfully.")
 
 

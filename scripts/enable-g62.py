@@ -192,7 +192,7 @@ edit("Qt/qml/Main.qml",
 root=Path(__file__).resolve().parents[1]
 target=Path("Qt/qml/PlayerQueueGlass.qml")
 target.parent.mkdir(parents=True,exist_ok=True)
-shutil.copyfile(root/"maintained/Qt/qml/PlayerQueueGlass.qml",target)
+shutil.copyfile(root/"maintained/G64-PlayerQueueGlass.qml",target)
 edit("Qt/CMakeLists.txt",
     'set_source_files_properties(qml/PlayerTitleMarquee.qml PROPERTIES QT_RESOURCE_ALIAS PlayerTitleMarquee.qml)',
     '''set_source_files_properties(qml/PlayerTitleMarquee.qml PROPERTIES QT_RESOURCE_ALIAS PlayerTitleMarquee.qml)
