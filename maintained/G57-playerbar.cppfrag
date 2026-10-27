@@ -7,20 +7,31 @@ void NativeHud::playerBar(double, double y, double width) {
     const QJsonArray light{.98,.97,.94,1};
     auto textInk = ink();
     auto subtle = ink(); subtle[3] = .36;
-    // A single translucent, softly rounded capsule. Never a full-height bar.
-    const QString capsule = QString("M 42 %1 L %2 %1 C %3 %1 %4 %5 %4 %6 L %4 %7 C %4 %8 %3 %9 %2 %9 L 42 %9 C 15 %9 15 %8 15 %7 L 15 %6 C 15 %5 15 %1 42 %1 Z")
-       .arg(y - 8).arg(width - 42).arg(width - 23).arg(width - 15)
-       .arg(y + 1).arg(y + 15).arg(y + 66).arg(y + 86).arg(y + 94);
+    // An actual stadium silhouette: left/right ends are exact half-circles
+    // with control points calculated from the bar's full height.
+    // Glass itself comes from the QML LiquidGlass layer below this outline.
+    const double left = 15., right = width - 15., top = y - 8., bottom = y + 94.;
+    const double radius = (bottom - top) / 2., k = 0.5522847498307936 * radius;
+    const auto pt = [](double xx, double yy) {
+        return QString::number(xx, 'f', 2) + " " + QString::number(yy, 'f', 2);
+    };
+    const QString capsule = "M " + pt(left + radius, top) +
+        " L " + pt(right - radius, top) +
+        " C " + pt(right - radius + k, top) + " " + pt(right, top + radius - k) + " " + pt(right, top + radius) +
+        " C " + pt(right, top + radius + k) + " " + pt(right - radius + k, bottom) + " " + pt(right - radius, bottom) +
+        " L " + pt(left + radius, bottom) +
+        " C " + pt(left + radius - k, bottom) + " " + pt(left, bottom - radius + k) + " " + pt(left, bottom - radius) +
+        " C " + pt(left, top + radius - k) + " " + pt(left + radius - k, top) + " " + pt(left + radius, top) + " Z";
     op({"fill-path", capsule,
-        dark ? QJsonArray{.20,.22,.20,.83} : QJsonArray{.91,.90,.86,.82}});
-    op({"path", capsule, 1.2,
-        dark ? QJsonArray{.96,.97,.92,.23} : QJsonArray{1,1,1,.70}, QJsonArray{}, 0});
+        dark ? QJsonArray{.21,.25,.20,.17} : QJsonArray{.94,.94,.90,.20}});
+    op({"path", capsule, 1.25,
+        dark ? QJsonArray{.93,.96,.89,.33} : QJsonArray{1,1,1,.82}, QJsonArray{}, 0});
 
     const double duration = player.state["duration"].toDouble();
     const double position = duration > 0 ? std::clamp(player.state["position"].toDouble() / duration, 0., 1.) : 0;
-    playerSeekRect = QRectF(45, y - 3, width - 90, 20);
-    fill(45, y + 2, width - 90, 2, subtle);
-    fill(45, y + 2, (width - 90) * position, 2, accent);
+    // A single inset track, rendered by the QML seek control. No duplicate
+    // native line and no accidental clipping at the top of the capsule.
+    playerSeekRect = QRectF(67, y - 3, width - 134, 20);
 
     const double coverX = 40, coverY = cy - 26;
     if (!player.coverImage.isEmpty()) { image(player.coverImage, coverX, coverY, 52, 52); }
@@ -32,7 +43,7 @@ void NativeHud::playerBar(double, double y, double width) {
     const double infoWidth = std::max(125., center - 560);
     auto title = player.failed ? player.status : player.current.value("title").toString();
     if (title.isEmpty() && !player.failed) { title = QStringLiteral("尚未播放"); }
-    centeredText(fit(title, 19, infoWidth, "demibold"), 109, cy - 11, 19, "demibold");
+    // The QML ping-pong marquee owns title pixels; native click hits remain.
     auto artist = player.current.value("artist").toString();
     if (artist.isEmpty()) { artist = "RHINE LAB / MUSIC DATABASE"; }
     centeredText(fit(artist, 14, infoWidth), 109, cy + 14, 14);
@@ -65,15 +76,16 @@ void NativeHud::playerBar(double, double y, double width) {
         hit(x - 20, cy - 22, 40, 44, action, tooltip);
     };
 
-    const double reactionX = std::max(385., center - 382);
-    if (!player.current.isEmpty() && m_music->canMutate("/like")) {
+    // Reactions belong immediately after the song metadata, as in NetEase.
+    const double reactionX = 109 + infoWidth + 35;
+    if (width > 1200 && !player.current.isEmpty() && m_music->canMutate("/like")) {
         control(reactionX, "music:like-current", "喜欢 / 取消喜欢");
         const bool liked = m_music->likedIDs &&
              MusicData::indexOf(*m_music->likedIDs, player.current["id"]) >= 0;
         icon(reactionX, "M 12 21 C 9 18 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 15 18 12 21 Z",
              liked ? QJsonArray{.83,.32,.38,1} : textInk);
     }
-    if (!player.current.isEmpty() &&
+    if (width > 1200 && !player.current.isEmpty() &&
         player.current.value("provider").toString("netease") == "netease") {
         control(reactionX + 47, "player:comments", "打开当前歌曲评论");
         icon(reactionX + 47, "M 3 4 L 21 4 L 21 17 L 13 17 L 8 22 L 8 17 L 3 17 Z M 7 9 L 17 9 M 7 13 L 14 13");
@@ -124,9 +136,8 @@ void NativeHud::playerBar(double, double y, double width) {
              QJsonArray{.70,.42,.42,1});
     }
 
-    // Time labels are above the bottom edge, separate from the progress track.
-    centeredText(clock(player.state["position"].toDouble()) + " / " + clock(duration),
-                 center, y + 78, 12, "regular", true);
+    // No persistent timestamp under transport buttons. The hover seek
+    // tooltip already supplies exact position and duration when needed.
     const double vx = width - 270;
     control(vx - 25, "player:mute", "静音 / 恢复");
     icon(vx - 25, "M 2 9 L 6 9 L 12 4 L 12 20 L 6 15 L 2 15 Z M 16 8 C 19 10 19 14 16 16 M 19 4 C 25 9 25 15 19 20");
