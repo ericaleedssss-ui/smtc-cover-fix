@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rhine:
-    name: Rhine G53 navigation, history and glass player bar
+    name: Rhine G53 maintained UI improvements
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -68,6 +68,13 @@ jobs:
         print(''SMTC artwork patch applied successfully'')
 
         '
+    - name: Apply maintained Rhine interface improvements
+      shell: bash
+      run: |
+        set -euo pipefail
+        git clone --depth 1 --branch rhine-rebuild-from-g53 https://github.com/ericaleedssss-ui/smtc-cover-fix.git "$RUNNER_TEMP/rhine-maintained"
+        python "$RUNNER_TEMP/rhine-maintained/scripts/apply-maintained.py"
+        git diff --check
     - name: Configure MSVC
       uses: ilammy/msvc-dev-cmd@v1
       with:
