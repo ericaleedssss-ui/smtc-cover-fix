@@ -34,13 +34,13 @@ edit("Qt/src/MusicPlayer.h", "    quint64 m_generation = 0;\n", """    quint64 m
     void fetchRoam();
 """)
 edit("Qt/src/MusicPlayer.cpp", '#include "MusicData.h"\n', '#include "MusicData.h"\n#include <QPointer>\n')
-edit("Qt/src/MusicPlayer.cpp", '    if (source) {\n        QSet<QString> seen;', '''    if (roamActive && !m_roamInternalPlay) {
+edit("Qt/src/MusicPlayer.cpp", '    if (heartPending) { cancelHeart(); }\n    if (source) {', '''    if (roamActive && !m_roamInternalPlay) {
         // Choosing an unrelated song exits the radio without reinstating the
         // old queue; the newly selected track becomes the user's new context.
         leaveRoam(false);
     }
-    if (source) {
-        QSet<QString> seen;''')
+    if (heartPending) { cancelHeart(); }
+    if (source) {''')
 # Intercept all next/prev/track-end commands, preventing FM from repeating a 2-song list.
 edit("Qt/src/MusicPlayer.cpp", """void MusicPlayer::next(int direction, bool ended) {
     if (queue.isEmpty()) {""", """void MusicPlayer::next(int direction, bool ended) {
