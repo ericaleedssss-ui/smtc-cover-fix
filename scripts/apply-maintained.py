@@ -95,3 +95,10 @@ assert 'route = "/personal/fm/mode";' in discover
 assert 'route = "/simi/song";' not in discover
 assert 'parameters = {{"mode", "DEFAULT"}, {"limit", 30}};' in discover
 print("Navigation invariants verified.")
+
+# Scrobble is kept in a separate reviewable patch so the user interface
+# and server-side listening history remain independently testable.
+import subprocess
+import sys
+subprocess.run([sys.executable, str(Path(__file__).with_name("enable-scrobble.py"))], check=True)
+
