@@ -30,3 +30,15 @@ async enrichment, directory types, search/daily navigation and actual Loader
 identity before/during/after the queue. Windows CI runs those checks after
 compilation. Local software-renderer tests do not establish RHI visual quality,
 GPU timings or authenticated online API behavior; these remain CI/device QA.
+
+## Windows lifecycle follow-up
+
+The first G66 run compiled and deployed successfully but access-violated in
+Qt6QmlModels during the album-comments-to-track transition. This follow-up
+stabilizes featured comment models, hides the comments page before deferred
+teardown, and replaces the new QObject-array capture Repeater with two fixed
+captures. The precise Windows crash root is not established by local software
+rendering. No Windows QA assertion is removed; transition log boundaries were
+added for diagnosis. Local coverage includes 40 page exits, 160 unrelated state
+updates retaining featured delegates, wheel events, QML compilation and the
+existing layered-glass/source test. A Windows rerun is still required.
