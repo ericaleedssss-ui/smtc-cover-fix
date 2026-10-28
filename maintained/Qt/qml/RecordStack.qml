@@ -25,6 +25,15 @@ Item {
     readonly property real frontY:14*unit
     readonly property real gap:size*.22
     readonly property var hoveredRecord:{for(var i=0;i<rear.length;++i)if(rear[i].key===hoveredKey)return rear[i];return ({});}
+    readonly property var previousRecord:{for(var i=0;i<rear.length;++i)if(Number(rear[i].side)===-1)return rear[i];return ({});}
+    readonly property var nextRecord:{for(var i=0;i<rear.length;++i)if(Number(rear[i].side)===1)return rear[i];return ({});}
+    readonly property var previewRecords:{
+        var items=[];
+        if(previousRecord&&previousRecord.key)items.push({record:previousRecord,slot:-1});
+        if(front&&front.key)items.push({record:front,slot:0});
+        if(nextRecord&&nextRecord.key)items.push({record:nextRecord,slot:1});
+        return items;
+    }
     function hold(key){hoveredKey=key;expanded=true;closeFan.stop();}
     function release(key){if(hoveredKey===key)hoveredKey="";closeFan.restart();}
     function choose(value){
@@ -84,14 +93,35 @@ Item {
         width:stack.size;height:width;rotation:stack.direction*(1-stack.progress)*6;opacity:.35+stack.progress*.65
         source:stack.chosen.cover||"";sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop;asynchronous:true
     }
-    Row {objectName:"recordPreviewStrip";x:stack.frontX;y:stack.frontY+stack.size+9*stack.unit;spacing:8*stack.unit;z:25;visible:stack.expanded&&!stack.turning
-        Repeater {model:stack.rear
+    Row {
+        id:previewStrip
+        objectName:"recordPreviewStrip"
+        x:stack.frontX+Math.max(0,(stack.size-width)/2)
+        y:stack.frontY+stack.size+9*stack.unit
+        spacing:8*stack.unit;z:25
+        visible:stack.expanded&&!stack.turning&&stack.previewRecords.length>1
+        Repeater {
+            model:stack.previewRecords
             delegate:Rectangle {
                 required property var modelData
-                objectName:"recordPreview_"+modelData.key
-                width:32*Math.max(.9,stack.unit);height:width;radius:4;color:"#e6e9df";border.width:stack.hoveredKey===modelData.key?2:1;border.color:stack.hoveredKey===modelData.key?"#7f906d":"#aaffffff"
-                Image {anchors.fill:parent;anchors.margins:2;source:parent.modelData.cover||"";sourceSize.width:80;sourceSize.height:80;fillMode:Image.PreserveAspectCrop;asynchronous:true}
-                MouseArea {anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onEntered:stack.hold(parent.modelData.key);onExited:stack.release(parent.modelData.key);onClicked:stack.choose(parent.modelData)}
+                readonly property var record:modelData.record||({})
+                readonly property int slot:Number(modelData.slot)
+                readonly property bool current:slot===0
+                objectName:current?"recordPreviewCurrent":"recordPreview_"+record.key
+                width:32*Math.max(.9,stack.unit);height:width;radius:4
+                color:current?(rhine.state.dark?"#45503e":"#edf1e8"):"#e6e9df"
+                border.width:current||stack.hoveredKey===record.key?2:1
+                border.color:current?"#738265":(stack.hoveredKey===record.key?"#7f906d":"#aaffffff")
+                Image {anchors.fill:parent;anchors.margins:2;source:parent.record.cover||"";sourceSize.width:80;sourceSize.height:80;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+                MouseArea {
+                    anchors.fill:parent
+                    enabled:!parent.current&&!!parent.record.key&&!stack.turning
+                    hoverEnabled:enabled
+                    cursorShape:enabled?Qt.PointingHandCursor:Qt.ArrowCursor
+                    onEntered:if(enabled)stack.hold(parent.record.key)
+                    onExited:if(enabled)stack.release(parent.record.key)
+                    onClicked:if(enabled)stack.choose(parent.record)
+                }
             }
         }
         Text {text:stack.controller.info.recordsLoading?"读取中…":"更多收藏";height:32*Math.max(.9,stack.unit);verticalAlignment:Text.AlignVCenter;color:rhine.state.dark?"#b3bea6":"#7b876e";font.family:rhineFontFamily;font.pixelSize:11*Math.max(.9,stack.unit)
