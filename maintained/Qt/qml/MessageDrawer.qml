@@ -26,7 +26,8 @@ Controls.Popup {
     dim: false
     focus: true
     closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
-    onOpened: { x=Qt.binding(()=>drawer.destination); controller.setOpen(true); sample.scheduleUpdate(); }
+    onAboutToShow: controller.setOpen(true)
+    onOpened: { x=Qt.binding(()=>drawer.destination); sample.scheduleUpdate(); }
     onClosed: controller.setOpen(false)
     enter: Transition { NumberAnimation { property: "x"; from: drawer.parent.width; to: drawer.destination; duration: 200; easing.type: Easing.OutCubic } NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160 } }
     exit: Transition { NumberAnimation { property: "x"; to: drawer.parent.width; duration: 160; easing.type: Easing.InCubic } NumberAnimation { property: "opacity"; to: 0; duration: 130 } }

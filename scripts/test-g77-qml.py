@@ -61,7 +61,7 @@ MessageDrawer {id:panel;controller:messageController;sceneBackground:bg;unit:.95
 }''')
  from PySide6.QtQml import QQmlApplicationEngine
  engine=QQmlApplicationEngine();c=Controller();engine.rootContext().setContextProperty('messageController',c);engine.rootContext().setContextProperty('rhineFontFamily',font);engine.load(QUrl.fromLocalFile(str(d/'Harness.qml')));assert engine.rootObjects(),errors
- window=engine.rootObjects()[0];QTest.qWait(450)
+ window=engine.rootObjects()[0];assert c.opened,'message loading must start before the enter animation finishes';QTest.qWait(450)
  def find(name):
   obj=window.findChild(QObject,name)
   if obj:return obj
@@ -88,7 +88,7 @@ MessageDrawer {id:panel;controller:messageController;sceneBackground:bg;unit:.95
  click(find('messageRefresh'));assert c.refreshes==1
  click(find('messageClose'));QTest.qWait(230);assert not c.opened
  # Reopen, then close with an actual click outside the panel.
- panel=find('messageDrawer');panel.open();QTest.qWait(280);QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(150,200));QTest.qWait(230);assert not c.opened
+ panel=find('messageDrawer');panel.open();assert c.opened,'reopening must start loading immediately';QTest.qWait(280);QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(150,200));QTest.qWait(230);assert not c.opened
  for width,height in [(960,540),(1920,1080)]:
   window.setWidth(width);window.setHeight(height);panel.open();QTest.qWait(280);assert panel.property('width')<width and panel.property('height')<height;panel.close();QTest.qWait(200)
  assert not errors,errors

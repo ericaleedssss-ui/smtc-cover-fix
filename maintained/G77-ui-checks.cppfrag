@@ -17,7 +17,10 @@
                     return QJsonObject{{"body",body}};
                 };
                 auto *messages=qobject_cast<MessageCenter*>(backend.messages());
-                check(messages&&clickVisual(findVisual(window->contentItem(),"globalInbox")),"G77 existing inbox opens the real message drawer");settle(350);
+                check(messages&&clickVisual(findVisual(window->contentItem(),"globalInbox")),"G77 existing inbox opens the real message drawer");
+                QElapsedTimer messageWait;messageWait.start();
+                while(messages&&messageWait.elapsed()<5000&&(!messages->state()["open"].toBool()||messages->state()["loading"].toBool()||messages->rowCount()!=1||messages->state()["counts"].toList().value(0).toInt()!=505))settle(20);
+                if(messages)qInfo()<<"G77 first-open diagnostics: open"<<messages->state()["open"].toBool()<<"loading"<<messages->state()["loading"].toBool()<<"rows"<<messages->rowCount()<<"unread"<<messages->state()["counts"].toList().value(0).toInt()<<"waitMs"<<messageWait.elapsed();
                 check(messages&&messages->state()["open"].toBool()&&messages->rowCount()==1&&messages->state()["counts"].toList().value(0).toInt()==505,"G77 drawer loads real Host fixture messages and unread counts");
                 if(messages){
                     for(int t=1;t<4;++t){messages->selectTab(t);settle(80);check(messages->rowCount()==1&&messages->state()["tab"].toInt()==t,"G77 all four message tabs load their own endpoint");}
