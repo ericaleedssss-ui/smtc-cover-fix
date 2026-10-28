@@ -52,3 +52,17 @@ python scripts/test-build-source.py /path/to/applied/source
 No Windows build has been triggered for G69, as requested. The new Windows real-window checks are added but have not run. They exercise actual row right-click/copy/next, cover playback retaining the playlist, independent queue/page-instance/scroll retention, and real internal cover navigation/back without playback changes.
 
 Local tests use explicitly synthetic offline account/data/API boundaries; they do not prove live-account mutation permissions, paid-track downloads, all provider variants, or GPU frame time/refraction quality. The offline preview shows actual QML layout with test art and a plain test background, not the live architectural scene. Final visual/performance and real-account acceptance require the pending Windows build/run.
+
+## First Windows run and batch-check correction
+
+Run `40647708446` compiled and deployed successfully. All G69 real-window checks passed: real right-click/copy/next, cover playback retaining the playlist, retained queue/page/scroll, record navigation/back without playback changes. Existing Following/profile/glass/source/interaction checks also passed.
+
+The run stopped at the legacy queue collect-all assertion, which compared the final request alone with the full 4,079-song snapshot. G69 intentionally submits at most 100 IDs per request. The corrected Windows fixture accumulates every successful request, compares exact ordered IDs and uniqueness against the immutable snapshot, checks destination and add operation, verifies the 41 bounded requests, and checks that a rejected first request stops the chain while preserving the full selection for a deliberate retry. No production behavior or acceptance check was disabled.
+
+An additional compiled test executes the unchanged production playlistTracks/playlistTracksPage methods and actual MusicData implementation with an asynchronous mutation boundary. It tests 4,079 IDs, completion only after the last batch, second-batch failure, deliberate retry, account change and the 101-song boundary.
+
+```sh
+python scripts/test-g69-collection.py /path/to/applied/source --qt-prefix /path/to/qt/usr
+```
+
+Live-account acceptance and final GPU/performance assessment remain pending.

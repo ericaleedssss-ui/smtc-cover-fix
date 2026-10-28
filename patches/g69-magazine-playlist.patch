@@ -670,7 +670,7 @@ index 42ff5e3..e45ab51 100644
          const auto songs = music.directory ? music.directory->songs : music.tracks;
          if (index < 0 || index >= songs.size()) { return; }
 diff --git a/Qt/tests/UiChecks.cpp b/Qt/tests/UiChecks.cpp
-index 3281bad..40628ba 100644
+index 3281bad..dc1a4ee 100644
 --- a/Qt/tests/UiChecks.cpp
 +++ b/Qt/tests/UiChecks.cpp
 @@ -701,16 +701,69 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
@@ -767,6 +767,56 @@ index 3281bad..40628ba 100644
            "the main playlist entry opens its detail page consistently with navigation and discovery");
      backend.action("back"); refresh();
      // Render the new navigation and discover surface in the same real Qt window.
+@@ -1419,10 +1474,22 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         const auto savedSelected = music.current;
+         const auto savedDirectory = music.directory;
+         QString writtenIds;
++        QStringList successfulIds;
++        QVector<int> successfulBatchSizes;
++        int writeRequests = 0;
++        bool correctWriteTarget = true;
+         bool rejectQueueWrite = false;
+-        backend.host.fixture = [savedFixture, &writtenIds, &rejectQueueWrite](QString route, QJsonObject args) {
++        backend.host.fixture = [savedFixture, &writtenIds, &successfulIds, &successfulBatchSizes,
++                                &writeRequests, &correctWriteTarget, &rejectQueueWrite](QString route, QJsonObject args) {
+             if (route == "/playlist/tracks") {
++                ++writeRequests;
+                 writtenIds = args["tracks"].toString();
++                correctWriteTarget &= args["pid"] == "6501" && args["op"] == "add";
++                if (!rejectQueueWrite) {
++                    const auto batch = writtenIds.split(',');
++                    successfulIds.append(batch);
++                    successfulBatchSizes.append(batch.size());
++                }
+                 return QJsonObject{{"body", QJsonObject{{"code", rejectQueueWrite ? 500 : 200}}}};
+             }
+             return savedFixture(route, args);
+@@ -1508,12 +1575,22 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         check(click("queueCollectAll") && hud.queueCollectionOpen && hud.queueCollectionTracks.size() == player.queue.size(),
+               "collect-all click captures the complete queue across all pages");
+         const auto snapshotSize = hud.queueCollectionTracks.size();
++        QStringList expectedIds;
++        for (const auto &value : hud.queueCollectionTracks) { expectedIds.append(value.toObject()["id"].toString()); }
++        successfulIds.clear(); successfulBatchSizes.clear(); writeRequests = 0;
+         rejectQueueWrite = true;
+         backend.action("music:playlist-pick:6501"); waitQueueWrite();
+-        check(hud.queueCollectionOpen && !hud.queueCollectionTracks.isEmpty(), "failed collection keeps picker open for a deliberate retry");
+-        rejectQueueWrite = false;
++        check(hud.queueCollectionOpen && hud.queueCollectionTracks.size() == snapshotSize &&
++              writeRequests == 1 && successfulIds.isEmpty(),
++              "failed collection stops later batches and keeps the full picker snapshot for retry");
++        rejectQueueWrite = false; writeRequests = 0;
+         backend.action("music:playlist-pick:6501"); waitQueueWrite();
+-        check(writtenIds.split(',').size() == snapshotSize && hud.queueCollectionTracks.isEmpty(), "bulk collection writes all unique queue IDs through the existing mutation API");
++        check(successfulIds == expectedIds && QSet<QString>(successfulIds.begin(), successfulIds.end()).size() == snapshotSize &&
++              correctWriteTarget && hud.queueCollectionTracks.isEmpty() && !hud.queueCollectionOpen,
++              "bulk collection writes all unique queue IDs through the existing mutation API");
++        check(writeRequests == (snapshotSize + 99) / 100 &&
++              std::all_of(successfulBatchSizes.begin(), successfulBatchSizes.end(), [](int size) { return size > 0 && size <= 100; }),
++              "bulk collection verifies every ordered batch with at most 100 IDs per request");
+         hud.openModal("player"); hud.queueOffset = std::max(0, int(player.queue.size())-40); refresh();
+         check(click("queuePrevious") && hud.queueOffset == int(player.queue.size())-80, "previous-page click works from the final page");
+         check(click("queueClear") && player.queue.size() == 1 && player.index == 0 && hud.queueOffset == 0,
 diff --git a/Qt/tests/g69-magazine-client.mjs b/Qt/tests/g69-magazine-client.mjs
 new file mode 100644
 index 0000000..4196846
