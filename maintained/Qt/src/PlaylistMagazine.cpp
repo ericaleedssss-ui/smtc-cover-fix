@@ -50,7 +50,15 @@ QVariant PlaylistMagazine::data(const QModelIndex &i,int role) const {
     if(role==Heart)return m_likedKeys.contains(textID(song["id"]));
     return {};
 }
-bool PlaylistMagazine::active() const { return m_music->directory && (m_music->directoryInfo || (m_music->directoryLoading && m_music->current.isEmpty())) && QStringList{"playlist","album"}.contains(m_music->directory->item["kind"].toString()) && !m_hud->lyricsMode; }
+bool PlaylistMagazine::active() const {
+    const auto folder=m_music->directory;
+    if(!folder||m_hud->lyricsMode)return false;
+    const auto kind=folder->item["kind"].toString();
+    // Ordinary album details retain the native introduction/comment reader.
+    // Only albums reached through the record stack share its persistent page.
+    const bool magazine=kind=="playlist"||(kind=="album"&&folder->recordBrowse);
+    return magazine&&(m_music->directoryInfo||(m_music->directoryLoading&&m_music->current.isEmpty()));
+}
 QString PlaylistMagazine::session() const { return m_folder?m_folder->item["key"].toString():QString(); }
 QString PlaylistMagazine::query() const { return m_folder?m_folder->magazineQuery:QString(); }
 QString PlaylistMagazine::filter() const { return m_folder?m_folder->magazineFilter:QString("all"); }

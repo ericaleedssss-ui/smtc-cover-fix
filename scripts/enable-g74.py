@@ -31,5 +31,5 @@ p=Path("Qt/src/NativeHudDetail.cpp")
 s=p.read_text(encoding="utf-8")
 anchor='if (music.directoryInfo && music.directory && item["kind"] == "playlist") return;'
 if s.count(anchor)!=1:raise RuntimeError("Native magazine handoff anchor changed")
-s=s.replace(anchor,'if (music.directoryInfo && music.directory && QStringList{"playlist", "album"}.contains(item["kind"].toString())) return;')
+s=s.replace(anchor,'if (music.directoryInfo && music.directory && (item["kind"] == "playlist" || (item["kind"] == "album" && music.directory->recordBrowse))) return;')
 p.write_text(s,encoding="utf-8")
