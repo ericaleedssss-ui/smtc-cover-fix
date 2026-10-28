@@ -1,75 +1,69 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Effects
-import QtQuick.Controls.Basic as Controls
 Item {
-    id: stack
+    id:stack
     required property var controller
+    property Item background
     property real unit:1
     property bool reduced:false
-    property Item background
-    property string hoveredKey:""
-    property bool expanded:false
-    Timer {id:closeFan;interval:180;onTriggered:if(!stack.turning&&!area.hovered&&!stack.hoveredKey)stack.expanded=false}
-    function hold(key){hoveredKey=key;expanded=true;closeFan.stop();}
-    function release(key){if(hoveredKey===key)hoveredKey="";closeFan.restart();}
-    readonly property real gap:size*.29
-    readonly property var hoveredRecord:{for(var i=0;i<rear.length;++i)if(rear[i].key===hoveredKey)return rear[i];return ({});}
-    property var front:controller.info
-    property var rear:controller.covers
+    readonly property var front:controller.info
+    readonly property var rear:controller.covers
     property var paintedFront:({})
     property var frozenRear:[]
     property var chosen:({})
     property string startingKey:""
+    property string lastPreparedKey:""
+    property string hoveredKey:""
+    property bool expanded:false
     property bool turning:false
     property bool switchCooldown:false
-    Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
     property real progress:0
-    property real oldSlide:0
-    property real oldTilt:0
-    property real oldOpacity:1
-    property real size:Math.min(width-38*unit,height-70*unit)
-    Item {
-        x:0;y:-22*stack.unit;width:stack.expanded?stack.size+stack.gap*stack.rear.length+36*stack.unit:stack.width
-        height:stack.size+104*stack.unit
-        HoverHandler {id:area;onHoveredChanged:{if(hovered){stack.expanded=true;closeFan.stop();}else closeFan.restart();}}
-    }
-    function choose(value) {
-        if(turning || switchCooldown || !value || !value.key || value.key===front.key) return;
-        if(reduced) {switchCooldown=true;controller.openCover(value.key);cooldown.restart();return;}
-        startingKey=String(front.key||"");chosen=value;frozenRear=rear;turning=true;progress=0;oldSlide=0;oldTilt=0;oldOpacity=1;
-        turn.restart();
+    property int direction:1
+    readonly property real size:Math.min(width-42*unit,height-24*unit)
+    readonly property real frontX:(width-size)/2
+    readonly property real frontY:14*unit
+    readonly property real gap:size*.22
+    readonly property var hoveredRecord:{for(var i=0;i<rear.length;++i)if(rear[i].key===hoveredKey)return rear[i];return ({});}
+    function hold(key){hoveredKey=key;expanded=true;closeFan.stop();}
+    function release(key){if(hoveredKey===key)hoveredKey="";closeFan.restart();}
+    function choose(value){
+        if(turning||switchCooldown||!value||!value.key||value.key===front.key)return;
+        direction=value.side===-1?-1:1;
+        if(reduced){switchCooldown=true;controller.openCover(value.key);cooldown.restart();return;}
+        startingKey=String(front.key||"");chosen=value;frozenRear=rear;turning=true;progress=0;turn.restart();
     }
     onFrontChanged:{
-        if(turning && front.key!==startingKey && front.key!==chosen.key){turn.stop();turning=false;oldSlide=0;oldTilt=0;oldOpacity=1;}
-        if(!turning) paintedFront=front;
+        var key=String(front.key||"");if(key&&key!==lastPreparedKey){lastPreparedKey=key;controller.prepareRecords();}
+        if(turning&&front.key!==startingKey&&front.key!==chosen.key){turn.stop();turning=false;}
+        if(!turning)paintedFront=front;
     }
     Component.onCompleted:paintedFront=front
+    Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
+    Timer {id:closeFan;interval:170;onTriggered:if(!stack.turning&&!area.hovered&&!stack.hoveredKey)stack.expanded=false}
+    Item {x:-18*stack.unit;y:-8*stack.unit;width:stack.width+36*stack.unit;height:stack.height+64*stack.unit
+        HoverHandler {id:area;onHoveredChanged:{if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
+    }
     Repeater {
         model:stack.turning?stack.frozenRear:stack.rear
-        delegate: Item {
+        delegate:Item {
             id:sleeve
             required property var modelData
             required property int index
+            readonly property int side:modelData.side===-1?-1:1
             objectName:"recordSleeve_"+modelData.key
             width:stack.size;height:width
-            property bool expanded:stack.expanded
-            x:18*stack.unit + (expanded ? (index+1)*stack.gap : (-15-index*9)*stack.unit)
-            y:18*stack.unit + (expanded ? (-4-index*6-(stack.hoveredKey===modelData.key?9:0))*stack.unit : (-7-index*5)*stack.unit)
-            rotation:(index-1)*5-6
-            z:3-index
-            Behavior on x {NumberAnimation {duration:180;easing.type:Easing.OutCubic}}
-            Behavior on y {NumberAnimation {duration:180;easing.type:Easing.OutCubic}}
-            Rectangle {anchors.fill:parent;anchors.margins:-3;radius:4;color:"#20000000";y:3}
-            Rectangle {anchors.fill:parent;color:"#ebe8df";radius:3;border.width:stack.hoveredKey===sleeve.modelData.key?2:0;border.color:"#9baa83"
-                Image {anchors.fill:parent;anchors.margins:2;source:sleeve.modelData.cover || "";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
-            }
-            // Only the exposed right-hand strip owns this record. Raising its
-            // artwork never moves a full-size hit area over a neighbouring record.
-            MouseArea {id:coverMouse;objectName:"recordHit_"+sleeve.modelData.key
-                anchors.right:parent.right;anchors.top:parent.top;anchors.bottom:parent.bottom
-                width:stack.expanded?stack.gap:22*stack.unit
-                hoverEnabled:true;enabled:!stack.turning;cursorShape:Qt.PointingHandCursor
+            x:stack.frontX+side*(stack.expanded?stack.gap:14*stack.unit)
+            y:stack.frontY-(stack.expanded?5:3)*stack.unit-(stack.hoveredKey===modelData.key?6*stack.unit:0)
+            rotation:side*(stack.expanded?6:5)
+            z:stack.hoveredKey===modelData.key?4:2
+            Behavior on x {NumberAnimation {duration:stack.reduced?0:180;easing.type:Easing.OutCubic}}
+            Behavior on y {NumberAnimation {duration:stack.reduced?0:180;easing.type:Easing.OutCubic}}
+            Rectangle {anchors.fill:parent;anchors.margins:-3;color:"#d8d9cf";radius:4;border.width:1;border.color:"#aaffffff"}
+            Image {anchors.fill:parent;source:sleeve.modelData.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+            MouseArea {objectName:"recordHit_"+sleeve.modelData.key
+                x:sleeve.side<0?0:parent.width-width;y:0;width:stack.expanded?stack.gap:18*stack.unit;height:parent.height
+                enabled:!stack.turning;hoverEnabled:true;cursorShape:Qt.PointingHandCursor
                 onEntered:stack.hold(sleeve.modelData.key)
                 onExited:stack.release(sleeve.modelData.key)
                 onClicked:stack.choose(sleeve.modelData)
@@ -77,69 +71,47 @@ Item {
         }
     }
     Item {
-        x:18*stack.unit+stack.oldSlide;y:18*stack.unit-stack.progress*8*stack.unit
-        width:stack.size;height:width;rotation:stack.oldTilt;opacity:stack.turning?stack.oldOpacity:1;z:10
+        x:stack.frontX-stack.direction*stack.progress*stack.gap;y:stack.frontY-stack.progress*5*stack.unit
+        width:stack.size;height:width;rotation:-stack.direction*stack.progress*6;z:10
+        opacity:stack.turning?1-stack.progress*.9:1
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
-        layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.65;shadowOpacity:.22;shadowVerticalOffset:8;shadowColor:"#48533e"}
-        Rectangle {x:1;y:7;width:parent.width;height:parent.height;radius:4;color:"#25000000"}
-        Rectangle {anchors.fill:parent;color:"#e6e2d7";radius:3
-            Image {objectName:"playlistMainCover";anchors.fill:parent;source:stack.paintedFront.cover || "";asynchronous:true;sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop}
-        }
+        layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
+        Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
+        Image {objectName:"playlistMainCover";anchors.fill:parent;source:stack.paintedFront.cover||"";sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop;asynchronous:true}
     }
     Image {
-        visible:stack.turning;z:25
-        x:18*stack.unit-(1-stack.progress)*45*stack.unit
-        y:18*stack.unit-(1-stack.progress)*25*stack.unit
-        width:stack.size;height:width;rotation:(1-stack.progress)*-9
-        source:stack.chosen.cover || "";sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop;asynchronous:true
-        opacity:Math.min(1,stack.progress*2.5)
+        visible:stack.turning;z:20;x:stack.frontX+stack.direction*(1-stack.progress)*stack.gap;y:stack.frontY-(1-stack.progress)*5*stack.unit
+        width:stack.size;height:width;rotation:stack.direction*(1-stack.progress)*6;opacity:.35+stack.progress*.65
+        source:stack.chosen.cover||"";sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop;asynchronous:true
     }
-    Row {
-        objectName:"recordPreviewStrip"
-        x:18*stack.unit;y:stack.size+34*stack.unit;spacing:9*stack.unit;z:30
-        visible:stack.expanded&&!stack.turning
+    Row {objectName:"recordPreviewStrip";x:stack.frontX;y:stack.frontY+stack.size+9*stack.unit;spacing:8*stack.unit;z:25;visible:stack.expanded&&!stack.turning
         Repeater {model:stack.rear
             delegate:Rectangle {
                 required property var modelData
                 objectName:"recordPreview_"+modelData.key
-                width:46*stack.unit;height:width;radius:5
-                color:"#e8ebe0";border.width:stack.hoveredKey===modelData.key?2:1;border.color:stack.hoveredKey===modelData.key?"#7b8c65":"#aaffffff"
-                Image {anchors.fill:parent;anchors.margins:3;source:parent.modelData.cover||"";sourceSize.width:96;sourceSize.height:96;fillMode:Image.PreserveAspectCrop;asynchronous:true}
-                MouseArea {anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor
-                    onEntered:stack.hold(parent.modelData.key)
-                    onExited:stack.release(parent.modelData.key)
-                    onClicked:stack.choose(parent.modelData)
-                }
+                width:32*Math.max(.9,stack.unit);height:width;radius:4;color:"#e6e9df";border.width:stack.hoveredKey===modelData.key?2:1;border.color:stack.hoveredKey===modelData.key?"#7f906d":"#aaffffff"
+                Image {anchors.fill:parent;anchors.margins:2;source:parent.modelData.cover||"";sourceSize.width:80;sourceSize.height:80;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+                MouseArea {anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onEntered:stack.hold(parent.modelData.key);onExited:stack.release(parent.modelData.key);onClicked:stack.choose(parent.modelData)}
             }
         }
-    }
-    Item {
-        id:targetInfo;objectName:"recordTargetInfo"
-        x:18*stack.unit+stack.size+stack.gap*stack.rear.length+12*stack.unit;y:20*stack.unit
-        width:222*stack.unit;height:targetText.implicitHeight+30*stack.unit;z:35
-        visible:!!stack.hoveredRecord.key&&!stack.turning
-        Loader {anchors.fill:parent;active:!!stack.background
-            sourceComponent:LiquidGlass {background:stack.background;sampleX:targetInfo.mapToItem(stack.background,0,0).x;sampleY:targetInfo.mapToItem(stack.background,0,0).y;uiScale:stack.unit;radius:12*stack.unit;dark:rhine.state.dark===true}
+        Text {text:stack.controller.info.recordsLoading?"读取中…":"更多收藏";height:32*Math.max(.9,stack.unit);verticalAlignment:Text.AlignVCenter;color:rhine.state.dark?"#b3bea6":"#7b876e";font.family:rhineFontFamily;font.pixelSize:11*Math.max(.9,stack.unit)
+            visible:stack.controller.info.recordsMore===true&&Number(stack.controller.info.recordPosition)>=Number(stack.controller.info.recordCount)-1
+            MouseArea {anchors.fill:parent;enabled:!stack.controller.info.recordsLoading;cursorShape:Qt.PointingHandCursor;onClicked:stack.controller.prepareRecords()}
         }
-        Rectangle {anchors.fill:parent;radius:12*stack.unit;color:rhine.state.dark?"#b82e3728":"#c9f4f2e9";border.width:1;border.color:"#60ffffff"}
-        Column {id:targetText;x:14*stack.unit;y:14*stack.unit;width:parent.width-28*stack.unit;spacing:7*stack.unit
-            Text {objectName:"recordTargetTitle";width:parent.width;text:stack.hoveredRecord.title||"";wrapMode:Text.Wrap;maximumLineCount:3;elide:Text.ElideRight;color:rhine.state.dark?"#e6ebdf":"#36402f";font.family:rhineFontFamily;font.pixelSize:14*Math.max(.9,stack.unit);font.weight:Font.Medium}
-            Text {width:parent.width;text:(stack.hoveredRecord.kind==="album"?"专辑":"歌单")+(stack.hoveredRecord.artist?" · "+stack.hoveredRecord.artist:"");wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;color:rhine.state.dark?"#acb79e":"#7b866d";font.family:rhineFontFamily;font.pixelSize:12*Math.max(.9,stack.unit)}
+    }
+    Rectangle {
+        objectName:"recordTargetInfo";x:stack.frontX+6*stack.unit;y:stack.frontY+stack.size*.55;width:stack.size-12*stack.unit;height:targetText.implicitHeight+20*stack.unit
+        visible:!!stack.hoveredRecord.key&&!stack.turning;z:30;radius:8*stack.unit;color:rhine.state.dark?"#eb30392b":"#edf3f1e7";border.width:1;border.color:"#60ffffff"
+        Column {id:targetText;x:10*stack.unit;y:10*stack.unit;width:parent.width-20*stack.unit;spacing:4*stack.unit
+            Text {objectName:"recordTargetTitle";width:parent.width;text:stack.hoveredRecord.title||"";wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;color:rhine.state.dark?"#e6ebdf":"#36402f";font.family:rhineFontFamily;font.pixelSize:13*Math.max(.9,stack.unit)}
+            Text {width:parent.width;text:(stack.hoveredRecord.kind==="album"?"专辑":"歌单")+(stack.hoveredRecord.artist?" · "+stack.hoveredRecord.artist:"");elide:Text.ElideRight;color:rhine.state.dark?"#acb79e":"#7b866d";font.family:rhineFontFamily;font.pixelSize:11*Math.max(.9,stack.unit)}
         }
     }
     SequentialAnimation {
         id:turn
-        ParallelAnimation {
-            NumberAnimation {target:stack;property:"oldSlide";to:-55*stack.unit;duration:190;easing.type:Easing.InOutCubic}
-            NumberAnimation {target:stack;property:"oldTilt";to:-7;duration:190;easing.type:Easing.InOutCubic}
-            NumberAnimation {target:stack;property:"progress";to:.45;duration:190;easing.type:Easing.InOutCubic}
-        }
+        NumberAnimation {target:stack;property:"progress";to:.36;duration:190;easing.type:Easing.InOutCubic}
         ScriptAction {script:if(stack.chosen.kind!=="album")stack.controller.openCover(stack.chosen.key)}
-        ParallelAnimation {
-            NumberAnimation {target:stack;property:"oldSlide";to:-85*stack.unit;duration:330;easing.type:Easing.OutCubic}
-            NumberAnimation {target:stack;property:"oldOpacity";to:0;duration:220}
-            NumberAnimation {target:stack;property:"progress";to:1;duration:330;easing.type:Easing.OutCubic}
-        }
-        ScriptAction {script:{stack.paintedFront=stack.front;stack.oldSlide=0;stack.oldTilt=0;stack.oldOpacity=1;stack.turning=false;stack.hoveredKey="";closeFan.restart();if(stack.chosen.kind==="album")stack.controller.openCover(stack.chosen.key);}}
+        NumberAnimation {target:stack;property:"progress";to:1;duration:330;easing.type:Easing.OutCubic}
+        ScriptAction {script:{stack.paintedFront=stack.front;stack.turning=false;stack.hoveredKey="";closeFan.restart();if(stack.chosen.kind==="album")stack.controller.openCover(stack.chosen.key);}}
     }
 }

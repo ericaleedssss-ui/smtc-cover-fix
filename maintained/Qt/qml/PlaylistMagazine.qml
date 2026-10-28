@@ -14,7 +14,7 @@ Item {
     readonly property color accent:dark?"#becbad":"#788567"
     readonly property real contentLeft:Math.max(84*unit,width*.072)
     readonly property real contentRight:34*unit
-    readonly property real heroHeight:Math.max(312,352*unit)
+    readonly property real heroHeight:Math.max(228,328*unit)
     readonly property real rowHeight:Math.max(58,65*unit)
     readonly property string session:controller.session
     property bool restoring:true
@@ -36,7 +36,7 @@ Item {
     }
     component Label: Text {
         color:page.ink;font.family:rhineFontFamily;font.pixelSize:15*page.u
-        elide:Text.ElideRight;verticalAlignment:Text.AlignVCenter
+        textFormat:Text.PlainText;elide:Text.ElideRight;verticalAlignment:Text.AlignVCenter
     }
     component Action: Rectangle {
         property string label
@@ -68,29 +68,36 @@ Item {
             width:listing.width;height:page.heroHeight+112*page.u+(page.selecting?52*page.u:0)
             Item {
                 width:parent.width;height:page.heroHeight
-                Item {id:records;x:20*page.unit;y:8*page.unit;width:Math.min(330*page.unit,parent.width*.30);height:Math.min(page.heroHeight-25*page.unit,330*page.unit)}
-                Column {
+                Item {id:records;x:20*page.unit;y:8*page.unit;width:Math.max(270*page.u,Math.min(360*page.unit,parent.width*.32));height:Math.max(204*page.u,Math.min(page.heroHeight-24*page.unit,290*page.unit))}
+                Item {
                     id:details
-                    x:records.x+records.width+32*page.unit+((persistentRecords.expanded||persistentRecords.turning)?Math.min(190*page.unit,parent.width*.16):0);y:15*page.unit
-                    Behavior on x {NumberAnimation {duration:rhine.state.reduced?0:180;easing.type:Easing.OutCubic}}
-                    width:Math.min(parent.width-x-10*page.unit,800*page.unit);spacing:13*page.unit
-                    Label {width:parent.width;text:page.info.title||"正在读取歌单…";font.pixelSize:30*page.u;font.weight:Font.DemiBold;wrapMode:Text.Wrap;maximumLineCount:2;verticalAlignment:Text.AlignTop}
-                    Row {spacing:10*page.unit;visible:!!page.info.creatorAvatar || !!page.info.artist || !!page.info.createdDate
-                        Image {visible:!!page.info.creatorAvatar;width:28*page.u;height:width;source:page.info.creatorAvatar||"";asynchronous:true;sourceSize.width:64;sourceSize.height:64;fillMode:Image.PreserveAspectCrop}
-                        Label {text:page.info.artist||"";height:28*page.u;font.pixelSize:14*page.u
-                            MouseArea {anchors.fill:parent;enabled:!!page.info.creatorID;cursorShape:Qt.PointingHandCursor;onClicked:rhine.action("profile:open:"+page.info.creatorID)}
+                    x:records.x+records.width+30*page.unit;y:records.y+persistentRecords.frontY
+                    width:Math.min(parent.width-x-12*page.unit,840*page.unit);height:persistentRecords.size
+                    Column {
+                        width:parent.width;height:actionRow.y-9*page.unit;spacing:7*page.unit;clip:true
+                        Label {id:playlistTitle;objectName:"playlistTitle";width:parent.width;text:page.info.title||"正在读取歌单…";font.pixelSize:26*page.u;font.weight:Font.DemiBold;wrapMode:Text.Wrap;maximumLineCount:2;verticalAlignment:Text.AlignTop}
+                        Item {width:parent.width;height:Math.max(14*page.unit,Math.min(page.width>1150?42*page.unit:24*page.unit,details.height-actionRow.height-playlistTitle.implicitHeight-metaGroup.height-statistics.implicitHeight-38*page.unit))
+                            Label {id:summary;objectName:"playlistDescriptionSummary";anchors.left:parent.left;anchors.top:parent.top;width:parent.width-22*page.unit;height:parent.height;text:page.info.description||"";wrapMode:Text.Wrap;maximumLineCount:page.width>1150?2:1;lineHeight:1.25;font.pixelSize:13*page.u;color:page.muted;verticalAlignment:Text.AlignTop}
+                            RhineIcon {visible:summary.truncated;anchors.right:parent.right;anchors.top:parent.top;width:16*page.u;height:width;name:"more";color:page.muted}
+                            MouseArea {objectName:"playlistDescriptionOpen";anchors.fill:parent;enabled:!!page.info.description;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:descriptionPopup.open();Controls.ToolTip.visible:containsMouse;Controls.ToolTip.delay:450;Controls.ToolTip.text:"查看完整简介"}
                         }
-                        Label {visible:!!page.info.createdDate;text:(page.info.createdDate||"")+" 创建";height:28*page.u;color:page.muted;font.pixelSize:14*page.u}
+                        Row {id:metaGroup;width:parent.width;height:26*page.u;spacing:8*page.unit
+                            Image {visible:!!page.info.creatorAvatar;width:24*page.u;height:width;source:page.info.creatorAvatar||"";asynchronous:true;sourceSize.width:64;sourceSize.height:64;fillMode:Image.PreserveAspectCrop}
+                            Label {text:page.info.artist||"";width:Math.min(implicitWidth,130*page.u);height:parent.height;font.pixelSize:12*page.u
+                                MouseArea {anchors.fill:parent;enabled:!!page.info.creatorID;cursorShape:Qt.PointingHandCursor;onClicked:rhine.action("profile:open:"+page.info.creatorID)}
+                            }
+                            Label {visible:(page.info.tags||[]).length>0;text:(page.info.tags||[]).slice(0,3).join(" / ");width:Math.min(implicitWidth,160*page.u);height:parent.height;font.pixelSize:12*page.u;color:page.muted}
+                            Label {visible:!!page.info.createdDate;text:(page.info.createdDate||"")+" 创建";height:parent.height;font.pixelSize:12*page.u;color:page.muted}
+                        }
+                        Label {id:statistics;text:Number(page.info.total||0).toLocaleString()+" 首歌曲"+(page.info.subscribedCount!==undefined?"    "+Number(page.info.subscribedCount).toLocaleString()+" 次收藏":"");color:page.muted;font.pixelSize:12*page.u}
                     }
-                    Label {text:Number(page.info.total||0).toLocaleString()+" 首歌曲"+(page.info.subscribedCount!==undefined?"     "+Number(page.info.subscribedCount).toLocaleString()+" 次收藏":"");color:page.muted;font.pixelSize:14*page.u}
-                    Label {visible:!!page.info.description;width:parent.width;text:page.info.description||"";wrapMode:Text.Wrap;maximumLineCount:3;lineHeight:1.35;font.pixelSize:14*page.u;color:page.muted;verticalAlignment:Text.AlignTop}
-                    Row {spacing:13*page.unit
+                    Row {id:actionRow;objectName:"playlistActions";anchors.left:parent.left;anchors.bottom:parent.bottom;spacing:12*page.unit
                         Action {objectName:"magazinePlayAll";label:"播放全部";iconName:"play";primary:true;enabled:Number(page.info.total)>0;onInvoked:page.controller.bulk("play-all")}
                         Action {label:"下载";iconName:"download";enabled:page.info.canDownload===true;onInvoked:page.controller.bulk("download-all")}
                         Action {objectName:"magazineMore";label:"";iconName:"more";onInvoked:moreMenu.popup()}
                     }
-                    Label {visible:page.info.loading===true;text:"正在读取歌单…";font.pixelSize:12*page.u;color:page.muted}
                 }
+
             }
             Item {
                 y:page.heroHeight;width:parent.width;height:56*page.u
@@ -202,7 +209,7 @@ Item {
         RecordStack {
             id:persistentRecords;objectName:"playlistRecordStack"
             x:20*page.unit;y:8*page.unit-(listing.contentY-listing.startY)
-            width:Math.min(330*page.unit,listing.width*.30);height:Math.min(page.heroHeight-25*page.unit,330*page.unit)
+            width:Math.max(270*page.u,Math.min(360*page.unit,listing.width*.32));height:Math.max(204*page.u,Math.min(page.heroHeight-24*page.unit,290*page.unit))
             visible:y+height>0&&y<listing.height
             controller:page.controller;unit:page.unit;reduced:rhine.state.reduced===true;background:page.background
         }
@@ -214,23 +221,42 @@ Item {
         width:listing.width;height:56*page.u;z:3
         visible:page.controller.tab==="songs"&&y>=listing.y-1&&y<listing.y+listing.height
                 Item {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:280*page.unit;height:38*page.u;visible:page.controller.tab==="songs"
-                    PlaylistSearch {anchors.right:parent.right;anchors.rightMargin:34*page.unit;anchors.verticalCenter:parent.verticalCenter;controller:page.controller;unit:page.u;dark:page.dark;onEditing:{page.restoring=true;listing.contentY=listing.startY;restoreTimer.restart();}}
+                    PlaylistSearch {id:searchControl;anchors.right:parent.right;anchors.rightMargin:34*page.unit;anchors.verticalCenter:parent.verticalCenter;controller:page.controller;unit:page.u;dark:page.dark;onEditing:{page.restoring=true;listing.contentY=listing.startY;restoreTimer.restart();}}
                     RhineIcon {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:19*page.u;height:width;name:"filter";color:page.controller.filter==="all"?page.muted:page.accent
                         MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:filterMenu.popup()}
                     }
                 }
     }
-    // The compact header floats over the scrolling hero; it never owns a second song list.
+    // Lightweight identity only. No second full-width glass surface.
     Item {
         objectName:"playlistStickyHeader"
-        x:page.contentLeft;y:88*page.unit;width:parent.width-x-page.contentRight;height:66*page.u
-        visible:page.sticky;z:4
-        MouseArea {anchors.fill:parent;onClicked:{}
-            onWheel:function(event){listing.contentY=Math.max(0,Math.min(listing.contentHeight-listing.height,listing.contentY-(event.pixelDelta.y||event.angleDelta.y*page.unit*.6)));event.accepted=true;}}
-        LiquidGlass {anchors.fill:parent;background:page.background;sampleX:parent.x;sampleY:parent.y;uiScale:page.u;radius:12*page.unit;dark:page.dark}
-        Image {x:13*page.unit;y:10*page.unit;width:44*page.unit;height:width;source:page.info.cover||"";sourceSize.width:96;sourceSize.height:96;asynchronous:true}
-        Label {x:72*page.unit;width:parent.width-280*page.unit;height:parent.height;text:page.info.title||"";font.pixelSize:18*page.u;font.weight:Font.DemiBold}
-        Action {anchors.right:parent.right;anchors.rightMargin:16*page.unit;anchors.verticalCenter:parent.verticalCenter;label:"播放";iconName:"play";primary:true;onInvoked:page.controller.bulk("play-all")}
+        x:page.contentLeft;y:82*page.unit;width:Math.min(640*page.unit,parent.width-x-page.contentRight);height:42*page.u;z:4
+        opacity:Math.max(0,Math.min(1,(listing.contentY-listing.startY-page.heroHeight)/36));visible:opacity>0
+        Image {x:0;anchors.verticalCenter:parent.verticalCenter;width:32*page.u;height:width;source:page.info.cover||"";sourceSize.width:80;sourceSize.height:80;asynchronous:true}
+        Label {x:44*page.u;width:parent.width-145*page.u;height:parent.height;text:page.info.title||"";font.pixelSize:16*page.u;font.weight:Font.Medium}
+        Action {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;label:"播放";iconName:"play";primary:true;height:32*page.u;onInvoked:page.controller.bulk("play-all")}
+    }
+    function dismissTopOverlay(){if(descriptionPopup.visible){descriptionPopup.close();return true;}if(searchControl.expanded){searchControl.dismiss();return true;}return false;}
+    MouseArea {
+        anchors.fill:parent;z:40;visible:searchControl.expanded
+        containmentMask:QtObject {function contains(position: point): bool {var p=searchControl.mapFromItem(page,position.x,position.y);return p.x<0||p.y<0||p.x>searchControl.width||p.y>searchControl.height;}}
+        onPressed:function(mouse){mouse.accepted=false;Qt.callLater(searchControl.dismiss);}
+    }
+
+    Controls.Popup {
+        id:descriptionPopup;objectName:"playlistDescriptionPopup"
+        parent:Controls.Overlay.overlay;width:Math.min(580*page.u,page.width-40);height:Math.min(page.height-130*page.u,fullDescription.implicitHeight+84*page.u)
+        x:Math.max(20,(page.width-width)/2);y:Math.max(60,Math.min(120*page.u,page.height-height-24))
+        padding:20*page.u;modal:false;dim:false;closePolicy:Controls.Popup.CloseOnEscape|Controls.Popup.CloseOnPressOutside
+        background:Rectangle {radius:12*page.u;color:page.dark?"#f02d3529":"#f5f4f1e8";border.width:1;border.color:page.dark?"#5a6b5948":"#b8ffffff"}
+        contentItem:Item {
+            Label {text:"歌单简介";font.weight:Font.DemiBold}
+            RhineIcon {objectName:"playlistDescriptionClose";anchors.right:parent.right;width:18*page.u;height:width;name:"close";color:page.muted;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:descriptionPopup.close()}}
+            Flickable {x:0;y:34*page.u;width:parent.width;height:parent.height-y;contentHeight:fullDescription.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds
+                Text {id:fullDescription;width:parent.width;text:page.info.description||"";textFormat:Text.PlainText;wrapMode:Text.Wrap;lineHeight:1.45;color:page.ink;font.family:rhineFontFamily;font.pixelSize:14*page.u}
+                Controls.ScrollBar.vertical:Controls.ScrollBar {}
+            }
+        }
     }
     Controls.Menu {
         id:moreMenu

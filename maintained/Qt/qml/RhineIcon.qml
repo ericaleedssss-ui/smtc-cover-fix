@@ -7,6 +7,9 @@ Item {
     property color color: "#50594b"
     width:24; height:24
     readonly property var paths: ({
+        user:"M 12 12 A 4 4 0 1 0 12 4 A 4 4 0 1 0 12 12 M 4 22 V 20 A 8 8 0 0 1 20 20 V 22",
+        chevron:"M 5 9 L 12 16 L 19 9",
+        message:"M 3 5 H 21 V 20 H 3 Z M 3 5 L 12 13 L 21 5",
         search:"M 10.5 3 A 7.5 7.5 0 1 0 10.5 18 A 7.5 7.5 0 1 0 10.5 3 M 16 16 L 22 22",
         music:"M 9 18 V 5 L 21 3 V 16 M 9 7 L 21 5 M 9 18 C 9 22 2 23 2 19 C 2 15 9 15 9 18 M 21 16 C 21 20 14 21 14 17 C 14 13 21 13 21 16",
         settings:"M 9 3 L 15 3 L 16 6 L 19 5 L 22 10 L 20 12 L 22 14 L 19 19 L 16 18 L 15 21 L 9 21 L 8 18 L 5 19 L 2 14 L 4 12 L 2 10 L 5 5 L 8 6 Z M 12 8 A 4 4 0 1 0 12 16 A 4 4 0 1 0 12 8",

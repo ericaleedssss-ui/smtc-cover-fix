@@ -35,6 +35,8 @@ with tempfile.TemporaryDirectory() as tmp:
         shutil.copyfile(source / name, target)
     for name in ('PlayerQueueGlass.qml', 'SideNavigation.qml', 'DiscoverGlass.qml'):
         shutil.copyfile(source / 'Qt/qml' / name, stale / 'Qt/qml' / name)
+    for name in ('Qt/src/MusicPlayer.cpp','Qt/src/MusicPlayer.h','Qt/src/NativeHudPlayer.cpp','Qt/src/NativeHudController.cpp','Qt/qml/LyricsReading.qml'):
+        target=stale/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source/name,target)
     main = stale / 'Qt/qml/Main.qml'
     actual = main.read_text()
     main.write_text(actual.replace('active: rhine.state.queueOpen === true', 'active: rhine.state.modal === "player"'))
@@ -45,5 +47,5 @@ with tempfile.TemporaryDirectory() as tmp:
     qml = stale / 'Qt/qml/PlayerQueueGlass.qml'
     qml.write_text(qml.read_text().replace('actionName: "queue-close"', 'actionName: "close-modal"'))
     result = run(stale, stamp, head)
-    assert result.returncode != 0 and 'Maintained QML was not installed' in result.stderr and not stamp.exists()
+    assert result.returncode != 0 and ('Maintained QML was not installed' in result.stderr or 'Protected G70 playback source changed' in result.stderr) and not stamp.exists()
     print('PASS: stale maintained queue component prevents release')

@@ -8,7 +8,8 @@ Item {
     signal toggled()
     width:32*unit;height:32*unit
     opacity:pending?.55:1
-    RhineIcon {objectName:"songHeartIcon";anchors.centerIn:parent;width:20*heart.unit;height:width;name:"heart";filled:heart.liked;color:heart.liked?"#ce575b":"#92958c"}
+    Image {objectName:"songHeartIcon";anchors.centerIn:parent;width:24*heart.unit;height:width;source:heart.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png";fillMode:Image.PreserveAspectFit;smooth:true;sourceSize.width:64;sourceSize.height:64}
+
     Controls.ToolTip.visible:mouse.containsMouse
     Controls.ToolTip.delay:450
     Controls.ToolTip.text:pending?"正在同步…":liked?"取消喜欢":"喜欢"

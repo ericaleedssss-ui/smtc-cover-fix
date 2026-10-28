@@ -1,0 +1,443 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5660f36..f3c6f13 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -201,6 +201,8 @@ qt_add_resources(
+     BASE
+     "Assets/icons"
+     FILES
++    Assets/icons/song-like-on.png
++    Assets/icons/song-like-off.png
+     Assets/icons/icon-16.png
+     Assets/icons/icon-32.png
+     Assets/icons/icon-64.png
+diff --git a/MusicBridge/client/items.mjs b/MusicBridge/client/items.mjs
+index 47c7cef..4664995 100644
+--- a/MusicBridge/client/items.mjs
++++ b/MusicBridge/client/items.mjs
+@@ -51,6 +51,7 @@ export function parse(rawItem, kind) {
+             })),
+         creatorID: String(creator.userId ?? ''),
+         creatorAvatar: creator.avatarUrl || '',
++        tags: Array.isArray(rawItem.tags) ? rawItem.tags.filter(v => typeof v === 'string') : [],
+ 
+         ...Object.fromEntries(['subscribedCount','commentCount','playCount'].filter(k => Number.isFinite(rawItem[k])).map(k => [k,rawItem[k]])),
+         unavailable: (rawItem.privilege?.st ?? 0) < 0,
+diff --git a/MusicBridge/client/netease.mjs b/MusicBridge/client/netease.mjs
+index a6cc790..c56fa7a 100644
+--- a/MusicBridge/client/netease.mjs
++++ b/MusicBridge/client/netease.mjs
+@@ -271,15 +271,17 @@ export class API {
+             failure.authExpired = true;
+             throw failure;
+         }
+-        return [String(responseBody.profile.userId), responseBody.profile.nickname || '网易云用户'];
++        return [String(responseBody.profile.userId), responseBody.profile.nickname || '网易云用户', { avatar: responseBody.profile.avatarUrl || '', vipType: Number(responseBody.profile.vipType || 0) }];
+     }
+ 
+-    async userPlaylists(uid, valid = () => true) {
++    async userPlaylists(uid, offset = 0, valid = () => true) {
++        if (typeof offset === 'function') { valid = offset; offset = 0; }
+         const responseBody = await this.request(
+             '/user/playlist',
+             {
+                 uid,
+                 limit: 2000,
++                offset,
+                 timestamp: Date.now(),
+             },
+             [200],
+@@ -290,7 +292,7 @@ export class API {
+             items: parsed(raw, 'playlist'),
+             total: 0,
+             rawCount: raw.length,
+-            more: false,
++            more: responseBody.more === true && raw.length > 0,
+         };
+     }
+ 
+@@ -325,6 +327,7 @@ export class API {
+             '/album/sublist',
+             {
+                 limit: 2000,
++                offset,
+                 timestamp: Date.now(),
+             },
+             [200],
+@@ -335,7 +338,7 @@ export class API {
+             items: parsed(raw, 'album'),
+             total: responseBody.count ?? offset + raw.length,
+             rawCount: raw.length,
+-            more: false,
++            more: raw.length > 0 && (responseBody.hasMore === true || responseBody.more === true || offset + raw.length < Number(responseBody.count || 0)),
+         };
+     }
+ }
+diff --git a/Qt/qml/Main.qml b/Qt/qml/Main.qml
+index 1538336..39c634a 100644
+--- a/Qt/qml/Main.qml
++++ b/Qt/qml/Main.qml
+@@ -15,6 +15,8 @@ Window {
+         sequence: "Escape"
+         context: Qt.WindowShortcut
+         onActivated: {
++            if(globalTools.dismiss())return;
++            if(magazineLoader.item&&magazineLoader.item.dismissTopOverlay())return;
+             if(rhine.magazine.songMenu.visible)rhine.magazine.closeMenu();
+             else if(rhine.magazine.removalCount>0)rhine.magazine.cancelRemoval();
+             else rhine.action("back");
+@@ -727,7 +729,7 @@ Window {
+         visible:active && (!rhine.state.modal || rhine.state.modal==="discover" || rhine.state.modal==="profile")
+         sourceComponent: PlaylistMagazine {controller:rhine.magazine; background:backgroundLayer; unit:root.stageScale}
+     }
+-    GlobalTools {anchors.fill:parent;z:330;background:backgroundLayer;unit:root.stageScale}
++    GlobalTools {id:globalTools;anchors.fill:parent;z:330;background:backgroundLayer;unit:root.stageScale;topRightReserved:root.windowsFrameless&&root.visibility!==Window.FullScreen?132:0}
+     SongContextMenu {anchors.fill:parent;z:500;controller:rhine.magazine;background:backgroundLayer}
+     Rectangle {
+         id:operationToast
+@@ -1028,6 +1030,7 @@ Window {
+     }
+     WindowChrome {
+         window: root
++        topControlsWidth:globalTools.occupiedWidth
+         enabled: root.windowsFrameless
+         visible: enabled && root.visibility !== Window.FullScreen
+         dark: rhine.state.dark === true
+diff --git a/Qt/qml/WindowChrome.qml b/Qt/qml/WindowChrome.qml
+index d337a71..53dd3f0 100644
+--- a/Qt/qml/WindowChrome.qml
++++ b/Qt/qml/WindowChrome.qml
+@@ -6,6 +6,7 @@ Item {
+     id: chrome
+     required property Window window
+     property bool dark: false
++    property real topControlsWidth:0
+     readonly property color ink: dark ? "#ebebeb" : "#141613"
+     readonly property bool maximized: window.visibility === Window.Maximized
+     anchors.fill: parent
+@@ -25,7 +26,8 @@ Item {
+         height: 32
+ 
+         Item {
+-            width: parent.width - windowButtons.width
++            x:76
++            width: Math.max(0,parent.width - x - windowButtons.width - chrome.topControlsWidth)
+             height: parent.height
+             TapHandler {
+                 acceptedButtons: Qt.LeftButton
+diff --git a/Qt/src/Host.cpp b/Qt/src/Host.cpp
+index d776e3f..9ec2d7d 100644
+--- a/Qt/src/Host.cpp
++++ b/Qt/src/Host.cpp
+@@ -1071,3 +1071,12 @@ QJsonObject Host::playbackSnapshot() const {
+     }
+     return PlaybackDiagnostics::numericFields(values);
+ }
++
++QString Host::resourceImage(const QString &path) {
++    if(!path.startsWith(":/icons/"))return {};
++    if(!images.contains(path)){
++        const QImage image(path);if(image.isNull())return {};
++        images.insert(path,new QImage(image),qMax(1,int(image.sizeInBytes()/1024)));
++    }
++    return path;
++}
+diff --git a/Qt/src/Host.h b/Qt/src/Host.h
+index 06be0e4..1c81632 100644
+--- a/Qt/src/Host.h
++++ b/Qt/src/Host.h
+@@ -63,6 +63,7 @@ class Host : public QObject {
+     Q_INVOKABLE QString asset(QString name) const;
+     Q_INVOKABLE QString read(QString name) const;
+     QImage image(const QString &key) const;
++    QString resourceImage(const QString &path);
+     void fixtureImage(const QString &key, const QImage &image);
+     PlaybackDiagnostics playbackDiagnostics;
+     void enablePlaybackDiagnostics(bool enabled);
+diff --git a/Qt/src/MusicAccount.cpp b/Qt/src/MusicAccount.cpp
+index 4486203..b18626e 100644
+--- a/Qt/src/MusicAccount.cpp
++++ b/Qt/src/MusicAccount.cpp
+@@ -156,10 +156,11 @@ void MusicLibrary::restoreAccount(Completion done) {
+                 const auto values = result.value.toArray();
+                 uid = values.at(0).toString();
+                 nickname = values.at(1).toString();
++                accountDetails = values.at(2).toObject();
+                 rememberIdentityName(provider, nickname);
+             } else if (result.failure["code"].toInt() == 401 || result.failure["authExpired"].toBool() ||
+                        (provider == "netease" && result.failure["code"].toInt() == 301)) {
+-                uid.clear();
++                uid.clear();accountDetails={};
+                 nickname = QStringLiteral("登录已失效");
+                 host->setPreference("account-id-" + accountKey(), "");
+                 status = QStringLiteral("登录已失效，请重新登录");
+@@ -252,6 +253,7 @@ void MusicLibrary::switchProvider(QString source, QString edition, Completion do
+     subscriptionStates.clear();
+     capabilities = {};
+     vipLevel = "unknown";
++    accountDetails = {};
+     searchKind = "song";
+     keyword.clear();
+     suggestions.clear();
+@@ -425,6 +427,7 @@ void MusicLibrary::confirmLogin(quint64 token, bool password) {
+             m_accountError.clear();
+             uid = result.value.toArray().at(0).toString();
+             nickname = result.value.toArray().at(1).toString();
++            accountDetails = result.value.toArray().at(2).toObject();
+             rememberIdentityName(provider, nickname);
+             loginStatus = QStringLiteral("已登录：") + nickname;
+             refreshQQFeatures();
+@@ -596,6 +599,7 @@ void MusicLibrary::logout() {
+     subscriptions.clear();
+     subscriptionStates.clear();
+     vipLevel = "unknown";
++    accountDetails = {};
+     discover->cancel();
+     player.stop();
+     player.history = {};
+diff --git a/Qt/src/MusicData.cpp b/Qt/src/MusicData.cpp
+index 2acce8e..f777bf5 100644
+--- a/Qt/src/MusicData.cpp
++++ b/Qt/src/MusicData.cpp
+@@ -65,6 +65,7 @@ QJsonObject parse(const QJsonObject &raw, const QString &kind) {
+     value["artists"] = entries;
+     value["creatorID"] = identifier(creator["userId"]);
+     value["creatorAvatar"] = creator["avatarUrl"];
++    value["tags"] = raw["tags"].toArray();
+     for (const auto &field : {"subscribedCount", "commentCount", "playCount"}) if(raw.contains(field)) value[field]=raw[field];
+     if(raw["createTime"].toDouble()>0) value["createdDate"]=QDateTime::fromMSecsSinceEpoch(raw["createTime"].toInteger()).date().toString("yyyy-MM-dd");
+     const auto privilege=raw["privilege"].toObject();
+diff --git a/Qt/src/MusicDirectory.cpp b/Qt/src/MusicDirectory.cpp
+index 82097ed..3ddc376 100644
+--- a/Qt/src/MusicDirectory.cpp
++++ b/Qt/src/MusicDirectory.cpp
+@@ -6,7 +6,7 @@
+ #include <cmath>
+ 
+ /** 先建立可返回的目录状态，再加载内容；目录关闭或被替换后丢弃旧响应。 */
+-void MusicLibrary::enterDirectory(QJsonObject value) {
++void MusicLibrary::enterDirectory(QJsonObject value, bool recordBrowse) {
+     if (value.isEmpty()) {
+         return;
+     }
+@@ -32,6 +32,11 @@ void MusicLibrary::enterDirectory(QJsonObject value) {
+     next->parentPhysical = physical;
+     next->parentLane = selectedLane;
+     next->parentItem = current.isEmpty() ? value : current;
++    next->recordBrowse=recordBrowse;
++    if(recordBrowse&&directory){
++        next->parent=directory->parent;next->parentInfo=directory->parentInfo;next->parentSongDetails=directory->parentSongDetails;
++        next->parentPhysical=directory->parentPhysical;next->parentLane=directory->parentLane;next->parentItem=directory->parentItem;next->returnTab=directory->returnTab;
++    }
+     directory = next;
+     directoryInfo = false;
+     directoryLoading = true;
+diff --git a/Qt/src/MusicLibrary.cpp b/Qt/src/MusicLibrary.cpp
+index 4f917ac..7189cc7 100644
+--- a/Qt/src/MusicLibrary.cpp
++++ b/Qt/src/MusicLibrary.cpp
+@@ -729,7 +729,7 @@ void MusicLibrary::loadMoreSource(int lane) {
+         arguments = {albumCursor};
+     } else {
+         operation = "userPlaylists";
+-        arguments = {user};
++        arguments = provider == "netease" ? QJsonArray{user, playlistCursor} : QJsonArray{user};
+     }
+     api.call(
+         operation, arguments,
+diff --git a/Qt/src/MusicLibrary.h b/Qt/src/MusicLibrary.h
+index 8381099..c86f4f2 100644
+--- a/Qt/src/MusicLibrary.h
++++ b/Qt/src/MusicLibrary.h
+@@ -25,6 +25,7 @@ struct MusicDirectory {
+     bool parentSongDetails = false;
+     QString returnTab = "overview";
+     bool openDetails = false;
++    bool recordBrowse = false;
+     bool detailsPending = false;
+     quint64 detailsGeneration = 0;
+     double magazineScroll = 0;
+@@ -109,7 +110,7 @@ class MusicLibrary : public QObject {
+     void playlistForm(QString kind, QString name, QString id = {}, Completion done = {});
+     void playlistTrack(QString id, QJsonObject value = {}, bool remove = false, Completion done = {});
+     void playlistTracks(QString id, QJsonArray tracks, Completion done = {});
+-    void enterDirectory(QJsonObject value);
++    void enterDirectory(QJsonObject value, bool recordBrowse = false);
+     bool openDaily();
+     void loadArtistAlbums();
+     void openSongArtist(int index = 0);
+@@ -145,6 +146,7 @@ class MusicLibrary : public QObject {
+     QString kugouEdition;
+     QString uid;
+     QString nickname = "未登录";
++    QJsonObject accountDetails;
+     QHash<QString, QString> identityNames;
+     int selectedPhysical = -1;
+     int selectedLane = 0;
+diff --git a/Qt/src/NativeHud.cpp b/Qt/src/NativeHud.cpp
+index c2b96ec..92a2fed 100644
+--- a/Qt/src/NativeHud.cpp
++++ b/Qt/src/NativeHud.cpp
+@@ -213,7 +213,9 @@ QJsonObject NativeHud::state() const {
+     return {{"inputX", bounds.x() + 53},
+             {"focusAction", focusAction}, {"keyboardNavigation", keyboardNavigation},
+             {"profile", profile}, {"profileID", profileID}, {"profileOwn", profileID == m_music->uid},
+-            {"accountUID", m_music->uid}, {"directoryOpen", bool(m_music->directory)}, {"lyricsMode", lyricsMode},
++            {"accountUID", m_music->uid}, {"accountName", m_music->nickname}, {"accountAvatar", m_music->accountDetails["avatar"]},
++            {"accountProvider",m_music->provider}, {"accountProviderName",m_music->providerName()},
++            {"accountMember", m_music->uid.isEmpty()?QString():m_music->provider=="netease"?(m_music->accountDetails["vipType"].toInt()>0?QString("VIP"):QString()):m_music->provider=="qq"?(m_music->vipLevel=="green"?QString("绿钻"):m_music->vipLevel=="super"?QString("超级会员"):QString()):QString()}, {"directoryOpen", bool(m_music->directory)}, {"lyricsMode", lyricsMode},
+             {"roamActive", m_music->player.roamActive},
+             {"roamLoading", m_music->player.roamLoading},
+             {"roamStatus", m_music->player.roamStatus},
+@@ -706,10 +708,10 @@ QString NativeHud::clock(double ms) {
+ void NativeHud::songHeart(QJsonObject song, double x, double y, const QString &action) {
+     if(song["kind"]!="song")return;
+     const bool liked=m_music->likedIDs ? MusicData::indexOf(*m_music->likedIDs,song["id"])>=0 : MusicData::indexOfId(m_music->lists[1],song["id"].toString())>=0;
+-    const QString path="M 12 21 C 7 17 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 17 17 12 21 Z";
+-    const QJsonArray color=liked?QJsonArray{.808,.341,.357,1}:QJsonArray{.573,.584,.549,1};
+-    save();translate(x,y);scale(20./24.,20./24.);
+-    if(liked)op({"fill-path",path,color});else op({"path",path,1.65,color,QJsonArray{},0});
+-    restore();
++    const auto asset=m_host->resourceImage(liked?":/icons/song-like-on.png":":/icons/song-like-off.png");
++    if(!asset.isEmpty()){
++        const auto size=QSizeF(m_host->image(asset).size()).scaled(QSizeF(24,24),Qt::KeepAspectRatio);
++        image(asset,x-2+(24-size.width())/2,y-2+(24-size.height())/2,size.width(),size.height());
++    }
+     if(!m_music->writeLoading&&m_music->canMutate("/like"))hit(x-6,y-6,32,32,action,liked?"取消喜欢":"喜欢");
+ }
+diff --git a/Qt/src/NativeHud.h b/Qt/src/NativeHud.h
+index c61516f..9047763 100644
+--- a/Qt/src/NativeHud.h
++++ b/Qt/src/NativeHud.h
+@@ -201,6 +201,7 @@ class NativeHud : public QObject {
+     };
+     QList<ViewReturn> m_viewBack;
+     void rememberPage();
++    void browseCollection(QJsonObject item);
+     bool restorePage();
+     struct LyricRow {
+         double top = 0;
+diff --git a/Qt/src/NativeHudMusic.cpp b/Qt/src/NativeHudMusic.cpp
+index b6e17df..9a0d4fa 100644
+--- a/Qt/src/NativeHudMusic.cpp
++++ b/Qt/src/NativeHudMusic.cpp
+@@ -27,7 +27,10 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
+             .contains(name)) {
+         return;
+     }
+-    if (name == "collection-open") {
++    if (name == "collection-browse") {
++        const auto item=QJsonDocument::fromJson(decode(value.mid(QString("music:collection-browse:").size())).toUtf8()).object();
++        browseCollection(item);
++    } else if (name == "collection-open") {
+         const auto item=QJsonDocument::fromJson(QUrl::fromPercentEncoding(value.mid(QString("music:collection-open:").size()).toUtf8()).toUtf8()).object();
+         if(item["provider"].toString()!=music.provider || !QStringList{"playlist","album"}.contains(item["kind"].toString()) || item["id"].toString().isEmpty())return;
+         closeModal(false);music.enterDirectory(item);tab="overview";trackOffset=0;
+@@ -426,3 +429,15 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
+         m_host->setActivates(!m_host->activates());
+     }
+ }
++
++void NativeHud::browseCollection(QJsonObject item) {
++    auto &music=*m_music;
++        if(item["provider"].toString()!=music.provider||!QStringList{"playlist","album"}.contains(item["kind"].toString())||item["id"].toString().isEmpty()||!music.directory)return;
++        const auto previous=music.directory;const auto key=previous->item["key"].toString();
++        closeModal(false);music.enterDirectory(item,true);
++        const auto next=music.directory;
++        if(next&&next!=previous){
++            if(!m_viewBack.isEmpty()&&m_viewBack.last().target==key&&m_viewBack.last().account==music.accountGeneration())m_viewBack.last().target=item["key"].toString();
++        }
++        tab="overview";trackOffset=0;music.changed();
++}
+diff --git a/Qt/tests/UiChecks.cpp b/Qt/tests/UiChecks.cpp
+index 53d985e..9a4cf46 100644
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -717,8 +717,8 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         const auto originalPlay=music.player.current;
+         const auto originalQueue=music.player.queue;
+         const auto originalIndex=music.player.index;
+-        check(findVisual(window->contentItem(),"globalSearch") && findVisual(window->contentItem(),"globalLibrary") && findVisual(window->contentItem(),"globalSettings"),
+-            "G69 one shared functional capsule exposes search, library and settings");
++        check(findVisual(window->contentItem(),"globalSearch") && findVisual(window->contentItem(),"globalProfile") && findVisual(window->contentItem(),"globalSettings"),
++            "G71 shared account bar exposes profile, search and settings");
+         if(model && !originalDirectory->songs.isEmpty()){
+             const auto clickVisual=[&](QQuickItem *item){
+                 if(!item||!item->isVisible())return false;
+@@ -739,6 +739,10 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+                 "G70 typing and deleting retain the same focused search editor across real model resets");
+             inputKey(Qt::Key_A,Qt::ControlModifier);QGuiApplication::clipboard()->setText("G70-no-match");inputKey(Qt::Key_V,Qt::ControlModifier);
+             check(model->rowCount()==0&&editor&&editor->hasActiveFocus(),"G70 paste updates results immediately and zero results cannot lock the editor");
++            auto *searchItem=findVisual(window->contentItem(),"playlistSearch");
++            if(searchItem)QMetaObject::invokeMethod(searchItem,"dismiss");refresh();
++            check(searchItem&&!searchItem->property("expanded").toBool()&&model->query()=="G70-no-match","G71 collapsed search retains its query and filtering state");
++            clickVisual(searchItem);
+             clickVisual(findVisual(window->contentItem(),"playlistSearchClear"));
+             check(model->query().isEmpty()&&model->rowCount()==originalDirectory->songs.size()&&editor&&editor->hasActiveFocus(),"G70 clear restores the complete playlist while keeping input available");
+             const auto clicked=originalDirectory->songs.first().toObject();
+@@ -755,6 +759,15 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+             check(QGuiApplication::clipboard()->text()==music.sourceURL(clicked),"G69 context copy uses the clicked song ID");
+             model->showSongMenu("directory",0,MusicPlayer::identity(clicked),20,20);model->songAction("next");
+             check(music.player.current==originalPlay && MusicData::indexOfId(music.player.queue,clicked["id"].toString())>=0,"G69 next-play context action queues the captured song");
++            check(clickVisual(findVisual(window->contentItem(),"playlistDescriptionOpen"))&&findVisual(window->contentItem(),"playlistDescriptionClose"),"G71 long description opens a bounded readable popup");
++            clickVisual(findVisual(window->contentItem(),"playlistDescriptionClose"));
++            const auto accountUid=music.uid,accountName=music.nickname;const auto accountDetails=music.accountDetails;
++            music.uid="42";music.nickname="Offline account fixture";music.accountDetails={{"avatar",artworkURL},{"vipType",11}};refresh();
++            clickVisual(findVisual(window->contentItem(),"globalProfile"));
++            check(hud.modal=="profile"&&hud.profileID=="42","G71 avatar opens the actual account profile independently of the arrow");backend.action("back");refresh();
++            clickVisual(findVisual(window->contentItem(),"globalAccountArrow"));
++            check(clickVisual(findVisual(window->contentItem(),"accountMenuPlaylists"))&&hud.modal=="profile"&&hud.profileFilter=="created","G71 account menu opens the existing created-playlist profile view");backend.action("back");refresh();
++            music.uid=accountUid;music.nickname=accountName;music.accountDetails=accountDetails;refresh();
+             const auto likedBefore=music.likedIDs;const auto shelfBefore=music.lists[1];const auto totalBefore=music.totals[1];
+             const auto likeFixture=backend.host.fixture;const auto likeUid=music.uid;music.uid="42";bool rejectLike=true;QString likeID;
+             backend.host.fixture=[likeFixture,&rejectLike,&likeID](QString route,QJsonObject args){if(route=="/like"){likeID=args["id"].toString();return QJsonObject{{"body",QJsonObject{{"code",rejectLike?500:200}}}};}return likeFixture(route,args);};
+@@ -796,7 +809,8 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+             check(music.directory && music.directory->item["id"]=="690002" && music.player.current==originalPlay && music.player.queue==originalQueue,
+                 "G69 record browsing changes the real directory without playback or queue replacement");
+             backend.action("back");refresh();
+-            check(music.directory==originalDirectory && music.directoryInfo && model->scrollPosition()==75,"G69 record navigation returns through real history to the prior playlist view state");
++            check(music.directory==originalDirectory->parent,"G71 one back exits the cover browsing session to its original entry");
++            music.directory=originalDirectory;music.showDirectoryInfo();model->sync();model->savePosition(model->session(),75);refresh();
+             backend.host.fixture=previousFixture;music.lists[2]=previousCollections;model->savePosition(model->session(),0);model->sync();
+         }
+     }
+diff --git a/Qt/tests/g71-collections-account.mjs b/Qt/tests/g71-collections-account.mjs
+new file mode 100644
+index 0000000..d319717
+--- /dev/null
++++ b/Qt/tests/g71-collections-account.mjs
+@@ -0,0 +1,22 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {API} from '../../MusicBridge/client/netease.mjs';
++import {parse} from '../../MusicBridge/client/items.mjs';
++import {createFakeHost} from './fixtures/client-harness.mjs';
++test('collection playlists use stable real offsets and expose subsequent pages',async()=>{
++    const {host,calls}=createFakeHost({responses:{'/user/playlist':(params)=>({code:200,more:params.offset<200,playlist:Array.from({length:params.offset<200?100:3},(_,i)=>({id:params.offset+i+1,name:'Collection '+(params.offset+i+1),creator:{userId:42,nickname:'Owner'}}))})}});
++    const api=new API(host);let offset=0;const ids=[];let more=true;
++    while(more){const page=await api.userPlaylists('42',offset);ids.push(...page.items.map(x=>x.id));offset+=page.rawCount;more=page.more;}
++    assert.equal(ids.length,203);assert.equal(new Set(ids).size,203);assert.deepEqual(calls.map(x=>x.params.offset),[0,100,200]);assert.ok(calls.every(x=>x.params.limit===2000));
++});
++test('album collection pages advance with the actual count and raw page cursor',async()=>{
++    const {host,calls}=createFakeHost({responses:{'/album/sublist':(params)=>({code:200,count:105,data:Array.from({length:params.offset?5:100},(_,i)=>({id:params.offset+i+1,name:'Album'}))})}});
++    const api=new API(host);const first=await api.likedAlbums(0);const last=await api.likedAlbums(first.rawCount);
++    assert.equal(first.more,true);assert.equal(last.more,false);assert.equal(last.items[0].id,'101');assert.deepEqual(calls.map(x=>x.params.offset),[0,100]);
++});
++test('account metadata preserves actual avatar and VIP type without inventing a tier',async()=>{
++    const {host}=createFakeHost({responses:{'/user/account':{code:200,profile:{userId:42,nickname:'Listener',avatarUrl:'https://example.org/avatar',vipType:11}}}});
++    assert.deepEqual(await new API(host).account(),['42','Listener',{avatar:'https://example.org/avatar',vipType:11}]);
++    const missing=createFakeHost({responses:{'/user/account':{code:200,profile:{userId:43,nickname:'No tier'}}}});assert.deepEqual((await new API(missing.host).account())[2],{avatar:'',vipType:0});
++});
++test('playlist tags remain real API strings',()=>{assert.deepEqual(parse({id:5,name:'Actual',tags:['独立','摇滚',42]},'playlist').tags,['独立','摇滚']);assert.deepEqual(parse({id:6,name:'Missing'},'playlist').tags,[]);});
+diff --git a/scripts/test.cjs b/scripts/test.cjs
+index f9f1ca6..2faa5eb 100644
+--- a/scripts/test.cjs
++++ b/scripts/test.cjs
+@@ -39,6 +39,7 @@ const bridgeTests = [
+     'Qt/tests/local-lyrics.cjs',
+     'Qt/tests/netease-client.mjs',
+     'Qt/tests/g69-magazine-client.mjs',
++    'Qt/tests/g71-collections-account.mjs',
+     'Qt/tests/qq-client.mjs',
+     'Qt/tests/kugou-client.mjs',
+ ];

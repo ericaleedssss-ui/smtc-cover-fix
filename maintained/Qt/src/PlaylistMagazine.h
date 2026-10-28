@@ -55,6 +55,7 @@ public:
     Q_INVOKABLE void savePosition(QString key, double y);
     Q_INVOKABLE void more();
     Q_INVOKABLE void openCover(QString key);
+    Q_INVOKABLE void prepareRecords();
     Q_INVOKABLE void rowAction(QString op, QString key);
     Q_INVOKABLE void selectAll(bool selected);
     Q_INVOKABLE void bulk(QString operation);
@@ -79,6 +80,12 @@ private:
     QVector<int> m_rows;
     QSet<QString> m_selected, m_unavailableCovers, m_likedKeys;
     QVariantList m_covers, m_social;
+    QJsonArray m_recordSequence;
+    QJsonObject m_recordAnchor;
+    std::array<QJsonArray,3> m_recordInputs;
+    QString m_recordKey;
+    int m_recordIndex=-1;
+    bool m_recordsComplete=false;
     QString m_status, m_pending, m_modelQuery, m_modelFilter;
     QJsonArray m_likedSnapshot;
     bool m_downloading=false;
