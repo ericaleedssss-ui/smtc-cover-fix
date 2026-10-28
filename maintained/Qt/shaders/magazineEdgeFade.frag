@@ -8,6 +8,7 @@ layout(std140,binding=0) uniform Params {
     float topInset;
     float fadePx;
     float fadeTop;
+    float bottomFadePx;
 };
 layout(binding=1) uniform sampler2D source;
 void main(){
@@ -15,6 +16,6 @@ void main(){
     float y=uv.y*panelSize.y;
     float band=max(1.0,fadePx);
     float top=fadeTop>.5?smoothstep(topInset,topInset+band,y):1.0;
-    float bottom=smoothstep(0.0,band,panelSize.y-y);
+    float bottom=smoothstep(0.0,max(1.0,bottomFadePx),panelSize.y-y);
     fragColor=texture(source,uv)*top*bottom*qt_Opacity;
 }

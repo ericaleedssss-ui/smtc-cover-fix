@@ -74,7 +74,8 @@ Item {
             property variant source
             property size panelSize:Qt.size(listing.width,listing.height)
             property real topInset:stickyHeader.opacity*(stickyHeader.y+stickyHeader.height-listing.y)
-            property real fadePx:48*page.u
+            property real fadePx:32*page.u
+            property real bottomFadePx:22*page.u
             property real fadeTop:listing.contentY-listing.startY>2*page.u?1:0
             fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"
         }
@@ -83,6 +84,7 @@ Item {
         onContentYChanged:if(!page.restoring)page.controller.savePosition(page.session,contentY-startY)
         onAtYEndChanged:if(atYEnd&&page.controller.tab==="songs"&&page.info.more&&!page.info.loading)page.controller.more()
         header:Item {
+            visible:y+height>listing.contentY&&y<listing.contentY+listing.height
             width:listing.width;height:page.heroHeight+112*page.u+(page.selecting?52*page.u:0)
             Item {
                 width:parent.width;height:page.heroHeight
@@ -94,6 +96,7 @@ Item {
                     Column {
                         width:parent.width;height:actionRow.y-9*page.unit;spacing:7*page.unit;clip:true
                         Label {id:playlistTitle;objectName:"playlistTitle";width:parent.width;text:page.info.title||"正在读取歌单…";font.pixelSize:26*page.u;font.weight:Font.DemiBold;wrapMode:Text.Wrap;maximumLineCount:2;verticalAlignment:Text.AlignTop}
+                        Item {width:1;height:5*page.unit}
                         Item {width:parent.width;height:Math.max(14*page.unit,Math.min(page.width>1150?42*page.unit:24*page.unit,details.height-actionRow.height-playlistTitle.implicitHeight-metaGroup.height-statistics.implicitHeight-38*page.unit))
                             Label {id:summary;objectName:"playlistDescriptionSummary";anchors.left:parent.left;anchors.top:parent.top;width:parent.width-22*page.unit;height:parent.height;text:page.info.description||"";wrapMode:Text.Wrap;maximumLineCount:page.width>1150?2:1;lineHeight:1.25;font.pixelSize:13*page.u;color:page.muted;verticalAlignment:Text.AlignTop}
                             RhineIcon {visible:summary.truncated;anchors.right:parent.right;anchors.top:parent.top;width:16*page.u;height:width;name:"more";color:page.muted}
@@ -145,8 +148,8 @@ Item {
                 Label {x:62*page.unit;text:"标题";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {x:parent.width*.42;text:"艺术家";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {x:parent.width*.65;text:"专辑";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:parent.width-164*page.unit;width:42*page.unit;horizontalAlignment:Text.AlignHCenter;text:"喜欢";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:parent.width-110*page.unit;text:"时长";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {x:parent.width-180*page.unit;width:32*page.u;horizontalAlignment:Text.AlignHCenter;text:"喜欢";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {x:parent.width-104*page.unit;text:"时长";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
             }
         }
         delegate:Loader {
@@ -154,8 +157,8 @@ Item {
             objectName:"magazineRow_"+songIndex
             width:listing.width
             opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(
-                Math.max(0,Math.min(1,(y-listing.contentY+height-stickyHeader.opacity*(stickyHeader.y+stickyHeader.height-listing.y))/(48*page.u))),
-                Math.max(0,Math.min(1,(listing.height-(y-listing.contentY))/(48*page.u)))):1
+                Math.max(0,Math.min(1,(y-listing.contentY-stickyHeader.opacity*(stickyHeader.y+stickyHeader.height-listing.y))/(32*page.u))),
+                Math.max(0,Math.min(1,(listing.height-(y-listing.contentY))/(22*page.u)))):1
             height:item?item.implicitHeight:page.rowHeight
             // ListModel roles stay on this delegate; no per-frame JavaScript array rebuilding.
             property var song:page.controller.tab==="songs"?model.track:({})
@@ -202,8 +205,8 @@ Item {
                     Label {x:parent.width*.65;width:parent.width*.35-188*page.unit;height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
                         MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;enabled:!!rowLoader.song.albumID;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"album",rowLoader.song.identity);}}
                     }
-                    SongHeart {objectName:"magazineHeart_"+rowLoader.songIndex;x:parent.width-164*page.unit;anchors.verticalCenter:parent.verticalCenter;unit:page.u;liked:rowLoader.heart;pending:page.info.likeBusy===true;onToggled:page.controller.rowAction("like",rowLoader.song.identity)}
-                    Label {x:parent.width-112*page.unit;width:64*page.unit;height:parent.height;text:rowLoader.song.durationLabel||"—";color:page.muted;font.pixelSize:12*page.u}
+                    SongHeart {objectName:"magazineHeart_"+rowLoader.songIndex;x:parent.width-180*page.unit;anchors.verticalCenter:parent.verticalCenter;unit:page.u;liked:rowLoader.heart;pending:page.info.likeBusy===true;onToggled:page.controller.rowAction("like",rowLoader.song.identity)}
+                    Label {x:parent.width-104*page.unit;width:52*page.unit;height:parent.height;text:rowLoader.song.durationLabel||"—";color:page.muted;font.pixelSize:12*page.u}
                     RhineIcon {x:parent.width-32*page.unit;anchors.verticalCenter:parent.verticalCenter;width:20*page.u;height:width;name:"more";color:page.muted
                         MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);}}
                     }
@@ -255,30 +258,6 @@ Item {
         x:page.contentLeft;y:82*page.unit;width:listing.width;height:(page.selecting?164:108)*page.u;z:12
         opacity:Math.max(0,Math.min(1,(listing.contentY-listing.startY-page.heroHeight)/36))
         visible:opacity>0
-        Item {
-            anchors.fill:parent
-            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
-            layer.effect:ShaderEffect {
-                property variant source
-                property size panelSize:Qt.size(stickyHeader.width,stickyHeader.height)
-                property real topInset:0
-                property real fadePx:20*page.u
-                property real fadeTop:0
-                fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"
-            }
-            LiquidGlass {
-                visible:GraphicsInfo.api!==GraphicsInfo.Software
-                anchors.fill:parent;background:page.background;sampleX:stickyHeader.x;sampleY:stickyHeader.y
-                uiScale:page.u;dark:page.dark;radius:0
-            }
-            Rectangle {anchors.fill:parent
-                gradient:Gradient {
-                    GradientStop {position:0;color:page.dark?"#e82c3429":"#e8eeeee7"}
-                    GradientStop {position:.78;color:page.dark?"#e82c3429":"#e8eeeee7"}
-                    GradientStop {position:1;color:page.dark?"#002c3429":"#00eeeee7"}
-                }
-            }
-        }
         MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;onWheel:function(wheel){wheel.accepted=false;}}
         Label {x:14*page.u;y:8*page.u;width:parent.width-28*page.u;height:34*page.u;text:page.info.title||"";font.pixelSize:20*page.u;font.weight:Font.DemiBold}
         Row {x:14*page.u;y:52*page.u;spacing:10*page.u

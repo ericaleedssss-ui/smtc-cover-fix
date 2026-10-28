@@ -56,6 +56,7 @@ public:
     Q_INVOKABLE void more();
     Q_INVOKABLE void openCover(QString key);
     Q_INVOKABLE void prepareRecords();
+    Q_INVOKABLE QVariantMap recordNeighbour(int offset) const;
     Q_INVOKABLE void rowAction(QString op, QString key);
     Q_INVOKABLE void selectAll(bool selected);
     Q_INVOKABLE void bulk(QString operation);

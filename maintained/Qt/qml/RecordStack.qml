@@ -10,13 +10,7 @@ Item {
     readonly property var front:controller.info
     readonly property var rear:controller.covers
     property var paintedFront:({})
-    property var frozenRear:[]
-    property var displayedRear:[]
-    property real incomingX:0
-    property real incomingY:0
-    property real incomingRotation:0
-    property real incomingScale:1
-    readonly property real motion:turning?progress:0
+    property string awaitingKey:""
     property var chosen:({})
     property string startingKey:""
     property string lastPreparedKey:""
@@ -41,85 +35,131 @@ Item {
         if(nextRecord&&nextRecord.key)items.push({record:nextRecord,slot:1});
         return items;
     }
-    function hold(key){hoveredKey=key;expanded=true;closeFan.stop();}
-    function release(key){if(hoveredKey===key)hoveredKey="";closeFan.restart();}
+    function pose(slot,insert){
+        if(slot===0)return {x:frontX,y:frontY,r:0,s:1,a:1,z:10};
+        var side=slot<0?-1:1;
+        var far=Math.abs(slot)>1;
+        if(far)return {x:frontX+side*size*(insert?.34:.68),y:frontY+size*(insert?.22:-.10),r:side*(insert?19:25),s:insert?.94:.98,a:0,z:1};
+        return {x:frontX+(far?side*size*.64:(side<0?-size*.075:(expanded?gap:size*.12))),
+            y:frontY-(far?12:(expanded?5:3))*unit,r:side<0?-13:(expanded?6.8:5.2),s:1,a:far?0:1,z:2};
+    }
+    function cardFor(key){for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(c&&c.record.key===key)return c;}return null;}
+    function freeCard(){for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(c&&!c.record.key)return c;}return null;}
+    function syncCards(){
+        if(turning||(awaitingKey&&String(front.key||"")!==awaitingKey))return;
+        awaitingKey="";
+        var desired=[];
+        if(front&&front.key)desired.push({record:front,slot:0});
+        for(var i=0;i<rear.length;++i)desired.push({record:rear[i],slot:Number(rear[i].side)});
+        for(i=0;i<cards.count;++i){var c=cards.itemAt(i);if(!c)continue;var keep=false;
+            for(var j=0;j<desired.length;++j)if(desired[j].record.key===c.record.key)keep=true;
+            if(!keep)c.record=({});
+        }
+        for(i=0;i<desired.length;++i){var d=desired[i];var existing=cardFor(d.record.key);
+            if(existing){existing.record=d.record;existing.slot=d.slot;continue;}
+            var added=freeCard();if(!added)continue;
+            added.snapping=true;added.entering=d.slot!==0;added.slot=d.slot===0?0:d.slot*2;added.record=d.record;
+            // Late metadata uses the same entry path instead of appearing at rest.
+            if(d.slot!==0)settleCard(added,d.slot);else releaseSnap(added);
+        }
+        paintedFront=front;
+    }
+    function releaseSnap(card){Qt.callLater(function(){card.snapping=false;});}
+    function settleCard(card,slot){Qt.callLater(function(){if(!stack.turning&&card.record.key){card.snapping=false;card.slot=slot;card.entering=false;}});}
+    function hold(key){if(turning||switchCooldown)return;hoveredKey=key;expanded=true;closeFan.stop();}
+    function release(key){if(turning||switchCooldown)return;if(hoveredKey===key)hoveredKey="";closeFan.restart();}
     function choose(value){
-        if(turning||switchCooldown||!value||!value.key||value.key===front.key)return;
+        if(turning||switchCooldown||awaitingKey||!value||!value.key||value.key===front.key)return;
         direction=value.side===-1?-1:1;
         if(reduced){switchCooldown=true;controller.openCover(value.key);cooldown.restart();return;}
-        startingKey=String(front.key||"");chosen=value;frozenRear=displayedRear;
-        incomingX=direction<0?-size*.075:gap;
-        incomingY=-5*unit;
-        incomingRotation=direction<0?-13:6.8;incomingScale=1;
-        for(var n=0;n<sleeves.count;++n){var card=sleeves.itemAt(n);if(card&&card.modelData.key===value.key){incomingX=card.x-frontX;incomingY=card.y-frontY;incomingRotation=card.rotation;incomingScale=card.scale;break;}}
-        hoveredKey="";turning=true;progress=0;turn.restart();
+        chosen=value;startingKey=String(front.key||"");
+        var entering=controller.recordNeighbour(2*direction);
+        if(entering&&entering.key&&!cardFor(entering.key)){
+            var extra=freeCard();if(extra){extra.snapping=true;extra.entering=true;extra.slot=2*direction;extra.record=entering;}
+        }
+        for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(!c||!c.record.key)continue;
+            c.startX=c.x;c.startY=c.y;c.startRotation=c.rotation;c.startScale=c.scale;c.startOpacity=c.opacity;
+            c.targetSlot=c.slot-direction;
+        }
+        closeFan.stop();hoveredKey="";progress=0;turning=true;for(i=0;i<cards.count;++i)cards.itemAt(i).snapping=false;turn.restart();
     }
     onFrontChanged:{
         var key=String(front.key||"");
         if(key&&key!==lastPreparedKey){lastPreparedKey=key;recordPrefetch.restart();}
-        if(turning&&front.key!==startingKey&&front.key!==chosen.key){turn.stop();turning=false;}
-        if(!turning){paintedFront=front;displayedRear=rear;}
+        if(awaitingKey&&key!==awaitingKey&&key!==startingKey){commitTurn.stop();pendingKey="";awaitingKey="";}
+        if(turning&&key!==startingKey&&key!==chosen.key){turn.stop();turning=false;awaitingKey="";}
+        syncCards();
     }
-    onRearChanged:if(!turning)displayedRear=rear
-    Component.onCompleted:{paintedFront=front;displayedRear=rear;recordPrefetch.restart();}
+    onRearChanged:syncCards()
+    Component.onCompleted:{syncCards();recordPrefetch.restart();}
+    // Decode the next entering images ahead of time; these never paint a cover.
+    Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.controller.recordNeighbour(2).cover||"";}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
+    Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.controller.recordNeighbour(-2).cover||"";}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
     Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
     Timer {id:recordPrefetch;interval:280;repeat:false;onTriggered:if(!stack.turning)stack.controller.prepareRecords()}
     Timer {id:commitTurn;interval:16;repeat:false;onTriggered:{var key=stack.pendingKey;stack.pendingKey="";if(key)stack.controller.openCover(key);}}
     Timer {id:closeFan;interval:170;onTriggered:if(!stack.turning&&!area.hovered&&!stack.hoveredKey)stack.expanded=false}
     Item {x:-18*stack.unit;y:-8*stack.unit;width:stack.width+36*stack.unit;height:stack.height+64*stack.unit
-        HoverHandler {id:area;onHoveredChanged:{if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
+        HoverHandler {id:area;onHoveredChanged:{if(stack.turning||stack.switchCooldown)return;if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
     }
+    // Four existing render slots: three resting cards and the real entering neighbour.
+    // Their image identity never changes while the turn is running.
     Repeater {
-        id:sleeves
-        model:stack.displayedRear
+        id:cards
+        model:4
         delegate:Item {
-            id:sleeve
-            required property var modelData
-            required property int index
-            readonly property int side:modelData.side===-1?-1:1
-            objectName:"recordSleeve_"+modelData.key
+            id:card
+            property var record:({})
+            property bool snapping:false
+            property bool entering:false
+            property int slot:99
+            property int targetSlot:99
+            property real startX:0
+            property real startY:0
+            property real startRotation:0
+            property real startScale:1
+            property real startOpacity:1
+            readonly property var destination:stack.pose(stack.turning?targetSlot:slot,!stack.turning&&entering)
+            readonly property real p:{
+                var t=stack.progress;
+                if(Math.abs(slot)>1){t=Math.max(0,(t-.14)/.86);return t*t*(3-2*t);}
+                if(Math.abs(targetSlot)>1){t=Math.min(1,t/.82);return t*t*(3-2*t);}
+                return t;
+            }
+            readonly property real arch:stack.turning?Math.sin(Math.PI*p):0
+            readonly property bool chosen:record.key===stack.chosen.key
+            readonly property bool oldMain:slot===0
+            readonly property bool hovered:!stack.turning&&stack.hoveredKey===record.key
+            objectName:"recordSleeve_"+(record.key||"")
+            visible:!!record.key
             width:stack.size;height:width
-            x:stack.frontX+(side<0?-stack.size*.075:(stack.expanded?stack.gap:stack.size*.12))
-            y:stack.frontY-(stack.expanded?5:3)*stack.unit-(stack.hoveredKey===modelData.key?6*stack.unit:0)
-            rotation:side<0?-13:(stack.expanded?6.8:5.2)
-            opacity:stack.turning&&modelData.key===stack.chosen.key?0:1
-            scale:stack.hoveredKey===modelData.key?1.012:1
-            z:2
-            Behavior on x {NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
-            Behavior on y {NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
-            Behavior on rotation {NumberAnimation {duration:stack.reduced?0:220;easing.type:Easing.OutCubic}}
-            Behavior on scale {NumberAnimation {duration:stack.reduced?0:160;easing.type:Easing.OutCubic}}
-            Rectangle {anchors.fill:parent;anchors.margins:-3;color:"#d8d9cf";radius:4;border.width:1;border.color:"#aaffffff"}
-            Image {anchors.fill:parent;source:sleeve.modelData.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
-            MouseArea {objectName:"recordHit_"+sleeve.modelData.key
-                x:sleeve.side<0?0:parent.width-width;y:0;width:sleeve.side<0?stack.size*.22:(stack.expanded?stack.gap:stack.size*.16);height:parent.height
-                enabled:!stack.turning;hoverEnabled:true;cursorShape:Qt.PointingHandCursor
-                onEntered:stack.hold(sleeve.modelData.key)
-                onExited:stack.release(sleeve.modelData.key)
-                onClicked:stack.choose(sleeve.modelData)
+            x:stack.turning?startX+(destination.x-startX)*p+((chosen?stack.direction:(oldMain?-stack.direction:0))*stack.size*.22*arch):destination.x
+            y:stack.turning?startY+(destination.y-startY)*p-(chosen?6:oldMain?4:0)*stack.unit*arch:destination.y-(hovered?6*stack.unit:0)
+            rotation:stack.turning?startRotation+(destination.r-startRotation)*p+(chosen?stack.direction*2:0)*arch:destination.r
+            scale:stack.turning?startScale+(destination.s-startScale)*p:(hovered?1.012:1)
+            opacity:!record.key?0:(stack.turning?startOpacity+(destination.a-startOpacity)*p:destination.a)
+            z:stack.turning?(slot===0?10-8*p:targetSlot===0?2+8*p:1):destination.z
+            Behavior on x {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
+            Behavior on y {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
+            Behavior on rotation {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:220;easing.type:Easing.OutCubic}}
+            Behavior on scale {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:160;easing.type:Easing.OutCubic}}
+            Behavior on opacity {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software&&slot===0
+            layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
+            Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
+            Image {objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.record.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+            MouseArea {
+                objectName:"recordHit_"+card.record.key
+                x:card.slot<0?0:parent.width-width;y:0
+                width:card.slot<0?stack.size*.22:(stack.expanded?stack.gap:stack.size*.16);height:parent.height
+                enabled:card.slot!==0&&Math.abs(card.slot)===1&&!stack.turning&&!stack.awaitingKey
+                hoverEnabled:enabled;cursorShape:Qt.PointingHandCursor
+                onEntered:stack.hold(card.record.key)
+                onPositionChanged:if(containsMouse)stack.hold(card.record.key)
+                onExited:stack.release(card.record.key)
+                onClicked:stack.choose(Object.assign({},card.record,{side:card.slot}))
             }
         }
-    }
-    Item {
-        objectName:"recordOutgoing"
-        x:stack.frontX-stack.direction*stack.motion*stack.size*.66;y:stack.frontY-stack.motion*9*stack.unit
-        width:stack.size;height:width;rotation:-stack.direction*stack.motion*11;z:10
-        scale:1-stack.motion*.035
-        opacity:1-Math.pow(stack.motion,1.65)
-        layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
-        layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
-        Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
-        Image {objectName:"playlistMainCover";anchors.fill:parent;source:stack.paintedFront.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
-    }
-    Item {
-        objectName:"recordIncoming"
-        visible:stack.turning;z:9;x:stack.frontX+(1-stack.progress)*stack.incomingX;y:stack.frontY+(1-stack.progress)*stack.incomingY
-        width:stack.size;height:width;rotation:(1-stack.progress)*stack.incomingRotation
-        scale:1+(1-stack.progress)*(stack.incomingScale-1)
-        layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
-        layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
-        Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
-        Image {anchors.fill:parent;source:stack.chosen.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
     }
     Row {
         id:previewStrip
@@ -170,19 +210,15 @@ Item {
         NumberAnimation {target:stack;property:"progress";from:0;to:1;duration:460;easing.type:Easing.InOutCubic}
         ScriptAction {script:{
             var key=String(stack.chosen.key||"");
-            var old=stack.paintedFront;
+            for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(!c||!c.record.key)continue;
+                c.slot=c.targetSlot;c.entering=false;
+                if(Math.abs(c.slot)>1)c.record=({});
+            }
             stack.paintedFront=stack.chosen;
-            var next=[];
-            for(var i=0;i<stack.frozenRear.length;++i){var r=stack.frozenRear[i];if(r.key!==key)next.push(r);}
-            next.push(Object.assign({},old,{side:-stack.direction}));
-            stack.displayedRear=next;
+            stack.awaitingKey=key;
             stack.turning=false;
-            stack.hoveredKey="";
-            stack.switchCooldown=true;
-            cooldown.restart();
-            closeFan.restart();
-            stack.pendingKey=key;
-            commitTurn.restart();
+            stack.switchCooldown=true;cooldown.restart();
+            stack.pendingKey=key;commitTurn.restart();
         }}
     }
 }

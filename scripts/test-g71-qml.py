@@ -22,6 +22,8 @@ class Controller(QAbstractListModel):
         self.catalogIndex=0;self.catalog=[self.meta.copy()]+[dict(key=('netease:album:' if i==7 else 'netease:playlist:')+str(i+1),id=str(i+1),title='收藏 '+str(i+1),kind='album' if i==7 else 'playlist',artist='真实测试创建者',cover=images[i%4]) for i in range(1,8)]
     @property
     def rear(self):return [{**self.catalog[(self.catalogIndex+d)%len(self.catalog)],"side":d} for d in (-1,1)]
+    @Slot(int,result='QVariantMap')
+    def recordNeighbour(self,offset):return self.catalog[(self.catalogIndex+offset)%len(self.catalog)]
     @Slot()
     def prepareRecords(self):self.actions.append(("records-more",))
     def rowCount(self,parent=QModelIndex()):return 0 if parent.isValid() else len(self.ids)
@@ -256,14 +258,70 @@ Item {id:root;width:1400;height:900
         QTest.mouseMove(v,point);QTest.qWait(240)
         QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point);QTest.qWait(180)
         assert stack.property('turning') and len([x for x in c.actions if x[0]=='open'])==before
-        incoming=find(root,'recordIncoming');assert incoming.isVisible() and incoming.opacity()==1
+        incoming=find(root,'recordSleeve_'+target);assert incoming.isVisible() and incoming.opacity()==1
         QTest.qWait(500)
-        outgoing=find(root,'recordOutgoing')
+        outgoing=find(root,'recordSleeve_'+target)
         assert not stack.property('turning') and c.meta['key']==target
         assert abs(outgoing.x()-stack.property('frontX'))<.01 and abs(outgoing.y()-stack.property('frontY'))<.01
         assert outgoing.rotation()==0 and outgoing.opacity()==1
     assert c.catalogIndex==0
     print('PASS G74: real previous-corner click, delayed navigation and stable centre after both turn directions')
+    # G75: sample the real QML scene during both directions, including the last frame.
+    import json,time
+    motionEvidence=[];motionFrames=[]
+    def recordKey(item):
+        data=item.property('record')
+        if hasattr(data,'toVariant'):data=data.toVariant()
+        return data.get('key','')
+    for direction in (1,-1):
+        listing.setProperty('contentY',listing.property('startY'));QTest.qWait(360)
+        mainKey=c.meta['key'];target=next(x for x in c.rear if x['side']==direction)['key']
+        leavingKey=next(x for x in c.rear if x['side']==-direction)['key']
+        enteringKey=c.recordNeighbour(2*direction)['key']
+        beforeMain=find(root,'recordSleeve_'+mainKey);beforeChosen=find(root,'recordSleeve_'+target)
+        hit=find(root,'recordHit_'+target);point=hit.mapToScene(QPointF(6 if direction<0 else hit.width()/2,hit.height()*.6)).toPoint()
+        QTest.mouseMove(v,point);QTest.qWait(260)
+        QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point)
+        assert stack.property('turning')
+        watched={k:find(root,'recordSleeve_'+k) for k in (leavingKey,mainKey,target,enteringKey)}
+        assert all(x is not None for x in watched.values())
+        assert watched[mainKey]==beforeMain and watched[target]==beforeChosen
+        entered=watched[enteringKey];assert entered.y()>stack.property('frontY')+stack.property('size')*.1
+        samples=[];marks=[.04,.25,.5,.75,.98];started=time.monotonic()
+        while stack.property('turning'):
+            progress=float(stack.property('progress'));rows={}
+            for key,card in watched.items():
+                rows[key]=[card.x(),card.y(),card.rotation(),card.opacity()]
+                if abs(card.property('slot'))<=1 or card.opacity()>.01:assert recordKey(card)==key,(key,recordKey(card),progress)
+            assert abs(watched[mainKey].opacity()-1)<.001,'main card must move to the side, never fade out'
+            samples.append(dict(t=time.monotonic()-started,p=progress,cards=rows))
+            if marks and progress>=marks[0]:
+                marks.pop(0);image=v.grabWindow();origin=stack.mapToScene(QPointF(-70,-20)).toPoint()
+                motionFrames.append((direction,progress,image.copy(max(0,origin.x()),max(0,origin.y()),int(stack.width()+170),int(stack.height()+160))))
+            QTest.qWait(12)
+            assert time.monotonic()-started<3
+        for key,card in watched.items():
+            if key==leavingKey:assert not recordKey(card) and card.opacity()==0
+            else:assert recordKey(card)==key
+        assert watched[mainKey].property('slot')==-direction and watched[target].property('slot')==0 and entered.property('slot')==direction
+        assert watched[target]==find(root,'recordSleeve_'+target)
+        terminal={key:[card.x(),card.y(),card.rotation(),card.opacity()] for key,card in watched.items() if key!=leavingKey}
+        last=samples[-1]
+        assert last['p']>.96,last['p']
+        for key,end in terminal.items():
+            assert max(abs(last['cards'][key][j]-end[j]) for j in (0,1))<4,(direction,key,last['cards'][key],end)
+        QTest.qWait(260)
+        for key,end in terminal.items():
+            card=watched[key];assert max(abs(card.x()-end[0]),abs(card.y()-end[1]))<.02,(key,end,card.x(),card.y())
+        assert c.meta['key']==target
+        motionEvidence.append(dict(direction=direction,leaving=leavingKey,main=mainKey,target=target,entering=enteringKey,samples=samples,terminal=terminal))
+    (repo.parent/'g75-motion-samples.json').write_text(json.dumps(motionEvidence),encoding='utf-8')
+    # A contact sheet is an intermediate visual check, never installed as UI art.
+    sheet=QImage(5*540,2*470,QImage.Format_RGB32);sheet.fill(QColor('#e9e7df'));painter=QPainter(sheet)
+    for n,(direction,progress,frame) in enumerate(motionFrames[:10]):
+        x=(n%5)*540;y=(n//5)*470;painter.drawImage(x,y+24,frame.scaled(530,430,Qt.KeepAspectRatio,Qt.SmoothTransformation));painter.setPen(QColor('#30392e'));painter.drawText(x+12,y+18,f'direction {direction}, progress {progress:.3f}')
+    painter.end();sheet.save(str(repo.parent/'g75-turn-contact-sheet.png'))
+    print('PASS G75: sampled both directions; A exits, B stays opaque and moves aside, C retains identity, D inserts from below; last frame and post-navigation positions are continuous')
     # Every exposed sleeve maps to its own key, title and single navigation.
     retainedStack=find(root,'playlistRecordStack')
     for ordinal in range(5):

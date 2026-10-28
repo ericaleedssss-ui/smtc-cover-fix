@@ -150,6 +150,15 @@ void PlaylistMagazine::refreshCovers(){
     }
     m_covers=visible;
 }
+QVariantMap PlaylistMagazine::recordNeighbour(int offset) const {
+    const int n=m_recordSequence.size();
+    if(!n||m_recordIndex<0)return {};
+    int index=m_recordIndex+offset;
+    if(index<0||index>=n){if(!m_recordsComplete)return {};index=(index%n+n)%n;}
+    if(index==m_recordIndex)return {};
+    auto item=m_recordSequence.at(index).toObject();item["side"]=offset<0?-1:1;
+    return item.toVariantMap();
+}
 void PlaylistMagazine::prepareRecords(){
     if(!m_folder||m_music->uid.isEmpty()||m_music->personalLoading)return;
     if(m_recordSequence.size()>2&&m_recordIndex+2<m_recordSequence.size())return;
