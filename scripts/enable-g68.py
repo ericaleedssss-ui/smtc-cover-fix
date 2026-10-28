@@ -10,3 +10,10 @@ for line in patch.splitlines():
 subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
 subprocess.run(['git', 'apply', '-'], input=patch, check=True)
 print('G68: Windows retained-page QA opens and closes the queue through actual footer mouse events.')
+
+patch = (root / 'patches/g68-retained-scroll-qa.patch').read_bytes().replace(b'\r\n', b'\n')
+target = Path('Qt/tests/UiChecks.cpp')
+target.write_bytes(target.read_bytes().replace(b'\r\n', b'\n'))
+subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
+subprocess.run(['git', 'apply', '-'], input=patch, check=True)
+print('G68: assert settled wheel baseline and report each retained-page field in Windows QA.')

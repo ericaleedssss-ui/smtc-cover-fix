@@ -16,3 +16,12 @@ The Windows retained-Following test now opens AND closes the queue via real mous
 Run 40606428607 successfully fetched the exact G68 commit, then failed before compilation: enable-g67.py read Main.qml without an explicit encoding, so Windows cp1252 raised UnicodeDecodeError. That read now explicitly uses UTF-8, consistent with the rest of the installer chain. No queue/page behavior changes were made in this follow-up.
 
 scripts/test-g67-windows-encoding.py reproduces the actual prior failure with cp1252 fallback (UTF-8 mode disabled), then runs the fixed installer on LF, CRLF and mixed source/patch inputs. All three fixed runs succeed and generate identical normalized bytes. It audits text I/O in every active installer and the source verifier for explicit encoding. The complete clean bootstrap and source-stamp checks are also rerun before submission. Windows compilation and runtime results remain pending the next run.
+
+
+## Retained-scroll runtime follow-up
+
+Run 40607011176 applied the correct source and successfully compiled/deployed the Windows application. The compiled UI run failed seven combined retained-page assertions; the Loader/picker-preservation and other playback, source and mutation tests passed. The old combined assertion does not print individual values, so the precise failed field is not proven by that log. In particular, do not describe this as another compile failure or claim a confirmed Loader teardown.
+
+Local actual-QML probes retain the Discover instance, card delegate and scroll under repeated queue toggles and unrelated state updates. Discover was the remaining large reading pane relying on platform Flickable wheel animation; Profile and Queue already consume wheel deltas explicitly. Discover now uses the same explicit handling, including pixel deltas, with cancelFlick before wheel-position assignment. Touch flick behavior is unchanged. This removes an in-flight wheel animation from the retained-position baseline and gives wheel events a single owner.
+
+The local production-QML regression now checks the exact wheel delta, settled movement and unchanged position after time and unrelated playback updates. Windows QA retains every previous assertion, adds a settled-wheel prerequisite, and reports queue/picker flags, page identity, actual/expected scroll, movement, data/filter/query/offset and playback separately. Further Windows results remain pending; the prior log alone does not prove platform inertia was the cause.

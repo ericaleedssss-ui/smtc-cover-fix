@@ -24,7 +24,7 @@ checks = {
     'Qt/src/NativeHudController.cpp': ['queueOpen = !queueOpen;',
                                       'if (kind == "player") { queueOpen = true; return; }'],
     'Qt/src/NativeHudMusic.cpp': ['if (queueCollectionOpen) {'],
-    'Qt/tests/UiChecks.cpp': ['Following page actually scrolls before opening the queue', 'clickQueueButton();',
+    'Qt/tests/UiChecks.cpp': ['Following page actually scrolls before opening the queue', 'clickQueueButton();', 'G68 retention',
                             'queue retains the same Following instance, scroll, filter, query and loaded data'],
 }
 for name, markers in checks.items():

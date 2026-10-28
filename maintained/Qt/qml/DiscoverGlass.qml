@@ -82,6 +82,18 @@ Item {
             width: panel.width - 70 * page.unit; height: panel.height - y - 18 * page.unit
             clip: true; contentWidth: width; contentHeight: grid.implicitHeight + status.height + 50 * page.unit
             boundsBehavior: Flickable.StopAtBounds
+            // Match the other reading panes: consume wheel deltas here, rather
+            // than leaving platform-specific Flickable wheel animation in flight
+            // while focus moves to the foreground queue.
+            WheelHandler {
+                target: null
+                onWheel: function(event) {
+                    var distance = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y * page.unit * .6;
+                    scrolling.cancelFlick();
+                    scrolling.contentY = Math.max(0, Math.min(Math.max(0, scrolling.contentHeight - scrolling.height), scrolling.contentY - distance));
+                    event.accepted = true;
+                }
+            }
             Grid {
                 id: grid
                 width: scrolling.width

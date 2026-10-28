@@ -68,7 +68,15 @@ Item { id:root; width:1100; height:720
         scale=height/1080;stage=1400/scale;panel=min(430,max(320,stage*.29))
         spy.update(queueBounds=dict(x=stage-panel-18,y=116,width=panel,height=842))
         loader=find(root,'discoverGlassLoader');page=loader.property('item');scroll=find(root,'discoverScroll')
+        previousY=scroll.property('contentY')
         wheel(v,scroll);y=scroll.property('contentY');assert y>0,y
+        expectedY=min(max(0,scroll.property('contentHeight')-scroll.height()),previousY+480*scale*.6)
+        assert abs(y-expectedY)<.000001,(y,expectedY)
+        assert not scroll.property('moving'), 'wheel must settle before capturing the retained position'
+        QTest.qWait(250);assert scroll.property('contentY')==y
+        for tick in range(12):
+            spy.data['playbackPosition']=tick;spy.changed.emit();QTest.qWait(10)
+        assert scroll.property('contentY')==y
         original=spy.data['discoverItems']
         for i in range(4):
             spy.action('player:open');QTest.qWait(100)

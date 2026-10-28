@@ -1,0 +1,40 @@
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -1353,6 +1353,16 @@
+         }
+         const auto y = scroll ? scroll->property("contentY").toDouble() : 0.;
+         check(page && scroll && y>0, "Following page actually scrolls before opening the queue");
++        check(scroll && !scroll->property("moving").toBool(), "Following wheel is settled before recording the retained position");
++        const auto reportRetention = [&] (const char *phase) {
++            qInfo() << "G68 retention" << phase << "queue" << hud.queueOpen << "picker" << hud.queueCollectionOpen
++                    << "modal" << hud.modal << "samePage" << (page && loader->property("item").value<QObject *>()==page.data())
++                    << "scroll" << (scroll ? scroll->property("contentY").toDouble() : -1.) << "expectedScroll" << y
++                    << "moving" << (scroll && scroll->property("moving").toBool())
++                    << "sameData" << (discover.items==cards) << "tab" << discover.tab << "category" << discover.category
++                    << "query" << hud.query << "offset" << hud.listOffset << "samePlayback" << (player.current==song)
++                    << "queueSize" << player.queue.size();
++        };
+         const auto clickQueueButton = [&] {
+             auto *button = findVisual(window->contentItem(), "nativeHit_player:open");
+             if (!button || !button->isVisible()) { check(false, "actual footer queue button is visible"); return; }
+@@ -1368,6 +1378,7 @@
+         };
+         for (int i=0; i<3; ++i) {
+             clickQueueButton();
++            reportRetention("opened");
+             check(hud.queueOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data() &&
+                 scroll->property("contentY").toDouble()==y && discover.items==cards && discover.tab=="following" &&
+                 discover.category=="测试筛选" && hud.query=="保留查询" && hud.listOffset==7,
+@@ -1377,10 +1388,12 @@
+                 check(hud.queueCollectionOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data(),
+                     "queue collection overlays Following without replacing its Loader");
+                 backend.action("queue-collection-close"); refresh();
++                reportRetention("picker closed");
+                 check(hud.queueOpen && !hud.queueCollectionOpen && scroll->property("contentY").toDouble()==y,
+                     "closing collection returns to the same open queue and Following scroll");
+             }
+             clickQueueButton();
++            reportRetention("closed");
+             check(!hud.queueOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data() &&
+                 scroll->property("contentY").toDouble()==y && player.current==song && player.queue.size()==2,
+                 "ordinary queue close changes neither navigation, playback nor queue contents");
