@@ -36,10 +36,79 @@ index 662a893..0075bbc 100644
             [update, liked](QJsonObject) { update(!liked); });
  }
 diff --git a/Qt/src/MusicPlayer.cpp b/Qt/src/MusicPlayer.cpp
-index 8397123..b45c4bc 100644
+index 8397123..288399a 100644
 --- a/Qt/src/MusicPlayer.cpp
 +++ b/Qt/src/MusicPlayer.cpp
-@@ -838,6 +838,8 @@ void MusicPlayer::dislikeRoam() {
+@@ -321,37 +321,41 @@ void MusicPlayer::play(QJsonObject track, std::optional<QJsonArray> source, std:
+         leaveRoam(false);
+     }
+     if (heartPending) { cancelHeart(); }
+-    if (source) {
+-        cancelHeart();
+-        if (mode == "heart") { mode = "all"; }
+-        QSet<QString> seen;
+-        queue = {};
+-        for (const auto &value : *source) {
+-            const auto song = value.toObject();
+-            const auto key = identity(song);
+-            if (song["kind"] == "song" && !seen.contains(key)) {
+-                seen.insert(key);
+-                queue.append(song);
++    // Restoring a suspended radio context is not a new playlist selection.
++    // Preserve duplicates, exact index, mode and the current song's own source.
++    if (!m_restoringRoamContext) {
++        if (source) {
++            cancelHeart();
++            if (mode == "heart") { mode = "all"; }
++            QSet<QString> seen;
++            queue = {};
++            for (const auto &value : *source) {
++                const auto song = value.toObject();
++                const auto key = identity(song);
++                if (song["kind"] == "song" && !seen.contains(key)) {
++                    seen.insert(key);
++                    queue.append(song);
++                }
+             }
+         }
+-    }
+-    int selected = -1;
+-    for (qsizetype i = 0; i < queue.size(); ++i) {
+-        if (identity(queue.at(i).toObject()) == identity(track)) {
+-            selected = int(i);
+-            break;
++        int selected = -1;
++        for (qsizetype i = 0; i < queue.size(); ++i) {
++            if (identity(queue.at(i).toObject()) == identity(track)) {
++                selected = int(i);
++                break;
++            }
+         }
++        if (selected < 0) {
++            selected = int(queue.size());
++            queue.append(track);
++        }
++        if (!queueIndex && selected >= 0) { queue.replace(selected, track); }
++        if (queueIndex && *queueIndex >= 0 && *queueIndex < queue.size()) {
++            track.remove("queueSource");
++            track = MusicData::withQueueSource(track, queue.at(*queueIndex).toObject().value("queueSource").toObject());
++        }
++        index = queueIndex.value_or(selected);
+     }
+-    if (selected < 0) {
+-        selected = int(queue.size());
+-        queue.append(track);
+-    }
+-    if (!queueIndex && selected >= 0) { queue.replace(selected, track); }
+-    if (queueIndex && *queueIndex >= 0 && *queueIndex < queue.size()) {
+-        track.remove("queueSource");
+-        track = MusicData::withQueueSource(track, queue.at(*queueIndex).toObject().value("queueSource").toObject());
+-    }
+-    index = queueIndex.value_or(selected);
+     const auto generation = ++m_generation;
+     // A manual replay or a new song starts a new, independent listening session.
+     // Resuming after a temporary media failure does not reset this counter.
+@@ -838,6 +842,8 @@ void MusicPlayer::dislikeRoam() {
              roamLoading = false;
              if (!response.ok()) {
                  roamStatus = QStringLiteral("不喜欢反馈未确认：") + response.error;
@@ -48,7 +117,38 @@ index 8397123..b45c4bc 100644
              } else {
                  roamStatus.clear();
              }
-@@ -889,6 +891,8 @@ void MusicPlayer::leaveRoam(bool restorePrevious) {
+@@ -867,10 +873,14 @@ void MusicPlayer::leaveRoam(bool restorePrevious) {
+     m_roamAccountValid = {};
+     mode = previousMode.isEmpty() ? "all" : previousMode;
+     if (restorePrevious) {
++        queue = previousQueue;
++        current = previousSong;
++        index = previousIndex;
+         if (!previousSong.isEmpty() && m_api->provider == previousSong["provider"].toString()) {
+             m_roamInternalPlay = true;
+-            play(previousSong, previousQueue, previousIndex >= 0
+-                 ? std::optional<int>(previousIndex) : std::nullopt);
++            m_restoringRoamContext = true;
++            play(previousSong);
++            m_restoringRoamContext = false;
+             m_roamInternalPlay = false;
+             if (previousPosition > 0) {
+                 m_resumePosition = previousPosition;
+@@ -879,9 +889,13 @@ void MusicPlayer::leaveRoam(bool restorePrevious) {
+                 setPaused(true);
+             }
+         } else {
++            // Returning to an empty/incompatible ordinary session must also
++            // stop the FM audio and invalidate its pending media preparation.
++            stop();
+             queue = previousQueue;
+             current = previousSong;
+             index = previousIndex;
++            mode = previousMode.isEmpty() ? "all" : previousMode;
+         }
+     }
+     emit changed();
+@@ -889,6 +903,8 @@ void MusicPlayer::leaveRoam(bool restorePrevious) {
  
  void MusicPlayer::next(int direction, bool ended) {
      if (roamActive) {
@@ -57,6 +157,18 @@ index 8397123..b45c4bc 100644
          if (direction < 0) {
              if (index > 0) {
                  m_roamInternalPlay = true;
+diff --git a/Qt/src/MusicPlayer.h b/Qt/src/MusicPlayer.h
+index f2147a0..3f65a2b 100644
+--- a/Qt/src/MusicPlayer.h
++++ b/Qt/src/MusicPlayer.h
+@@ -82,6 +82,7 @@ class MusicPlayer : public QObject {
+     double m_roamSavedPosition = 0;
+     bool m_roamSavedPaused = false;
+     bool m_roamInternalPlay = false;
++    bool m_restoringRoamContext = false;
+     void fetchRoam();
+     qint64 m_endSerial = 0;
+     double m_lastPoll = -1;
 diff --git a/Qt/src/NativeHud.cpp b/Qt/src/NativeHud.cpp
 index cb96101..c2b96ec 100644
 --- a/Qt/src/NativeHud.cpp
@@ -181,7 +293,7 @@ index e45ab51..b6e17df 100644
          const auto index = parts.value(2).toInt();
          const auto songs = music.directory ? music.directory->songs : music.tracks;
 diff --git a/Qt/tests/UiChecks.cpp b/Qt/tests/UiChecks.cpp
-index dc1a4ee..47102e7 100644
+index dc1a4ee..53d985e 100644
 --- a/Qt/tests/UiChecks.cpp
 +++ b/Qt/tests/UiChecks.cpp
 @@ -720,6 +720,27 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
@@ -243,7 +355,7 @@ index dc1a4ee..47102e7 100644
              check(music.directory && music.directory->item["id"]=="690002" && music.player.current==originalPlay && music.player.queue==originalQueue,
                  "G69 record browsing changes the real directory without playback or queue replacement");
              backend.action("back");refresh();
-@@ -1714,6 +1750,25 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+@@ -1714,6 +1750,27 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
          hud.queueOpen = false; hud.queueCollectionOpen = false;
          hud.modal.clear(); hud.closing = false;
      }
@@ -263,7 +375,9 @@ index dc1a4ee..47102e7 100644
 +        check(player.roamActive&&hud.lyricsMode&&music.current["id"]=="707001"&&hud.modal!="discover", "G70 roam entry uses personalized FM and the current-song lyric page from a playlist");
 +        backend.action("player:next");settle(450);refresh();check(picks==2&&trash==0&&player.current["id"]=="707002","G70 FM skip fetches a fresh station pick without dislike feedback");
 +        backend.action("roam:dislike");settle(450);refresh();check(trash==1&&picks==3&&player.current["id"]=="707003","G70 FM dislike submits real feedback before continuing recommendations");
-+        backend.action("roam:exit");settle(150);refresh();check(!player.roamActive&&!hud.lyricsMode&&player.queue==queue&&player.current==playing&&player.index==index,"G70 leaving FM restores the original ordinary playback context");
++        backend.action("roam:exit");settle(150);refresh();
++        qInfo()<<"G70 FM restore"<<"sameQueue"<<(player.queue==queue)<<"sameSong"<<(player.current==playing)<<"sameIndex"<<(player.index==index)<<"roamActive"<<player.roamActive<<"lyrics"<<hud.lyricsMode;
++        check(!player.roamActive&&!hud.lyricsMode&&player.queue==queue&&player.current==playing&&player.index==index,"G70 leaving FM restores the original ordinary playback context");
 +        backend.host.fixture=fixture;music.uid=uid;music.directory=folder;music.directoryInfo=info;music.current=selection;
 +    }
      qInfo() << "Frosted UI rendering and settings:" << (ok ? "passed" : "FAILED");
