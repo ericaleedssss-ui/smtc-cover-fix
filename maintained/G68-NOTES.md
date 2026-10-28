@@ -9,3 +9,10 @@ The existing G67 independent overlay implementation is retained unchanged. In pa
 Local validation: clean pinned-upstream + G53 + full maintained application; source stamp verification; deliberate stale-checkout and stale-generated-source rejection; production QML queue/collection/Following/Profile interactions; existing queue and comment lifecycle regressions. Windows D3D rendering, compiled controller/mutation tests and hands-on behavior are pending the submitted Windows build. Stop work after submission as requested.
 
 The Windows retained-Following test now opens AND closes the queue via real mouse events on the actual native HUD footer hit item (nativeHit_player:open), rather than invoking only backend.action("player:open"). The QML addition is an objectName for test discovery; control behavior is unchanged.
+
+
+## Windows installer encoding follow-up
+
+Run 40606428607 successfully fetched the exact G68 commit, then failed before compilation: enable-g67.py read Main.qml without an explicit encoding, so Windows cp1252 raised UnicodeDecodeError. That read now explicitly uses UTF-8, consistent with the rest of the installer chain. No queue/page behavior changes were made in this follow-up.
+
+scripts/test-g67-windows-encoding.py reproduces the actual prior failure with cp1252 fallback (UTF-8 mode disabled), then runs the fixed installer on LF, CRLF and mixed source/patch inputs. All three fixed runs succeed and generate identical normalized bytes. It audits text I/O in every active installer and the source verifier for explicit encoding. The complete clean bootstrap and source-stamp checks are also rerun before submission. Windows compilation and runtime results remain pending the next run.

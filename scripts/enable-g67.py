@@ -11,7 +11,7 @@ subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
 subprocess.run(['git', 'apply', '-'], input=patch, check=True)
 for name in ('PlayerQueueGlass.qml', 'SideNavigation.qml', 'DiscoverGlass.qml'):
     shutil.copyfile(root / 'maintained/Qt/qml' / name, Path('Qt/qml') / name)
-main = Path('Qt/qml/Main.qml').read_text()
+main = Path('Qt/qml/Main.qml').read_text(encoding='utf-8')
 assert 'active: rhine.state.queueOpen === true' in main
 assert 'active: rhine.state.modal === "discover"' in main
 assert 'queueDiscoverTile' in main and 'queueProfileTile' in main
