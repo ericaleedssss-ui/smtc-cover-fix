@@ -27,7 +27,11 @@ QJsonArray eligible(const QJsonArray &songs,bool playable=true) {
 PlaylistMagazine::PlaylistMagazine(MusicLibrary *music, NativeHud *hud, QObject *parent)
     : QAbstractListModel(parent),m_music(music),m_hud(hud),m_account(music->accountGeneration()) {
     connect(music,&MusicLibrary::invalidated,this,&PlaylistMagazine::sync);
-    connect(&music->player,&MusicPlayer::changed,this,[this]{ if(rowCount()) emit dataChanged(index(0),index(rowCount()-1),{Heart});if(!m_menuSong.isEmpty()&&m_menuScope=="queue")emit menuChanged(); });
+    connect(&music->player,&MusicPlayer::changed,this,[this]{
+        // Playback position changes frequently. Do not invalidate every visible
+        // playlist row just because the player's clock advanced.
+        if(!m_menuSong.isEmpty()&&m_menuScope=="queue")emit menuChanged();
+    });
     sync();
 }
 PlaylistMagazine::~PlaylistMagazine(){

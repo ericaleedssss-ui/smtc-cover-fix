@@ -18,6 +18,7 @@ Item {
     property bool expanded:false
     property bool turning:false
     property bool switchCooldown:false
+    property string pendingKey:""
     property real progress:0
     property int direction:1
     readonly property real size:Math.min(width-42*unit,height-24*unit)
@@ -43,12 +44,15 @@ Item {
         startingKey=String(front.key||"");chosen=value;frozenRear=rear;turning=true;progress=0;turn.restart();
     }
     onFrontChanged:{
-        var key=String(front.key||"");if(key&&key!==lastPreparedKey){lastPreparedKey=key;controller.prepareRecords();}
+        var key=String(front.key||"");
+        if(key&&key!==lastPreparedKey){lastPreparedKey=key;recordPrefetch.restart();}
         if(turning&&front.key!==startingKey&&front.key!==chosen.key){turn.stop();turning=false;}
         if(!turning)paintedFront=front;
     }
-    Component.onCompleted:paintedFront=front
+    Component.onCompleted:{paintedFront=front;recordPrefetch.restart();}
     Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
+    Timer {id:recordPrefetch;interval:280;repeat:false;onTriggered:if(!stack.turning)stack.controller.prepareRecords()}
+    Timer {id:commitTurn;interval:16;repeat:false;onTriggered:{var key=stack.pendingKey;stack.pendingKey="";if(key)stack.controller.openCover(key);}}
     Timer {id:closeFan;interval:170;onTriggered:if(!stack.turning&&!area.hovered&&!stack.hoveredKey)stack.expanded=false}
     Item {x:-18*stack.unit;y:-8*stack.unit;width:stack.width+36*stack.unit;height:stack.height+64*stack.unit
         HoverHandler {id:area;onHoveredChanged:{if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
@@ -64,10 +68,13 @@ Item {
             width:stack.size;height:width
             x:stack.frontX+side*(stack.expanded?stack.gap:14*stack.unit)
             y:stack.frontY-(stack.expanded?5:3)*stack.unit-(stack.hoveredKey===modelData.key?6*stack.unit:0)
-            rotation:side*(stack.expanded?6:5)
+            rotation:side*(stack.expanded?6.8:5.2)
+            scale:stack.hoveredKey===modelData.key?1.012:1
             z:stack.hoveredKey===modelData.key?4:2
-            Behavior on x {NumberAnimation {duration:stack.reduced?0:180;easing.type:Easing.OutCubic}}
-            Behavior on y {NumberAnimation {duration:stack.reduced?0:180;easing.type:Easing.OutCubic}}
+            Behavior on x {NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
+            Behavior on y {NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
+            Behavior on rotation {NumberAnimation {duration:stack.reduced?0:220;easing.type:Easing.OutCubic}}
+            Behavior on scale {NumberAnimation {duration:stack.reduced?0:160;easing.type:Easing.OutCubic}}
             Rectangle {anchors.fill:parent;anchors.margins:-3;color:"#d8d9cf";radius:4;border.width:1;border.color:"#aaffffff"}
             Image {anchors.fill:parent;source:sleeve.modelData.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
             MouseArea {objectName:"recordHit_"+sleeve.modelData.key
@@ -81,17 +88,19 @@ Item {
     }
     Item {
         x:stack.frontX-stack.direction*stack.progress*stack.gap;y:stack.frontY-stack.progress*5*stack.unit
-        width:stack.size;height:width;rotation:-stack.direction*stack.progress*6;z:10
-        opacity:stack.turning?1-stack.progress*.9:1
+        width:stack.size;height:width;rotation:-stack.direction*stack.progress*6.5;z:10
+        scale:1-stack.progress*.018
+        opacity:stack.turning?1-stack.progress*.48:1
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
         Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
-        Image {objectName:"playlistMainCover";anchors.fill:parent;source:stack.paintedFront.cover||"";sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+        Image {objectName:"playlistMainCover";anchors.fill:parent;source:stack.paintedFront.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
     }
     Image {
         visible:stack.turning;z:20;x:stack.frontX+stack.direction*(1-stack.progress)*stack.gap;y:stack.frontY-(1-stack.progress)*5*stack.unit
-        width:stack.size;height:width;rotation:stack.direction*(1-stack.progress)*6;opacity:.35+stack.progress*.65
-        source:stack.chosen.cover||"";sourceSize.width:640;sourceSize.height:640;fillMode:Image.PreserveAspectCrop;asynchronous:true
+        width:stack.size;height:width;rotation:stack.direction*(1-stack.progress)*7.2;opacity:.52+stack.progress*.48
+        scale:.965+stack.progress*.035
+        source:stack.chosen.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true
     }
     Row {
         id:previewStrip
@@ -139,9 +148,18 @@ Item {
     }
     SequentialAnimation {
         id:turn
-        NumberAnimation {target:stack;property:"progress";to:.36;duration:190;easing.type:Easing.InOutCubic}
-        ScriptAction {script:if(stack.chosen.kind!=="album")stack.controller.openCover(stack.chosen.key)}
-        NumberAnimation {target:stack;property:"progress";to:1;duration:330;easing.type:Easing.OutCubic}
-        ScriptAction {script:{stack.paintedFront=stack.front;stack.turning=false;stack.hoveredKey="";closeFan.restart();if(stack.chosen.kind==="album")stack.controller.openCover(stack.chosen.key);}}
+        NumberAnimation {target:stack;property:"progress";to:.42;duration:160;easing.type:Easing.InOutCubic}
+        NumberAnimation {target:stack;property:"progress";to:1;duration:270;easing.type:Easing.OutQuart}
+        ScriptAction {script:{
+            var key=String(stack.chosen.key||"");
+            stack.paintedFront=stack.chosen;
+            stack.turning=false;
+            stack.hoveredKey="";
+            stack.switchCooldown=true;
+            cooldown.restart();
+            closeFan.restart();
+            stack.pendingKey=key;
+            commitTurn.restart();
+        }}
     }
 }
