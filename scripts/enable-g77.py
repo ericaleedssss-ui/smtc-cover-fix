@@ -16,7 +16,7 @@ edit('Qt/src/Engine.h','    PlaylistMagazine *m_magazine = nullptr;','    Playli
 edit('Qt/src/Engine.cpp','    m_magazine = new PlaylistMagazine','    m_messages = new MessageCenter(&app->music,this);\n    connect(m_messages,&MessageCenter::navigate,this,&Engine::action);\n    m_magazine = new PlaylistMagazine')
 edit('Qt/src/Engine.cpp','    delete m_magazine; m_magazine=nullptr;','    delete m_messages; m_messages=nullptr;\n    delete m_magazine; m_magazine=nullptr;')
 # G71 copies this file before this installer; integrate only the existing inbox and Escape hook.
-p=Path('Qt/qml/GlobalTools.qml');s=p.read_text();s=s.replace('function dismiss(){','function dismiss(){if(inbox.dismiss())return true;')
+p=Path('Qt/qml/GlobalTools.qml');s=p.read_text(encoding='utf-8');s=s.replace('function dismiss(){','function dismiss(){if(inbox.dismiss())return true;')
 s=s.replace('Tool {objectName:"globalInbox";iconName:"message";label:"私信 · 尚未启用";available:false}', '''Tool {objectName:"globalInbox";iconName:"message";label:"消息中心";onInvoked:inbox.open()
             Rectangle {anchors.right:parent.right;y:0;width:7*tools.u;height:width;radius:width/2;color:"#c95454";visible:(rhine.messages.state.counts||[]).some(n=>Number(n)>0)}
         }''')
