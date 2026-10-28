@@ -25,6 +25,7 @@ Item {
         remove:"M 3 6 H 21 M 9 6 V 2 H 15 V 6 M 6 6 L 7 22 H 17 L 18 6 M 10 10 V 18 M 14 10 V 18",
         heart:"M 12 21 C 7 17 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 17 17 12 21 Z",
         filter:"M 2 4 H 22 L 15 12 V 21 L 9 18 V 12 Z",
+        batch:"M 3 5 H 21 M 3 12 H 12 M 3 19 H 10 M 15 17 L 18 20 L 23 14",
         check:"M 3 12 L 9 18 L 22 4",
         close:"M 5 5 L 19 19 M 19 5 L 5 19",
         more:"M 3 12 H 4 M 11.5 12 H 12.5 M 20 12 H 21"

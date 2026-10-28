@@ -99,5 +99,18 @@ int main(int argc,char **argv){
     require(music.player.current==playback&&music.player.queue==queueBefore,"continuous record browsing never changes playback or queue");
     music.hasMore[2]=true;selectRecord(8,true);require(model.covers().size()==1,"incomplete collection never wraps prematurely to the first loaded item");model.prepareRecords();require(music.collectionLoads==1&&music.lastCollectionLane==2,"collection edge requests the existing personal-playlist pager");
     auto nextRecord=MusicData::item("playlist","7109","Later page");nextRecord["cover"]="https://example.org/later";music.lists[2].append(nextRecord);music.hasMore[2]=false;model.sync();require(model.covers().last().toMap()["id"]=="7109","new metadata page supplies the next real collection without a fixed-three loop");selectRecord(9,true);require(model.covers().last().toMap()["id"]=="7100","completed collection naturally wraps to its first real item");
+    // G74: actual server-success state, explicit intended direction and stale-page guard.
+    auto subscription=std::make_shared<MusicDirectory>();subscription->item=MusicData::item("playlist","7400","Subscribe target");subscription->item["creatorID"]="not-me";
+    music.directory=subscription;music.uid="42";music.subscriptions.clear();music.lists[3]={};model.sync();
+    bool rejectSubscription=true;music.api.fixture=[&](QString,QJsonObject)->MusicReply{return {QJsonObject{},rejectSubscription?"denied":""};};
+    const auto subscriptionKey=model.session();model.setSubscribed(subscriptionKey,true);events(30);
+    require(!model.info()["subscribed"].toBool()&&music.lists[3].isEmpty(),"G74 rejected subscription never paints success or mutates the collection");
+    rejectSubscription=false;model.setSubscribed(subscriptionKey,true);events(30);
+    require(model.info()["subscribed"].toBool()&&music.api.requests.last().first=="/playlist/subscribe"&&music.api.requests.last().second["t"].toInt()==1&&music.lists[3].size()==1,"G74 confirmed collection uses the playlist ID, updates membership and selects subscribe direction");
+    model.setSubscribed(subscriptionKey,false);events(30);require(!model.info()["subscribed"].toBool()&&music.lists[3].isEmpty()&&music.api.requests.last().second["t"].toInt()==2,"G74 confirmed unsubscribe clears server-confirmed membership");
+    const auto writes=music.api.requests.size();model.setSubscribed("old-page-key",true);require(music.api.requests.size()==writes,"G74 stale confirmation cannot target the current page");
+    subscription->item["subscribed"]=true;model.sync();require(model.info()["subscribed"].toBool(),"G74 detail subscription state survives an incompletely loaded personal shelf");
+    auto album=std::make_shared<MusicDirectory>();album->item=MusicData::item("album","7401","Album target");music.directory=album;model.sync();require(model.active(),"G74 album handoff keeps the persistent magazine active");
+    model.setSubscribed(model.session(),true);events(30);require(music.api.requests.last().first=="/album/sub"&&music.lists[4].size()==1,"G74 album collection uses the album mutation endpoint");
     qInfo()<<"All actual PlaylistMagazine controller/model checks passed (fixture domain dependencies).";
 }

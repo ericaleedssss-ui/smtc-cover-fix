@@ -64,6 +64,7 @@ public:
     Q_INVOKABLE void songAction(QString operation);
     Q_INVOKABLE void closeMenu();
     Q_INVOKABLE void share();
+    Q_INVOKABLE void setSubscribed(QString sessionKey, bool subscribed);
     Q_INVOKABLE void removeConfirmed();
     Q_INVOKABLE void cancelRemoval();
     Q_PROPERTY(int removalCount READ removalCount NOTIFY changed)

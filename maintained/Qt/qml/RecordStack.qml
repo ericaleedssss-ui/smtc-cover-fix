@@ -11,6 +11,12 @@ Item {
     readonly property var rear:controller.covers
     property var paintedFront:({})
     property var frozenRear:[]
+    property var displayedRear:[]
+    property real incomingX:0
+    property real incomingY:0
+    property real incomingRotation:0
+    property real incomingScale:1
+    readonly property real motion:turning?progress:0
     property var chosen:({})
     property string startingKey:""
     property string lastPreparedKey:""
@@ -41,15 +47,21 @@ Item {
         if(turning||switchCooldown||!value||!value.key||value.key===front.key)return;
         direction=value.side===-1?-1:1;
         if(reduced){switchCooldown=true;controller.openCover(value.key);cooldown.restart();return;}
-        startingKey=String(front.key||"");chosen=value;frozenRear=rear;turning=true;progress=0;turn.restart();
+        startingKey=String(front.key||"");chosen=value;frozenRear=displayedRear;
+        incomingX=direction<0?-size*.075:gap;
+        incomingY=-5*unit;
+        incomingRotation=direction<0?-13:6.8;incomingScale=1;
+        for(var n=0;n<sleeves.count;++n){var card=sleeves.itemAt(n);if(card&&card.modelData.key===value.key){incomingX=card.x-frontX;incomingY=card.y-frontY;incomingRotation=card.rotation;incomingScale=card.scale;break;}}
+        hoveredKey="";turning=true;progress=0;turn.restart();
     }
     onFrontChanged:{
         var key=String(front.key||"");
         if(key&&key!==lastPreparedKey){lastPreparedKey=key;recordPrefetch.restart();}
         if(turning&&front.key!==startingKey&&front.key!==chosen.key){turn.stop();turning=false;}
-        if(!turning)paintedFront=front;
+        if(!turning){paintedFront=front;displayedRear=rear;}
     }
-    Component.onCompleted:{paintedFront=front;recordPrefetch.restart();}
+    onRearChanged:if(!turning)displayedRear=rear
+    Component.onCompleted:{paintedFront=front;displayedRear=rear;recordPrefetch.restart();}
     Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
     Timer {id:recordPrefetch;interval:280;repeat:false;onTriggered:if(!stack.turning)stack.controller.prepareRecords()}
     Timer {id:commitTurn;interval:16;repeat:false;onTriggered:{var key=stack.pendingKey;stack.pendingKey="";if(key)stack.controller.openCover(key);}}
@@ -58,7 +70,8 @@ Item {
         HoverHandler {id:area;onHoveredChanged:{if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
     }
     Repeater {
-        model:stack.turning?stack.frozenRear:stack.rear
+        id:sleeves
+        model:stack.displayedRear
         delegate:Item {
             id:sleeve
             required property var modelData
@@ -66,11 +79,12 @@ Item {
             readonly property int side:modelData.side===-1?-1:1
             objectName:"recordSleeve_"+modelData.key
             width:stack.size;height:width
-            x:stack.frontX+side*(stack.expanded?stack.gap:14*stack.unit)
+            x:stack.frontX+(side<0?-stack.size*.075:(stack.expanded?stack.gap:stack.size*.12))
             y:stack.frontY-(stack.expanded?5:3)*stack.unit-(stack.hoveredKey===modelData.key?6*stack.unit:0)
-            rotation:side*(stack.expanded?6.8:5.2)
+            rotation:side<0?-13:(stack.expanded?6.8:5.2)
+            opacity:stack.turning&&modelData.key===stack.chosen.key?0:1
             scale:stack.hoveredKey===modelData.key?1.012:1
-            z:stack.hoveredKey===modelData.key?4:2
+            z:2
             Behavior on x {NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
             Behavior on y {NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
             Behavior on rotation {NumberAnimation {duration:stack.reduced?0:220;easing.type:Easing.OutCubic}}
@@ -78,7 +92,7 @@ Item {
             Rectangle {anchors.fill:parent;anchors.margins:-3;color:"#d8d9cf";radius:4;border.width:1;border.color:"#aaffffff"}
             Image {anchors.fill:parent;source:sleeve.modelData.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
             MouseArea {objectName:"recordHit_"+sleeve.modelData.key
-                x:sleeve.side<0?0:parent.width-width;y:0;width:stack.expanded?stack.gap:18*stack.unit;height:parent.height
+                x:sleeve.side<0?0:parent.width-width;y:0;width:sleeve.side<0?stack.size*.22:(stack.expanded?stack.gap:stack.size*.16);height:parent.height
                 enabled:!stack.turning;hoverEnabled:true;cursorShape:Qt.PointingHandCursor
                 onEntered:stack.hold(sleeve.modelData.key)
                 onExited:stack.release(sleeve.modelData.key)
@@ -87,20 +101,25 @@ Item {
         }
     }
     Item {
-        x:stack.frontX-stack.direction*stack.progress*stack.gap;y:stack.frontY-stack.progress*5*stack.unit
-        width:stack.size;height:width;rotation:-stack.direction*stack.progress*6.5;z:10
-        scale:1-stack.progress*.018
-        opacity:stack.turning?1-stack.progress*.48:1
+        objectName:"recordOutgoing"
+        x:stack.frontX-stack.direction*stack.motion*stack.size*.66;y:stack.frontY-stack.motion*9*stack.unit
+        width:stack.size;height:width;rotation:-stack.direction*stack.motion*11;z:10
+        scale:1-stack.motion*.035
+        opacity:1-Math.pow(stack.motion,1.65)
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
         Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
         Image {objectName:"playlistMainCover";anchors.fill:parent;source:stack.paintedFront.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
     }
-    Image {
-        visible:stack.turning;z:20;x:stack.frontX+stack.direction*(1-stack.progress)*stack.gap;y:stack.frontY-(1-stack.progress)*5*stack.unit
-        width:stack.size;height:width;rotation:stack.direction*(1-stack.progress)*7.2;opacity:.52+stack.progress*.48
-        scale:.965+stack.progress*.035
-        source:stack.chosen.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true
+    Item {
+        objectName:"recordIncoming"
+        visible:stack.turning;z:9;x:stack.frontX+(1-stack.progress)*stack.incomingX;y:stack.frontY+(1-stack.progress)*stack.incomingY
+        width:stack.size;height:width;rotation:(1-stack.progress)*stack.incomingRotation
+        scale:1+(1-stack.progress)*(stack.incomingScale-1)
+        layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
+        layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
+        Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
+        Image {anchors.fill:parent;source:stack.chosen.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
     }
     Row {
         id:previewStrip
@@ -148,11 +167,15 @@ Item {
     }
     SequentialAnimation {
         id:turn
-        NumberAnimation {target:stack;property:"progress";to:.42;duration:160;easing.type:Easing.InOutCubic}
-        NumberAnimation {target:stack;property:"progress";to:1;duration:270;easing.type:Easing.OutQuart}
+        NumberAnimation {target:stack;property:"progress";from:0;to:1;duration:460;easing.type:Easing.InOutCubic}
         ScriptAction {script:{
             var key=String(stack.chosen.key||"");
+            var old=stack.paintedFront;
             stack.paintedFront=stack.chosen;
+            var next=[];
+            for(var i=0;i<stack.frozenRear.length;++i){var r=stack.frozenRear[i];if(r.key!==key)next.push(r);}
+            next.push(Object.assign({},old,{side:-stack.direction}));
+            stack.displayedRear=next;
             stack.turning=false;
             stack.hoveredKey="";
             stack.switchCooldown=true;

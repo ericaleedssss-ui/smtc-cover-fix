@@ -18,7 +18,7 @@ class Controller(QAbstractListModel):
     changed=Signal();menuChanged=Signal()
     def __init__(self,images):
         super().__init__();self.actions=[];self.position=0.;self.q='';self.f='all';self.t='songs';self.menu={'visible':False};self.selection=set();self.images=images;self.ids=list(range(4080))
-        self.meta=dict(key='netease:playlist:1',id='1',title='PROJECT / 一些缓慢生长的声音',artist='离线交互测试',creatorID='42',createdDate='2024-06-18',total=4080,loaded=4080,cover=images[0],description='留给午后、窗边和一个人的声音。\n不赶时间地听完一张唱片。',subscribedCount=12340,commentCount=236,editable=True,canCollect=True,canDownload=True,more=False,loading=False)
+        self.meta=dict(key='netease:playlist:1',id='1',title='PROJECT / 一些缓慢生长的声音',artist='离线交互测试',creatorID='42',createdDate='2024-06-18',total=4080,loaded=4080,cover=images[0],description='留给午后、窗边和一个人的声音。\n不赶时间地听完一张唱片。',subscribedCount=12340,commentCount=236,editable=True,canSubscribe=True,subscribed=False,canCollect=True,canDownload=True,more=False,loading=False)
         self.catalogIndex=0;self.catalog=[self.meta.copy()]+[dict(key=('netease:album:' if i==7 else 'netease:playlist:')+str(i+1),id=str(i+1),title='收藏 '+str(i+1),kind='album' if i==7 else 'playlist',artist='真实测试创建者',cover=images[i%4]) for i in range(1,8)]
     @property
     def rear(self):return [{**self.catalog[(self.catalogIndex+d)%len(self.catalog)],"side":d} for d in (-1,1)]
@@ -100,6 +100,10 @@ class Controller(QAbstractListModel):
     def songAction(self,op):self.actions.append(('song',op));self.closeMenu()
     @Slot()
     def closeMenu(self):self.menu={'visible':False};self.menuChanged.emit()
+    @Slot(str,bool)
+    def setSubscribed(self,key,enabled):
+        self.actions.append(('subscribe',key,enabled))
+        if key==self.meta['key']:self.meta['subscribed']=enabled;self.changed.emit()
     @Slot()
     def share(self):self.actions.append(('share',))
     @Slot()
@@ -184,7 +188,7 @@ Item {id:root;width:1400;height:900
     click(v,find(root,'playlistSearchClear'));assert c.q=='' and c.rowCount()==4080 and field.hasActiveFocus()
     original=c.meta['key'];c.meta['key']='netease:playlist:reentry';c.q='';c.changed.emit();QTest.qWait(100)
     click(v,find(root,'playlistSearch'));QGuiApplication.clipboard().setText('Maia');QTest.keyClick(v,Qt.Key_V,Qt.ControlModifier);assert c.q=='Maia' and field.hasActiveFocus()
-    c.meta['key']=original;c.q='';c.changed.emit();c.search('');QTest.qWait(80)
+    c.meta['key']=original;c.q='';c.changed.emit();c.search('');QTest.qWait(360)
     print('PASS G71 QML: append/delete/paste/clear/no-result, noisy backend/model resets, focus and page reentry')
     # Shared heart geometry has a real filled state and an immutable row action.
     listing.setProperty('contentY',listing.property('startY'));QTest.qWait(80)
@@ -213,6 +217,53 @@ Item {id:root;width:1400;height:900
     click(v,find(root,'globalAccountArrow'));click(v,find(v.contentItem(),'accountMenuPlaylists'));assert spy.actions[-2:]==['profile:open:42','profile:filter:created']
     before=len(spy.actions);click(v,find(root,'globalInbox'));assert len(spy.actions)==before
     print('PASS G71 QML: I-beam, retained-query collapse/reopen, cut/clear, fixed button alignment, full description, real account actions and window-button clearance')
+    # G74: collection state, confirmation and a captured identity at the sticky controls.
+    listing=find(root,'magazineTrackList');listing.setProperty('contentY',1000);QTest.qWait(360)
+    sticky=find(root,'playlistStickyHeader');assert sticky.isVisible()
+    assert not any(isinstance(x, QObject) and x.objectName()=='playlistMainCover' for x in sticky.children())
+    start=len(c.actions);click(v,find(root,'stickyPlayAll'));assert ('bulk','play-all') in c.actions[start:]
+    start=len(c.actions);click(v,find(root,'stickySubscribe'));assert ('subscribe',c.meta['key'],True) in c.actions[start:]
+    start=len(c.actions);click(v,find(root,'stickySubscribe'))
+    dialog=find(v.contentItem(),'playlistUnsubscribeDialog')
+    # Popup is a QObject rather than a visual child of the overlay.
+    from PySide6.QtCore import QMetaObject
+    if dialog is None:dialog=root.findChild(QObject,'playlistUnsubscribeDialog')
+    assert dialog.property('visible') and len([x for x in c.actions[start:] if x[0]=='subscribe'])==0
+    QMetaObject.invokeMethod(dialog,'reject');QTest.qWait(80);assert c.meta['subscribed']
+    click(v,find(root,'stickySubscribe'));QMetaObject.invokeMethod(dialog,'accept');QTest.qWait(80)
+    assert c.actions[-1]==('subscribe',c.meta['key'],False) and not c.meta['subscribed']
+    click(v,find(root,'stickyMore'));QTest.qWait(80)
+    v.grabWindow().save(str(repo.parent/'g74-sticky-menu-preview.png'))
+    start=len(c.actions);click(v,find(v.contentItem(),'collectionShare'));assert ('share',) in c.actions[start:]
+    click(v,find(root,'stickyMore'));start=len(c.actions);click(v,find(v.contentItem(),'collectionAppend'));assert ('bulk','append-all') in c.actions[start:]
+    click(v,find(root,'stickyMore'));click(v,find(v.contentItem(),'collectionBatch'));assert find(root,'playlistMagazinePage').property('selecting')
+    find(root,'playlistMagazinePage').setProperty('selecting',False);listing.setProperty('contentY',1000);QTest.qWait(100)
+    v.grabWindow().save(str(repo.parent/'g74-sticky-preview.png'))
+    # Bottom delegates fade as well as the top band in the software renderer.
+    fadeRows=[]
+    def rowsIn(item):
+        if item.objectName().startswith('magazineRow_'):fadeRows.append(item)
+        for child in item.childItems():rowsIn(child)
+    rowsIn(root);assert any(0<x.opacity()<1 for x in fadeRows),[(x.objectName(),x.opacity()) for x in fadeRows]
+    print('PASS G74: sticky play/subscribe, confirmation/cancel, no identity art and two-edge fade')
+    # G74: use the actual exposed left corner; no navigation before motion ends.
+    listing.setProperty('contentY',listing.property('startY'));QTest.qWait(360)
+    stack=find(root,'playlistRecordStack')
+    for side in (-1,1):
+        target=next(x for x in c.rear if x['side']==side)['key']
+        hit=find(root,'recordHit_'+target);point=hit.mapToScene(QPointF(6,hit.height()*.6)).toPoint()
+        before=len([x for x in c.actions if x[0]=='open'])
+        QTest.mouseMove(v,point);QTest.qWait(240)
+        QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point);QTest.qWait(180)
+        assert stack.property('turning') and len([x for x in c.actions if x[0]=='open'])==before
+        incoming=find(root,'recordIncoming');assert incoming.isVisible() and incoming.opacity()==1
+        QTest.qWait(500)
+        outgoing=find(root,'recordOutgoing')
+        assert not stack.property('turning') and c.meta['key']==target
+        assert abs(outgoing.x()-stack.property('frontX'))<.01 and abs(outgoing.y()-stack.property('frontY'))<.01
+        assert outgoing.rotation()==0 and outgoing.opacity()==1
+    assert c.catalogIndex==0
+    print('PASS G74: real previous-corner click, delayed navigation and stable centre after both turn directions')
     # Every exposed sleeve maps to its own key, title and single navigation.
     retainedStack=find(root,'playlistRecordStack')
     for ordinal in range(5):

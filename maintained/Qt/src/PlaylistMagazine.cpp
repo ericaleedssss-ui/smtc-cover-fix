@@ -50,7 +50,7 @@ QVariant PlaylistMagazine::data(const QModelIndex &i,int role) const {
     if(role==Heart)return m_likedKeys.contains(textID(song["id"]));
     return {};
 }
-bool PlaylistMagazine::active() const { return m_music->directory && (m_music->directoryInfo || (m_music->directoryLoading && m_music->current.isEmpty())) && m_music->directory->item["kind"]=="playlist" && !m_hud->lyricsMode; }
+bool PlaylistMagazine::active() const { return m_music->directory && (m_music->directoryInfo || (m_music->directoryLoading && m_music->current.isEmpty())) && QStringList{"playlist","album"}.contains(m_music->directory->item["kind"].toString()) && !m_hud->lyricsMode; }
 QString PlaylistMagazine::session() const { return m_folder?m_folder->item["key"].toString():QString(); }
 QString PlaylistMagazine::query() const { return m_folder?m_folder->magazineQuery:QString(); }
 QString PlaylistMagazine::filter() const { return m_folder?m_folder->magazineFilter:QString("all"); }
@@ -62,6 +62,11 @@ QVariantMap PlaylistMagazine::info() const {
     i["loaded"]=m_songs.size();i["total"]=std::max({int(m_folder->ids.size()),m_folder->item["trackCount"].toInt(),int(m_songs.size())});
     i["loading"]=m_music->directoryLoading;i["more"]=m_folder->cursor<m_folder->ids.size();
     i["editable"]=m_music->canEditPlaylist(m_folder->item);i["canCollect"]=m_music->provider=="netease"&&!m_music->uid.isEmpty();
+    bool subscribed=m_folder->item["subscribed"].toBool()||m_music->subscriptions.contains(session());
+    const auto lane=m_folder->item["kind"]=="album"?4:3;
+    for(const auto &entry:m_music->lists[lane])subscribed|=entry.toObject()["key"].toString()==session();
+    i["subscribed"]=subscribed;
+    i["canSubscribe"]=m_music->provider=="netease"&&!m_music->uid.isEmpty()&&!m_folder->item["virtual"].toBool()&&!m_music->canEditPlaylist(m_folder->item);
     i["canDownload"]=m_music->provider=="netease"&&!m_music->uid.isEmpty();
     i["recordsLoading"]=m_music->personalLoading;i["recordsMore"]=!m_recordsComplete;i["recordPosition"]=m_recordIndex+1;i["recordCount"]=m_recordSequence.size();
     i["likeBusy"]=m_music->writeLoading;i["searchComplete"]=m_folder->cursor>=m_folder->ids.size()&&!m_music->directoryLoading;
@@ -73,7 +78,7 @@ void PlaylistMagazine::sync() {
     if(m_syncing)return;m_syncing=true;
     const bool account=m_account!=m_music->accountGeneration();
     if(account){m_recordAnchor={};m_recordSequence={};m_recordInputs={};m_recordKey.clear();m_mutating=false;m_unavailableCovers.clear();m_account=m_music->accountGeneration();m_menuSong={};++m_menuToken;m_downloads={};++m_downloadSerial;if(m_reply)m_reply->abort();m_reply=nullptr;m_file.reset();m_downloading=false;m_pending.clear();m_remove={};m_removeFolder.reset();emit menuChanged();}
-    const auto folder=(m_music->directory && m_music->directory->item["kind"]=="playlist")?m_music->directory:nullptr;
+    const auto folder=(m_music->directory && QStringList{"playlist","album"}.contains(m_music->directory->item["kind"].toString()))?m_music->directory:nullptr;
     const bool reset=folder!=m_folder||account;
     if(reset){if(folder&&!folder->recordBrowse)m_recordAnchor=folder->item;m_recordKey.clear();m_searchRequested=false;m_status.clear();m_folder=folder;m_selected.clear();m_pending.clear();m_waitCursor=-1;m_social={};m_socialOffset=0;m_socialTotal=0;++m_socialToken;m_socialLoading=false;}
     if(m_folder&&!m_music->directoryLoading){if(!m_folder->item["loadError"].toString().isEmpty())m_unavailableCovers.insert(session());else m_unavailableCovers.remove(session());}
@@ -159,14 +164,14 @@ void PlaylistMagazine::search(QString q){
 
 void PlaylistMagazine::setFilter(QString f){if(!m_folder||!QStringList{"all","liked","available"}.contains(f)||f==filter())return;m_folder->magazineFilter=f;m_folder->magazineScroll=0;rebuild(true);emit changed();}
 void PlaylistMagazine::savePosition(QString s,double y){if(m_folder&&s==session()&&std::isfinite(y))m_folder->magazineScroll=std::max(0.,y);}
-void PlaylistMagazine::setTab(QString t){if(!m_folder||!QStringList{"songs","comments","collectors"}.contains(t)||t==tab())return;m_folder->magazineTab=t;m_folder->magazineScroll=0;++m_socialToken;m_socialLoading=false;m_social={};emit changed();if(t!="songs")loadSocial(true);}
+void PlaylistMagazine::setTab(QString t){if(!m_folder||!QStringList{"songs","comments","collectors"}.contains(t)||t==tab()||(t=="collectors"&&m_folder->item["kind"]=="album"))return;m_folder->magazineTab=t;m_folder->magazineScroll=0;++m_socialToken;m_socialLoading=false;m_social={};emit changed();if(t!="songs")loadSocial(true);}
 void PlaylistMagazine::more(){if(tab()=="songs")m_music->loadDirectoryPage();else loadSocial(false);}
 void PlaylistMagazine::loadSocial(bool reset){
     if(!m_folder||m_socialLoading||m_music->provider!="netease"||m_folder->item["virtual"].toBool())return;
     if(reset){m_socialOffset=0;m_social={};}else if(m_socialOffset>=m_socialTotal)return;
     const auto token=++m_socialToken;const auto account=m_account;const auto folder=m_folder;const auto section=tab();const bool comments=section=="comments";
     m_socialLoading=true;emit changed();QPointer<PlaylistMagazine> self(this);
-    m_music->api.request(comments?"/comment/playlist":"/playlist/subscribers",{{"id",folder->item["id"]},{"limit",20},{"offset",m_socialOffset}},[self,comments](MusicReply r){
+    m_music->api.request(comments?(m_folder->item["kind"]=="album"?"/comment/album":"/comment/playlist"):"/playlist/subscribers",{{"id",folder->item["id"]},{"limit",20},{"offset",m_socialOffset}},[self,comments](MusicReply r){
         if(!self)return;self->m_socialLoading=false;
         if(!r.ok()){self->report(r.error);return;}
         const auto body=r.value.toObject();const auto raw=body[comments?"comments":"subscribers"].toArray();
@@ -234,6 +239,29 @@ void PlaylistMagazine::mutateChunks(QString pid,QJsonArray songs,bool remove,int
         if(!ok){self->m_mutating=false;self->report(QString("批量操作未完成：已处理 %1 首。%2").arg(offset).arg(self->m_music->status));return;}
         if(offset+100<songs.size()){QTimer::singleShot(100,self,[self,pid,songs,remove,offset]{if(self)self->mutateChunks(pid,songs,remove,offset+100);});return;}
         self->m_mutating=false;self->m_selected.clear();self->m_removeFolder.reset();self->sync();self->report("已完成批量操作");});
+}
+void PlaylistMagazine::setSubscribed(QString sessionKey,bool enabled){
+    if(!m_folder||session()!=sessionKey||m_music->writeLoading)return;
+    if(!info().value("canSubscribe").toBool()){report("请登录后收藏其他用户的歌单或专辑");return;}
+    if(info().value("subscribed").toBool()==enabled)return;
+    const auto folder=m_folder;const auto item=folder->item;
+    const auto lane=item["kind"]=="album"?4:3;
+    QPointer<PlaylistMagazine> self(this);
+    m_music->mutate(item["kind"]=="album"?"/album/sub":"/playlist/subscribe",
+        {{"id",item["id"]},{"t",enabled?1:2}},
+        [self,folder,item,lane,sessionKey,enabled](QJsonObject){
+            if(!self)return;
+            folder->item["subscribed"]=enabled;
+            if(enabled){
+                self->m_music->subscriptions.insert(sessionKey);
+                self->m_music->lists[lane]=MusicData::unique(self->m_music->lists[lane],{folder->item});
+            }else{
+                self->m_music->subscriptions.remove(sessionKey);
+                QJsonArray kept;for(const auto &v:self->m_music->lists[lane])if(v.toObject()["key"].toString()!=sessionKey)kept.append(v);
+                self->m_music->lists[lane]=kept;
+            }
+            self->m_music->totals[lane]=self->m_music->lists[lane].size();
+        },[self,enabled](bool ok){if(self)self->report(ok?(enabled?"已收藏":"已取消收藏"):"收藏操作失败，请重试");});
 }
 void PlaylistMagazine::share(){if(!m_folder)return;if(m_folder->item["virtual"].toBool()){report("这个临时列表没有公开歌单链接");return;}const auto url=m_music->sourceURL(m_folder->item);if(url.isEmpty()){report("此歌单暂不支持分享");return;}m_music->host->copy(m_folder->item["title"].toString()+"\n"+url);report("已复制歌单分享链接");}
 void PlaylistMagazine::showSongMenu(QString scope,int i,QString identity,double x,double y){

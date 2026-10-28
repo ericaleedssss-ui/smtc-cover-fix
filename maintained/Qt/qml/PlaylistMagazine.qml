@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls.Basic as Controls
 Item {
     id:page
@@ -21,6 +22,11 @@ Item {
     property bool selecting:false
     property string activeRowMenu:""
     readonly property bool sticky:listing.contentY-listing.startY>heroHeight
+    function toggleSubscription(){
+        if(page.info.subscribed){unsubscribeDialog.collectionKey=page.session;unsubscribeDialog.open();}
+        else page.controller.setSubscribed(page.session,true);
+    }
+    function openMore(button){var p=button.mapToItem(page,0,button.height+6*page.u);moreMenu.x=p.x;moreMenu.y=p.y;moreMenu.open();}
     function navigateKey(key) {
         if(controller.tab!=="songs" || rhine.state.queueOpen) return;
         var action=String(rhine.state.focusAction||"");
@@ -42,13 +48,14 @@ Item {
         property string label
         property string iconName:""
         property bool primary:false
+        property bool compact:false
         signal invoked()
-        width:caption.implicitWidth+(iconName?55:34)*page.u;height:42*page.u;radius:height/2
+        width:compact?42*page.u:caption.implicitWidth+(iconName?55:34)*page.u;height:42*page.u;radius:compact?10*page.u:height/2
         color:primary?(actionMouse.containsMouse?"#69785b":"#7a866c"):(actionMouse.containsMouse?(page.dark?"#3c4c36":"#e1e7d6"):(page.dark?"#30372c":"#d9f0ede4"))
         opacity:enabled?1:.4
         border.width:primary?0:1;border.color:page.dark?"#3c6b785f":"#60ffffff"
-        RhineIcon {visible:parent.iconName!=="";x:16*page.u;anchors.verticalCenter:parent.verticalCenter;width:18*page.u;height:width;name:parent.iconName;color:parent.primary?"#f5f4e9":page.ink}
-        Label {id:caption;x:(parent.iconName?42:17)*page.u;anchors.verticalCenter:parent.verticalCenter;text:parent.label;color:parent.primary?"#f5f4e9":page.ink;font.pixelSize:14*page.u}
+        RhineIcon {visible:parent.iconName!=="";x:parent.compact?(parent.width-width)/2:16*page.u;anchors.verticalCenter:parent.verticalCenter;width:18*page.u;height:width;name:parent.iconName;color:parent.primary?"#f5f4e9":page.ink}
+        Label {id:caption;x:(parent.iconName?42:17)*page.u;anchors.verticalCenter:parent.verticalCenter;visible:!parent.compact;text:parent.label;color:parent.primary?"#f5f4e9":page.ink;font.pixelSize:14*page.u}
         MouseArea {id:actionMouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:parent.invoked()}
     }
     // One virtual list owns the hero and the tracks. No nested track scroller.
@@ -57,9 +64,20 @@ Item {
         readonly property real startY:originY
         onHeaderItemChanged:page.restore()
         objectName:"magazineTrackList"
-        x:page.contentLeft;y:94*page.unit;width:parent.width-x-page.contentRight;height:parent.height-y
+        x:page.contentLeft;y:94*page.unit;width:parent.width-x-page.contentRight;height:Math.max(0,parent.height-y-84*page.unit)
         clip:true;reuseItems:true;cacheBuffer:page.rowHeight*4
         spacing:0
+        // One capture for the virtual list; both edges fade in either scroll direction.
+        layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
+        layer.effect:ShaderEffect {
+            objectName:"magazineEdgeFade"
+            property variant source
+            property size panelSize:Qt.size(listing.width,listing.height)
+            property real topInset:stickyHeader.opacity*(stickyHeader.y+stickyHeader.height-listing.y)
+            property real fadePx:48*page.u
+            property real fadeTop:listing.contentY-listing.startY>2*page.u?1:0
+            fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"
+        }
         model:page.controller.tab==="songs"?page.controller:page.controller.socialRows
         boundsBehavior:Flickable.StopAtBounds
         onContentYChanged:if(!page.restoring)page.controller.savePosition(page.session,contentY-startY)
@@ -93,8 +111,9 @@ Item {
                     }
                     Row {id:actionRow;objectName:"playlistActions";anchors.left:parent.left;anchors.bottom:parent.bottom;spacing:12*page.unit
                         Action {objectName:"magazinePlayAll";label:"播放全部";iconName:"play";primary:true;enabled:Number(page.info.total)>0;onInvoked:page.controller.bulk("play-all")}
-                        Action {label:"下载";iconName:"download";enabled:page.info.canDownload===true;onInvoked:page.controller.bulk("download-all")}
-                        Action {objectName:"magazineMore";label:"";iconName:"more";onInvoked:moreMenu.popup()}
+                        Action {objectName:"magazineSubscribe";label:page.info.subscribed?"已收藏":"收藏";iconName:page.info.subscribed?"check":"collect";enabled:page.info.canSubscribe===true&&!page.info.likeBusy;onInvoked:page.toggleSubscription()}
+                        Action {label:"下载";iconName:"download";enabled:page.info.canDownload===true&&!page.controller.downloading;onInvoked:page.controller.bulk("download-all")}
+                        Action {id:heroMore;objectName:"magazineMore";label:"";iconName:"more";onInvoked:page.openMore(heroMore)}
                     }
                 }
 
@@ -102,7 +121,7 @@ Item {
             Item {
                 y:page.heroHeight;width:parent.width;height:56*page.u
                 Row {anchors.verticalCenter:parent.verticalCenter;spacing:25*page.unit
-                    Repeater {model:[{key:"songs",label:"歌曲 "+(page.info.total||0)},{key:"comments",label:"评论"+(page.info.commentCount!==undefined?" "+page.info.commentCount:"")},{key:"collectors",label:"收藏者"}]
+                    Repeater {model:[{key:"songs",label:"歌曲 "+(page.info.total||0)},{key:"comments",label:"评论"+(page.info.commentCount!==undefined?" "+page.info.commentCount:"")},{key:"collectors",label:"收藏者"}].filter(function(t){return t.key!=="collectors"||page.info.kind!=="album";})
                         delegate:Item {required property var modelData;width:tabLabel.implicitWidth;height:43*page.u
                             Label {id:tabLabel;anchors.verticalCenter:parent.verticalCenter;text:modelData.label;color:page.controller.tab===modelData.key?page.ink:page.muted;font.weight:page.controller.tab===modelData.key?Font.DemiBold:Font.Normal}
                             Rectangle {anchors.bottom:parent.bottom;width:28*page.unit;height:3*page.unit;radius:1;color:page.accent;visible:page.controller.tab===modelData.key}
@@ -134,6 +153,9 @@ Item {
             id:rowLoader
             objectName:"magazineRow_"+songIndex
             width:listing.width
+            opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(
+                Math.max(0,Math.min(1,(y-listing.contentY+height-stickyHeader.opacity*(stickyHeader.y+stickyHeader.height-listing.y))/(48*page.u))),
+                Math.max(0,Math.min(1,(listing.height-(y-listing.contentY))/(48*page.u)))):1
             height:item?item.implicitHeight:page.rowHeight
             // ListModel roles stay on this delegate; no per-frame JavaScript array rebuilding.
             property var song:page.controller.tab==="songs"?model.track:({})
@@ -227,14 +249,63 @@ Item {
                     }
                 }
     }
-    // Lightweight identity only. No second full-width glass surface.
+    // Sticky identity occupies its own masked band, above scrolling song text.
     Item {
-        objectName:"playlistStickyHeader"
-        x:page.contentLeft;y:82*page.unit;width:Math.min(640*page.unit,parent.width-x-page.contentRight);height:42*page.u;z:4
-        opacity:Math.max(0,Math.min(1,(listing.contentY-listing.startY-page.heroHeight)/36));visible:opacity>0
-        Image {x:0;anchors.verticalCenter:parent.verticalCenter;width:32*page.u;height:width;source:page.info.cover||"";sourceSize.width:80;sourceSize.height:80;asynchronous:true}
-        Label {x:44*page.u;width:parent.width-145*page.u;height:parent.height;text:page.info.title||"";font.pixelSize:16*page.u;font.weight:Font.Medium}
-        Action {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;label:"播放";iconName:"play";primary:true;height:32*page.u;onInvoked:page.controller.bulk("play-all")}
+        id:stickyHeader;objectName:"playlistStickyHeader"
+        x:page.contentLeft;y:82*page.unit;width:listing.width;height:(page.selecting?164:108)*page.u;z:12
+        opacity:Math.max(0,Math.min(1,(listing.contentY-listing.startY-page.heroHeight)/36))
+        visible:opacity>0
+        Item {
+            anchors.fill:parent
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
+            layer.effect:ShaderEffect {
+                property variant source
+                property size panelSize:Qt.size(stickyHeader.width,stickyHeader.height)
+                property real topInset:0
+                property real fadePx:20*page.u
+                property real fadeTop:0
+                fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"
+            }
+            LiquidGlass {
+                visible:GraphicsInfo.api!==GraphicsInfo.Software
+                anchors.fill:parent;background:page.background;sampleX:stickyHeader.x;sampleY:stickyHeader.y
+                uiScale:page.u;dark:page.dark;radius:0
+            }
+            Rectangle {anchors.fill:parent
+                gradient:Gradient {
+                    GradientStop {position:0;color:page.dark?"#e82c3429":"#e8eeeee7"}
+                    GradientStop {position:.78;color:page.dark?"#e82c3429":"#e8eeeee7"}
+                    GradientStop {position:1;color:page.dark?"#002c3429":"#00eeeee7"}
+                }
+            }
+        }
+        MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;onWheel:function(wheel){wheel.accepted=false;}}
+        Label {x:14*page.u;y:8*page.u;width:parent.width-28*page.u;height:34*page.u;text:page.info.title||"";font.pixelSize:20*page.u;font.weight:Font.DemiBold}
+        Row {x:14*page.u;y:52*page.u;spacing:10*page.u
+            Action {objectName:"stickyPlayAll";label:"播放";iconName:"play";compact:true;primary:true;enabled:Number(page.info.total)>0;onInvoked:page.controller.bulk("play-all")}
+            Action {objectName:"stickySubscribe";label:page.info.subscribed?"已收藏":"收藏";iconName:page.info.subscribed?"check":"collect";compact:true;enabled:page.info.canSubscribe===true&&!page.info.likeBusy;onInvoked:page.toggleSubscription()
+                Controls.ToolTip.visible:subscriptionHover.hovered;Controls.ToolTip.text:label
+                HoverHandler {id:subscriptionHover}
+            }
+            Action {objectName:"stickyDownload";label:"下载全部";iconName:"download";compact:true;enabled:page.info.canDownload===true&&!page.controller.downloading;onInvoked:page.controller.bulk("download-all")}
+            Action {id:stickyMore;objectName:"stickyMore";label:"更多";iconName:"more";compact:true;onInvoked:page.openMore(stickyMore)}
+        }
+        Row {x:14*page.u;y:108*page.u;spacing:8*page.u;visible:page.selecting
+            Action {label:page.controller.selectedCount?"清空选择":"全选";onInvoked:page.controller.selectAll(page.controller.selectedCount===0)}
+            Action {label:"加入队列";onInvoked:page.controller.bulk("append")}
+            Action {label:"收藏歌曲";enabled:page.info.canCollect===true;onInvoked:page.controller.bulk("collect")}
+            Action {label:"下载";enabled:page.info.canDownload===true;onInvoked:page.controller.bulk("download")}
+            Action {label:"完成";onInvoked:{page.selecting=false;page.controller.selectAll(false);}}
+        }
+    }
+    Controls.Dialog {
+        id:unsubscribeDialog;objectName:"playlistUnsubscribeDialog"
+        property string collectionKey:""
+        parent:Controls.Overlay.overlay;anchors.centerIn:parent
+        title:"取消收藏";modal:true;width:Math.min(380*page.u,page.width-40*page.u)
+        standardButtons:Controls.Dialog.Ok|Controls.Dialog.Cancel
+        contentItem:Label {text:page.info.kind==="album"?"确定取消收藏这张专辑吗？":"确定取消收藏这个歌单吗？";wrapMode:Text.Wrap;elide:Text.ElideNone;height:48*page.u}
+        onAccepted:page.controller.setSubscribed(collectionKey,false)
     }
     function dismissTopOverlay(){if(descriptionPopup.visible){descriptionPopup.close();return true;}if(searchControl.expanded){searchControl.dismiss();return true;}return false;}
     MouseArea {
@@ -258,13 +329,23 @@ Item {
             }
         }
     }
+    component CollectionMenuItem:Controls.MenuItem {
+        id:entry
+        property string glyph:"more"
+        implicitWidth:282*page.u;implicitHeight:46*page.u
+        contentItem:Item {
+            RhineIcon {x:8*page.u;anchors.verticalCenter:parent.verticalCenter;width:20*page.u;height:width;name:entry.glyph;color:page.muted}
+            Label {x:42*page.u;width:parent.width-x;height:parent.height;text:entry.text;font.pixelSize:15*page.u}
+        }
+        background:Rectangle {radius:7*page.u;color:entry.highlighted?(page.dark?"#45553b":"#e2e8dc"):"transparent"}
+    }
     Controls.Menu {
-        id:moreMenu
-        font.family:rhineFontFamily;font.pixelSize:14*page.u
-        palette.window:page.dark?"#2b3327":"#f2f0e7";palette.text:page.ink;palette.highlight:page.dark?"#45553b":"#dfe7d3";palette.highlightedText:page.ink
-        Controls.MenuItem {text:"分享歌单";onTriggered:page.controller.share()}
-        Controls.MenuItem {text:"批量操作";onTriggered:page.selecting=true}
-        Controls.MenuItem {text:"添加全部至播放队列";enabled:!page.controller.busy;onTriggered:page.controller.bulk("append-all")}
+        id:moreMenu;parent:page;objectName:"playlistMoreMenu"
+        padding:8*page.u
+        background:Rectangle {implicitWidth:298*page.u;radius:12*page.u;color:page.dark?"#f52b3327":"#faf5f5ef";border.width:1;border.color:page.dark?"#516048":"#c8d3d7c9"}
+        CollectionMenuItem {objectName:"collectionShare";text:"分享…";glyph:"share";onTriggered:page.controller.share()}
+        CollectionMenuItem {objectName:"collectionBatch";text:"批量操作";glyph:"batch";onTriggered:{page.selecting=true;listing.contentY=listing.startY+page.heroHeight+100*page.u;}}
+        CollectionMenuItem {objectName:"collectionAppend";text:"添加全部至播放队列";glyph:"next";enabled:!page.controller.busy;onTriggered:page.controller.bulk("append-all")}
     }
     Controls.Menu {
         id:filterMenu

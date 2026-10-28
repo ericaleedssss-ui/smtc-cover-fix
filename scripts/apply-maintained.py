@@ -128,3 +128,5 @@ subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g70.py"))],
 subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g71.py"))], check=True)
 
 subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g73.py"))], check=True)
+
+subprocess.run([sys.executable, str(Path(__file__).with_name("enable-g74.py"))], check=True)

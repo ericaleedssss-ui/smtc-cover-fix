@@ -42,6 +42,7 @@ class MusicLibrary:public QObject {
 public:
     using Completion=std::function<void(bool)>;
     Host *host;MusicApi api;MusicPlayer player;std::unique_ptr<MusicDiscover> discover;
+    QSet<QString> subscriptions;std::array<int,5> totals{};
     std::array<QJsonArray,5> lists;std::array<int,5> offsets{};int selectedLane=2;
     std::optional<QJsonArray> likedIDs;std::shared_ptr<MusicDirectory> directory;
     bool directoryInfo=true,directoryLoading=false,writeLoading=false;QString provider="netease",uid="42",status;
