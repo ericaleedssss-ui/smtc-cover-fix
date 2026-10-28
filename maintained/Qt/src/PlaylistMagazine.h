@@ -77,7 +77,7 @@ private:
     std::shared_ptr<MusicDirectory> m_folder, m_menuFolder, m_removeFolder;
     QJsonArray m_songs;
     QVector<int> m_rows;
-    QSet<QString> m_selected, m_unavailableCovers;
+    QSet<QString> m_selected, m_unavailableCovers, m_likedKeys;
     QVariantList m_covers, m_social;
     QString m_status, m_pending, m_modelQuery, m_modelFilter;
     QJsonArray m_likedSnapshot;
@@ -91,7 +91,7 @@ private:
     void scheduleDownload();
     quint64 m_account=0, m_socialToken=0, m_menuToken=0;
     int m_socialOffset=0, m_socialTotal=0, m_waitCursor=-1;
-    bool m_socialLoading=false, m_mutating=false, m_syncing=false;
+    bool m_socialLoading=false, m_mutating=false, m_syncing=false, m_searchRequested=false;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
     std::unique_ptr<QSaveFile> m_file;

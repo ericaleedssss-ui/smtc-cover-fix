@@ -68,10 +68,11 @@ Item {
             width:listing.width;height:page.heroHeight+112*page.u+(page.selecting?52*page.u:0)
             Item {
                 width:parent.width;height:page.heroHeight
-                RecordStack {id:records;x:20*page.unit;y:8*page.unit;width:Math.min(330*page.unit,parent.width*.30);height:Math.min(page.heroHeight-25*page.unit,330*page.unit);controller:page.controller;unit:page.unit;reduced:rhine.state.reduced===true}
+                Item {id:records;x:20*page.unit;y:8*page.unit;width:Math.min(330*page.unit,parent.width*.30);height:Math.min(page.heroHeight-25*page.unit,330*page.unit)}
                 Column {
                     id:details
-                    x:records.x+records.width+32*page.unit;y:15*page.unit
+                    x:records.x+records.width+32*page.unit+((persistentRecords.expanded||persistentRecords.turning)?Math.min(190*page.unit,parent.width*.16):0);y:15*page.unit
+                    Behavior on x {NumberAnimation {duration:rhine.state.reduced?0:180;easing.type:Easing.OutCubic}}
                     width:Math.min(parent.width-x-10*page.unit,800*page.unit);spacing:13*page.unit
                     Label {width:parent.width;text:page.info.title||"正在读取歌单…";font.pixelSize:30*page.u;font.weight:Font.DemiBold;wrapMode:Text.Wrap;maximumLineCount:2;verticalAlignment:Text.AlignTop}
                     Row {spacing:10*page.unit;visible:!!page.info.creatorAvatar || !!page.info.artist || !!page.info.createdDate
@@ -102,19 +103,7 @@ Item {
                         }
                     }
                 }
-                Item {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:280*page.unit;height:38*page.u;visible:page.controller.tab==="songs"
-                    Rectangle {anchors.fill:searchField;anchors.margins:-10*page.unit;radius:height/2;color:page.dark?"#223a4132":"#38ffffff";border.width:1;border.color:page.dark?"#334e6142":"#406d7d5d"}
-                    RhineIcon {x:4*page.unit;anchors.verticalCenter:parent.verticalCenter;width:18*page.u;height:width;name:"search";color:page.muted}
-                    TextInput {id:searchField;x:30*page.unit;width:parent.width-78*page.unit;height:parent.height;verticalAlignment:Text.AlignVCenter;color:page.ink;font.family:rhineFontFamily;font.pixelSize:13*page.u;clip:true;selectByMouse:true
-                        text:page.controller.query
-                        onTextEdited:searchDelay.restart()
-                        Text {anchors.fill:parent;verticalAlignment:Text.AlignVCenter;text:"在歌单中搜索…";visible:!searchField.text&&!searchField.activeFocus;color:page.muted;font:searchField.font}
-                        Timer {id:searchDelay;interval:180;onTriggered:{page.controller.search(searchField.text);page.restore();}}
-                    }
-                    RhineIcon {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:19*page.u;height:width;name:"filter";color:page.controller.filter==="all"?page.muted:page.accent
-                        MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:filterMenu.popup()}
-                    }
-                }
+
             }
             Row {x:6*page.unit;y:page.heroHeight+57*page.u;spacing:10*page.unit;visible:page.selecting
                 Action {label:page.controller.selectedCount?page.controller.selectedCount+" 首已选 · 清空":"全选";onInvoked:page.controller.selectAll(page.controller.selectedCount===0)}
@@ -130,6 +119,7 @@ Item {
                 Label {x:62*page.unit;text:"标题";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {x:parent.width*.42;text:"艺术家";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {x:parent.width*.65;text:"专辑";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {x:parent.width-164*page.unit;width:42*page.unit;horizontalAlignment:Text.AlignHCenter;text:"喜欢";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {x:parent.width-110*page.unit;text:"时长";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
             }
         }
@@ -183,9 +173,7 @@ Item {
                     Label {x:parent.width*.65;width:parent.width*.35-188*page.unit;height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
                         MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;enabled:!!rowLoader.song.albumID;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"album",rowLoader.song.identity);}}
                     }
-                    RhineIcon {x:parent.width-156*page.unit;anchors.verticalCenter:parent.verticalCenter;width:18*page.u;height:width;name:"heart";color:rowLoader.heart?"#bc6e67":page.muted
-                        MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:page.controller.rowAction("like",rowLoader.song.identity)}
-                    }
+                    SongHeart {objectName:"magazineHeart_"+rowLoader.songIndex;x:parent.width-164*page.unit;anchors.verticalCenter:parent.verticalCenter;unit:page.u;liked:rowLoader.heart;pending:page.info.likeBusy===true;onToggled:page.controller.rowAction("like",rowLoader.song.identity)}
                     Label {x:parent.width-112*page.unit;width:64*page.unit;height:parent.height;text:rowLoader.song.durationLabel||"—";color:page.muted;font.pixelSize:12*page.u}
                     RhineIcon {x:parent.width-32*page.unit;anchors.verticalCenter:parent.verticalCenter;width:20*page.u;height:width;name:"more";color:page.muted
                         MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);}}
@@ -201,11 +189,36 @@ Item {
         footer:Item {
             width:listing.width;height:page.controller.downloading?170*page.u:112*page.u
             Column {anchors.horizontalCenter:parent.horizontalCenter;spacing:12*page.unit;y:18*page.unit
-                Label {anchors.horizontalCenter:parent.horizontalCenter;text:page.info.loadError || page.controller.status || (page.info.loading?"正在载入曲目…":page.controller.tab==="songs"?"已载入 "+(page.info.loaded||0)+" / "+(page.info.total||0)+" 首":"");color:page.muted;font.pixelSize:12*page.u}
+                Label {anchors.horizontalCenter:parent.horizontalCenter;objectName:"playlistResultStatus";text:page.info.loadError || page.controller.status || (page.controller.tab==="songs"&&page.controller.query&&page.info.visibleCount===0&&!page.info.loading&&!page.controller.busy?(page.info.searchComplete?"没有匹配的歌曲":"当前已载入曲目无匹配，可重试读取其余曲目"):page.info.loading?"正在载入曲目…":page.controller.tab==="songs"?"已载入 "+(page.info.loaded||0)+" / "+(page.info.total||0)+" 首":"");color:page.muted;font.pixelSize:12*page.u}
                 Action {anchors.horizontalCenter:parent.horizontalCenter;visible:page.controller.downloading===true;label:"取消下载";onInvoked:page.controller.cancelDownload()}
                 Action {anchors.horizontalCenter:parent.horizontalCenter;visible:page.controller.tab==="songs"?page.info.more===true:page.info.socialMore===true;label:page.info.loading||page.info.socialLoading?"正在读取…":"加载更多";enabled:!page.info.loading&&!page.info.socialLoading;onInvoked:page.controller.more()}
             }
         }
+    }
+    // Keep the active record animation alive when a new folder resets rows.
+    Item {
+        x:listing.x;y:listing.y;width:listing.width;height:listing.height;clip:true
+        z:persistentRecords.expanded||persistentRecords.turning?8:2
+        RecordStack {
+            id:persistentRecords;objectName:"playlistRecordStack"
+            x:20*page.unit;y:8*page.unit-(listing.contentY-listing.startY)
+            width:Math.min(330*page.unit,listing.width*.30);height:Math.min(page.heroHeight-25*page.unit,330*page.unit)
+            visible:y+height>0&&y<listing.height
+            controller:page.controller;unit:page.unit;reduced:rhine.state.reduced===true;background:page.background
+        }
+    }
+    // The editor lives outside the resetting ListView model. Filtering down to
+    // zero rows must never destroy the focused TextInput or its edit buffer.
+    Item {
+        id:searchHost;x:page.contentLeft;y:listing.y+page.heroHeight-(listing.contentY-listing.startY)
+        width:listing.width;height:56*page.u;z:3
+        visible:page.controller.tab==="songs"&&y>=listing.y-1&&y<listing.y+listing.height
+                Item {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:280*page.unit;height:38*page.u;visible:page.controller.tab==="songs"
+                    PlaylistSearch {anchors.right:parent.right;anchors.rightMargin:34*page.unit;anchors.verticalCenter:parent.verticalCenter;controller:page.controller;unit:page.u;dark:page.dark;onEditing:{page.restoring=true;listing.contentY=listing.startY;restoreTimer.restart();}}
+                    RhineIcon {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:19*page.u;height:width;name:"filter";color:page.controller.filter==="all"?page.muted:page.accent
+                        MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:filterMenu.popup()}
+                    }
+                }
     }
     // The compact header floats over the scrolling hero; it never owns a second song list.
     Item {

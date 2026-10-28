@@ -43,7 +43,7 @@ QVariant PlaylistMagazine::data(const QModelIndex &i,int role) const {
     if(role==Track) { auto value=song; value["durationLabel"]=MusicData::time(song);value["identity"]=key(song);return value.toVariantMap(); }
     if(role==SourceIndex)return n;
     if(role==Chosen)return m_selected.contains(key(song));
-    if(role==Heart)return m_music->likedIDs && MusicData::indexOf(*m_music->likedIDs,song["id"])>=0;
+    if(role==Heart)return m_likedKeys.contains(textID(song["id"]));
     return {};
 }
 bool PlaylistMagazine::active() const { return m_music->directory && (m_music->directoryInfo || (m_music->directoryLoading && m_music->current.isEmpty())) && m_music->directory->item["kind"]=="playlist" && !m_hud->lyricsMode; }
@@ -59,6 +59,7 @@ QVariantMap PlaylistMagazine::info() const {
     i["loading"]=m_music->directoryLoading;i["more"]=m_folder->cursor<m_folder->ids.size();
     i["editable"]=m_music->canEditPlaylist(m_folder->item);i["canCollect"]=m_music->provider=="netease"&&!m_music->uid.isEmpty();
     i["canDownload"]=m_music->provider=="netease"&&!m_music->uid.isEmpty();
+    i["likeBusy"]=m_music->writeLoading;i["searchComplete"]=m_folder->cursor>=m_folder->ids.size()&&!m_music->directoryLoading;
     i["socialLoading"]=m_socialLoading;i["socialMore"]=m_socialOffset<m_socialTotal;
     i["visibleCount"]=rowCount();return i;
 }
@@ -69,22 +70,24 @@ void PlaylistMagazine::sync() {
     if(account){m_mutating=false;m_unavailableCovers.clear();m_account=m_music->accountGeneration();m_menuSong={};++m_menuToken;m_downloads={};++m_downloadSerial;if(m_reply)m_reply->abort();m_reply=nullptr;m_file.reset();m_downloading=false;m_pending.clear();m_remove={};m_removeFolder.reset();emit menuChanged();}
     const auto folder=(m_music->directory && m_music->directory->item["kind"]=="playlist")?m_music->directory:nullptr;
     const bool reset=folder!=m_folder||account;
-    if(reset){m_status.clear();m_folder=folder;m_selected.clear();m_pending.clear();m_waitCursor=-1;m_social={};m_socialOffset=0;m_socialTotal=0;++m_socialToken;m_socialLoading=false;}
+    if(reset){m_searchRequested=false;m_status.clear();m_folder=folder;m_selected.clear();m_pending.clear();m_waitCursor=-1;m_social={};m_socialOffset=0;m_socialTotal=0;++m_socialToken;m_socialLoading=false;}
     if(m_folder&&!m_music->directoryLoading){if(!m_folder->item["loadError"].toString().isEmpty())m_unavailableCovers.insert(session());else m_unavailableCovers.remove(session());}
     rebuild(reset);refreshCovers();m_syncing=false;emit changed();
     if(!m_pending.isEmpty())QTimer::singleShot(0,this,&PlaylistMagazine::finishAll);
     if(reset && m_folder && tab()!="songs")loadSocial(true);
+    if(m_folder&&!query().isEmpty()&&!m_searchRequested&&m_pending.isEmpty()&&!m_music->directoryLoading&&m_folder->cursor<m_folder->ids.size())beginAll("search-all");
 }
 void PlaylistMagazine::rebuild(bool reset) {
     const auto songs=m_folder?m_folder->songs:QJsonArray();
-    const auto liked=m_music->likedIDs.value_or(QJsonArray());
+    QJsonArray liked=m_music->likedIDs.value_or(QJsonArray());
+    if(!m_music->likedIDs)for(const auto &v:m_music->lists[1])liked.append(v.toObject()["id"]);
     if(!reset && songs==m_songs && m_modelQuery==query() && m_modelFilter==filter() && liked==m_likedSnapshot)return;
-    const bool heartsChanged=liked!=m_likedSnapshot;m_likedSnapshot=liked;m_modelQuery=query();m_modelFilter=filter();
+    const bool heartsChanged=liked!=m_likedSnapshot;m_likedSnapshot=liked;m_likedKeys.clear();for(const auto &v:liked)m_likedKeys.insert(textID(v));m_modelQuery=query();m_modelFilter=filter();
     QVector<int> rows;
     const auto q=query().trimmed();
     for(int i=0;i<songs.size();++i){const auto s=songs.at(i).toObject();
         if(!q.isEmpty() && !(s["title"].toString()+" "+s["artist"].toString()+" "+s["album"].toString()).contains(q,Qt::CaseInsensitive))continue;
-        if(filter()=="liked"&&(!m_music->likedIDs||MusicData::indexOf(*m_music->likedIDs,s["id"])<0))continue;
+        if(filter()=="liked"&&!m_likedKeys.contains(textID(s["id"])))continue;
         if(filter()=="available"&&s["unavailable"].toBool())continue;
         rows.append(i);
     }
@@ -110,7 +113,18 @@ void PlaylistMagazine::refreshCovers(){
         if(!c.isEmpty()&&!images.contains(c)&&!identities.contains(i["key"].toString())&&(i["kind"]=="playlist"||i["kind"]=="album"))result.prepend(i.toVariantMap());}
     m_covers=result;
 }
-void PlaylistMagazine::search(QString q){if(!m_folder||q==query())return;m_folder->magazineQuery=q;m_folder->magazineScroll=0;rebuild(true);emit changed();if(!q.isEmpty()&&m_folder->cursor<m_folder->ids.size()&&m_pending.isEmpty())beginAll("search-all");}
+void PlaylistMagazine::search(QString q){
+    if(!m_folder)return;
+    if(q!=query()){
+        m_folder->magazineQuery=q;m_folder->magazineScroll=0;m_searchRequested=false;
+        if(m_pending=="search-all"){m_pending.clear();m_waitCursor=-1;}
+        m_status.clear();rebuild(true);emit changed();
+    }
+    // Filtering is synchronous against the latest text. Async work only fills
+    // this folder's metadata, so an older keyword can never replace new results.
+    if(!q.isEmpty()&&m_folder->cursor<m_folder->ids.size()&&m_pending.isEmpty())beginAll("search-all");
+}
+
 void PlaylistMagazine::setFilter(QString f){if(!m_folder||!QStringList{"all","liked","available"}.contains(f)||f==filter())return;m_folder->magazineFilter=f;m_folder->magazineScroll=0;rebuild(true);emit changed();}
 void PlaylistMagazine::savePosition(QString s,double y){if(m_folder&&s==session()&&std::isfinite(y))m_folder->magazineScroll=std::max(0.,y);}
 void PlaylistMagazine::setTab(QString t){if(!m_folder||!QStringList{"songs","comments","collectors"}.contains(t)||t==tab())return;m_folder->magazineTab=t;m_folder->magazineScroll=0;++m_socialToken;m_socialLoading=false;m_social={};emit changed();if(t!="songs")loadSocial(true);}
@@ -149,10 +163,10 @@ void PlaylistMagazine::rowAction(QString op,QString k){
 void PlaylistMagazine::selectAll(bool on){m_selected.clear();if(on)for(int n:m_rows)m_selected.insert(key(m_songs.at(n).toObject()));if(rowCount())emit dataChanged(index(0),index(rowCount()-1),{Chosen});emit changed();}
 QJsonArray PlaylistMagazine::selectedSongs()const{QJsonArray out;if(m_folder)for(const auto &v:m_folder->songs){auto s=v.toObject();if(m_selected.contains(key(s)))out.append(MusicData::withQueueSource(s,m_folder->item));}return out;}
 void PlaylistMagazine::bulk(QString op){if(op=="play-all"){m_music->playDirectory();return;}if(op=="append-all"||op=="download-all"){beginAll(op);return;}m_menuFolder.reset();const auto s=selectedSongs();if(s.isEmpty()){report("先选择要操作的歌曲");return;}apply(op,s);}
-void PlaylistMagazine::beginAll(QString op){if(!m_folder||busy())return;m_pending=op;m_waitCursor=-1;finishAll();}
+void PlaylistMagazine::beginAll(QString op){if(!m_folder||busy())return;m_pending=op;if(op=="search-all")m_searchRequested=true;m_waitCursor=-1;finishAll();}
 void PlaylistMagazine::finishAll(){
     if(m_pending.isEmpty()||!m_folder)return;if(m_music->directoryLoading)return;
-    if(m_waitCursor>=0 && m_folder->cursor==m_waitCursor){m_pending.clear();report("曲目加载失败，未执行批量操作；可重试");return;}
+    if(m_waitCursor>=0 && m_folder->cursor==m_waitCursor){m_pending.clear();report(query().isEmpty()?"曲目加载失败，可重试":"部分曲目读取失败，当前结果尚不完整；可重试");return;}
     if(m_folder->cursor<m_folder->ids.size()){m_waitCursor=m_folder->cursor;m_music->loadDirectoryPage();return;}
     const auto op=m_pending;m_pending.clear();m_waitCursor=-1;
     if(op=="search-all"){rebuild(true);emit changed();return;}

@@ -123,7 +123,7 @@ with tempfile.TemporaryDirectory() as tmp:
     # Clearly synthetic, deterministic TEST sleeves. Production only reads account collections.
     for i,colors in enumerate([('#14292a','#cf5e3c'),('#283653','#d7b783'),('#b9af9e','#536b54'),('#43475e','#b3a7ba')]):
         image=QImage(640,640,QImage.Format_RGB32);p=QPainter(image);g=QLinearGradient(0,0,640,640);g.setColorAt(0,QColor(colors[0]));g.setColorAt(1,QColor(colors[1]));p.fillRect(image.rect(),g);p.setPen(QColor('#cfc9b5'));p.setFont(QFont(font,26));p.drawText(40,70,'OFFLINE / COLLECTION '+str(i+1));p.setPen(QColor('#90cfc9b5'));p.drawEllipse(75+i*10,150,460,460);p.end();path=d/('sleeve'+str(i)+'.png');image.save(str(path));images.append(QUrl.fromLocalFile(str(path)).toString())
-    for name in ('RhineIcon','GlobalTools','RecordStack','PlaylistMagazine','SongContextMenu','LiquidGlass'):
+    for name in ('RhineIcon','GlobalTools','RecordStack','PlaylistMagazine','SongContextMenu','LiquidGlass','PlaylistSearch','SongHeart'):
         origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
     (d/'Harness.qml').write_text('''import QtQuick
 Item {id:root;width:1400;height:900

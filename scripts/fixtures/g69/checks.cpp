@@ -75,5 +75,21 @@ int main(int argc,char **argv){
     require(chunks==3&&c->songs.isEmpty()&&model.rowCount()==0,"205-song confirmed deletion executes three sequential bounded writes");
     music.directory=a;model.sync();model.rowAction("select","netease:102");
     model.showSongMenu("directory",0,"netease:102",0,0);require(model.songMenu()["visible"].toBool(),"account-cancellation fixture starts with an actual captured menu");++music.account;music.uid="another";model.sync();require(!model.songMenu()["visible"].toBool()&&model.selectedCount()==0,"account switch clears captured menu and multi-selection");
+    // G70: edit query repeatedly while metadata pages are still in flight.
+    auto searching=std::make_shared<MusicDirectory>();searching->item=MusicData::item("playlist","7070","Search fixture");
+    for(int i=500;i<705;++i){searching->ids.append(QString::number(i));if(i<505)searching->songs.append(song(i));}searching->cursor=5;
+    music.directory=searching;music.directoryLoading=false;model.sync();bool rejectSearch=false;
+    music.api.fixture=[&](QString route,QJsonObject values)->MusicReply{if(route=="/fixture/page"){
+        if(rejectSearch)return{{},"offline"};QJsonArray out;int cursor=values["cursor"].toInt();for(int i=cursor;i<std::min(cursor+100,205);++i)out.append(song(500+i));return{out,{}};}return{QJsonObject{}, {}};};
+    model.search("Song 704");model.search("Song 60");model.search("Song 6");model.search("");events(80);
+    require(model.query().isEmpty()&&!model.busy()&&model.rowCount()==searching->songs.size(),"clearing during async search restores every loaded row and cancels search work");
+    model.search("Song 704");events(100);require(searching->cursor==205&&model.rowCount()==1&&model.data(model.index(0),PlaylistMagazine::Track).toMap()["id"]=="704","latest keyword searches all paginated tracks, including a previously unloaded final song");
+    model.search("no-match");require(model.rowCount()==0&&!model.busy(),"completed no-result search releases loading");model.search("Artist");require(model.rowCount()==205,"artist search updates without Enter");model.search("Album");require(model.rowCount()==205,"album search updates without Enter");
+    searching->songs={song(500)};searching->cursor=1;rejectSearch=true;model.sync();model.search("Song 700");events(100);
+    require(!model.busy()&&!music.directoryLoading&&model.status().contains("失败"),"failed search paging releases busy state and gives retry feedback");
+    rejectSearch=false;model.search("Song 704");events(100);require(model.rowCount()==1&&searching->cursor==205,"typing after failure starts and completes a new full search");
+    model.search("");music.likedIDs=QJsonArray{"500"};music.lists[1]={song(501)};model.sync();
+    require(model.data(model.index(0),PlaylistMagazine::Heart).toBool()&&!model.data(model.index(1),PlaylistMagazine::Heart).toBool(),"authoritative liked IDs override a stale liked shelf");
+    model.setFilter("liked");require(model.rowCount()==1,"liked filtering shares the same authoritative heart state");model.setFilter("all");
     qInfo()<<"All actual PlaylistMagazine controller/model checks passed (fixture domain dependencies).";
 }

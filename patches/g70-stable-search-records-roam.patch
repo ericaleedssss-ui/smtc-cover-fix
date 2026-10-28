@@ -1,0 +1,271 @@
+diff --git a/Qt/CMakeLists.txt b/Qt/CMakeLists.txt
+index aa94062..465f60e 100644
+--- a/Qt/CMakeLists.txt
++++ b/Qt/CMakeLists.txt
+@@ -20,6 +20,8 @@ set_source_files_properties(qml/RhineIcon.qml PROPERTIES QT_RESOURCE_ALIAS Rhine
+ set_source_files_properties(qml/GlobalTools.qml PROPERTIES QT_RESOURCE_ALIAS GlobalTools.qml)
+ set_source_files_properties(qml/RecordStack.qml PROPERTIES QT_RESOURCE_ALIAS RecordStack.qml)
+ set_source_files_properties(qml/SongContextMenu.qml PROPERTIES QT_RESOURCE_ALIAS SongContextMenu.qml)
++set_source_files_properties(qml/PlaylistSearch.qml PROPERTIES QT_RESOURCE_ALIAS PlaylistSearch.qml)
++set_source_files_properties(qml/SongHeart.qml PROPERTIES QT_RESOURCE_ALIAS SongHeart.qml)
+ set_source_files_properties(qml/PlaylistMagazine.qml PROPERTIES QT_RESOURCE_ALIAS PlaylistMagazine.qml)
+ qt_add_qml_module(
+     RhineMusicDatabase
+@@ -35,6 +37,8 @@ qt_add_qml_module(
+     qml/GlobalTools.qml
+     qml/RecordStack.qml
+     qml/SongContextMenu.qml
++    qml/PlaylistSearch.qml
++    qml/SongHeart.qml
+     qml/PlaylistMagazine.qml
+     qml/UserProfile.qml
+     qml/SideNavigation.qml
+diff --git a/Qt/src/MusicMutation.cpp b/Qt/src/MusicMutation.cpp
+index 662a893..0075bbc 100644
+--- a/Qt/src/MusicMutation.cpp
++++ b/Qt/src/MusicMutation.cpp
+@@ -206,8 +206,8 @@ void MusicLibrary::like(QJsonObject value) {
+             valid(m_accountGeneration, &m_accountGeneration));
+         return;
+     }
+-    const auto liked = MusicData::indexOf(*likedIDs, value["id"]) >= 0 ||
+-                       MusicData::indexOfId(lists[1], value["id"].toString()) >= 0;
++    // The complete server ID list is authoritative; a stale shelf item is not.
++    const auto liked = MusicData::indexOf(*likedIDs, value["id"]) >= 0;
+     mutate("/like", {{"id", value["id"]}, {"like", !liked}},
+            [update, liked](QJsonObject) { update(!liked); });
+ }
+diff --git a/Qt/src/MusicPlayer.cpp b/Qt/src/MusicPlayer.cpp
+index 8397123..b45c4bc 100644
+--- a/Qt/src/MusicPlayer.cpp
++++ b/Qt/src/MusicPlayer.cpp
+@@ -838,6 +838,8 @@ void MusicPlayer::dislikeRoam() {
+             roamLoading = false;
+             if (!response.ok()) {
+                 roamStatus = QStringLiteral("不喜欢反馈未确认：") + response.error;
++                emit changed();
++                return;
+             } else {
+                 roamStatus.clear();
+             }
+@@ -889,6 +891,8 @@ void MusicPlayer::leaveRoam(bool restorePrevious) {
+ 
+ void MusicPlayer::next(int direction, bool ended) {
+     if (roamActive) {
++        // Do not invalidate an in-flight feedback callback and strand loading.
++        if (roamLoading) { return; }
+         if (direction < 0) {
+             if (index > 0) {
+                 m_roamInternalPlay = true;
+diff --git a/Qt/src/NativeHud.cpp b/Qt/src/NativeHud.cpp
+index cb96101..c2b96ec 100644
+--- a/Qt/src/NativeHud.cpp
++++ b/Qt/src/NativeHud.cpp
+@@ -702,3 +702,14 @@ QString NativeHud::clock(double ms) {
+     return MusicData::pad(int(std::floor(ms / 60000))) + ":" +
+            MusicData::pad(int(std::floor(ms / 1000)) % 60);
+ }
++
++void NativeHud::songHeart(QJsonObject song, double x, double y, const QString &action) {
++    if(song["kind"]!="song")return;
++    const bool liked=m_music->likedIDs ? MusicData::indexOf(*m_music->likedIDs,song["id"])>=0 : MusicData::indexOfId(m_music->lists[1],song["id"].toString())>=0;
++    const QString path="M 12 21 C 7 17 2 13 2 7 C 2 1 9 0 12 6 C 15 0 22 1 22 7 C 22 13 17 17 12 21 Z";
++    const QJsonArray color=liked?QJsonArray{.808,.341,.357,1}:QJsonArray{.573,.584,.549,1};
++    save();translate(x,y);scale(20./24.,20./24.);
++    if(liked)op({"fill-path",path,color});else op({"path",path,1.65,color,QJsonArray{},0});
++    restore();
++    if(!m_music->writeLoading&&m_music->canMutate("/like"))hit(x-6,y-6,32,32,action,liked?"取消喜欢":"喜欢");
++}
+diff --git a/Qt/src/NativeHud.h b/Qt/src/NativeHud.h
+index 68ddd8b..c61516f 100644
+--- a/Qt/src/NativeHud.h
++++ b/Qt/src/NativeHud.h
+@@ -310,6 +310,7 @@ class NativeHud : public QObject {
+                 QString weight = "regular");
+     void control(QString label, double x, double y, double width, QString action);
+     void rule(double x, double y, double width, double opacity = 0.4);
++    void songHeart(QJsonObject song, double x, double y, const QString &action);
+     void image(QString key, double x, double y, double width, double height);
+     void art(QString key, double x, double y, double size, int count = -1, double tracking = 0,
+              QJsonArray color = {});
+diff --git a/Qt/src/NativeHudController.cpp b/Qt/src/NativeHudController.cpp
+index 7a0bc57..9bc702f 100644
+--- a/Qt/src/NativeHudController.cpp
++++ b/Qt/src/NativeHudController.cpp
+@@ -392,8 +392,9 @@ void NativeHud::openPlayingSong(bool lyrics) {
+     modal.clear(); closing = false;
+     lyricsMode = lyrics;
+     m_lyricsBrowse.reset();
+-    music.followPlayback(music.player.current);
++    // Explicit player/roam navigation must bypass passive playlist retention.
+     music.directoryInfo = false;
++    music.followPlayback(music.player.current);
+     tab = "overview";
+     m_scene.mode("detail"); frame["mode"] = "detail";
+     if (!lyrics) { music.loadSongWiki(); }
+@@ -1006,6 +1007,7 @@ void NativeHud::action(QString value) {
+     if (value.startsWith("roam:")) {
+         auto &player = music.player;
+         if (value == "roam:start") {
++            if(player.roamActive){openPlayingSong(true);return;}
+             const auto generation = music.accountGeneration();
+             QPointer<MusicLibrary> owner(&music);
+             player.startRoam(music.uid, [owner, generation] {
+@@ -1025,6 +1027,7 @@ void NativeHud::action(QString value) {
+         auto &discover = *music.discover;
+         const auto name = parts.value(1);
+         if (name == "tab") {
++            if(parts.value(2)=="roam"){action("roam:start");return;}
+             listOffset = 0;
+             categoryPicker = false;
+             categoryPage = 0;
+diff --git a/Qt/src/NativeHudDetail.cpp b/Qt/src/NativeHudDetail.cpp
+index 66eb1d6..f36a1e5 100644
+--- a/Qt/src/NativeHudDetail.cpp
++++ b/Qt/src/NativeHudDetail.cpp
+@@ -1,5 +1,6 @@
+ #include "NativeHud.h"
+ #include "MusicData.h"
++#include <QUrl>
+ #include <QDateTime>
+ #include <algorithm>
+ #include <cmath>
+@@ -497,6 +498,7 @@ void NativeHud::container(double width, double opacity) {
+         {albums ? "ALBUM / 专辑名称" : "TITLE / 歌曲", titleX}};
+     if (!albums) { columns.append({"ARTIST / 歌手", artistX}); }
+     if (!albums && !albumPage) { columns.append({"ALBUM / 专辑", albumX}); }
++    if(!albums)columns.append({"喜欢",timeX-46});
+     columns.append({albums ? "RELEASED / 发行日期" : "TIME / 时长", timeX});
+     for (const auto &[label, position] : columns) {
+         text(label, position, 412, 11);
+@@ -531,7 +533,7 @@ void NativeHud::container(double width, double opacity) {
+             (albums ? "music:artist-album:" : "music:track:") + QString::number(index),
+             song["title"].toString());
+         if (!albums) {
+-            const auto available = (albumPage ? timeX : albumX) - artistX - 20;
++            const auto available = (albumPage ? timeX-48 : albumX) - artistX - 20;
+             const auto artists = song["artists"].toArray();
+             if (artists.isEmpty()) { limited(song["artist"].toString(), artistX, yy + 16, 14, available); }
+             double xx = artistX;
+@@ -544,11 +546,12 @@ void NativeHud::container(double width, double opacity) {
+             }
+             if (!albumPage) {
+                 if (!song["albumID"].toString().isEmpty()) {
+-                    link(song["album"].toString(), albumX, yy + 16, 14, timeX - albumX - 18,
++                    link(song["album"].toString(), albumX, yy + 16, 14, timeX - albumX - 64,
+                          "music:row-album:" + QString::number(index));
+-                } else { limited(song["album"].toString(), albumX, yy + 16, 14, timeX - albumX - 18); }
++                } else { limited(song["album"].toString(), albumX, yy + 16, 14, timeX - albumX - 64); }
+             }
+         }
++        if(!albums)songHeart(song,timeX-43,yy+14,"music:row-like:"+QString::number(index)+":"+QString::fromUtf8(QUrl::toPercentEncoding(song["id"].toString())));
+     }
+     if (songs.isEmpty()) {
+         limited(music.directoryLoading || music.detailLoading ? "正在载入曲目…" : "暂无可读取曲目", titleX,
+diff --git a/Qt/src/NativeHudMusic.cpp b/Qt/src/NativeHudMusic.cpp
+index e45ab51..b6e17df 100644
+--- a/Qt/src/NativeHudMusic.cpp
++++ b/Qt/src/NativeHudMusic.cpp
+@@ -37,6 +37,13 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
+         closeModal(false);queueOpen=false;music.directoryInfo=false;
+         music.choose(song,false,true);m_scene.mode("detail");frame["mode"]="detail";music.frame["mode"]="detail";
+         tab="comments";openComments();
++    } else if (name == "row-like") {
++        const auto songs=music.directory?music.directory->songs:music.tracks;
++        const int index=parts.value(2).toInt();
++        if(index>=0&&index<songs.size()){
++            const auto song=songs.at(index).toObject();
++            if(song["id"].toString()==decode(parts.value(3)))music.like(song);
++        }
+     } else if (name == "row-artist" || name == "row-album") {
+         const auto index = parts.value(2).toInt();
+         const auto songs = music.directory ? music.directory->songs : music.tracks;
+diff --git a/Qt/tests/UiChecks.cpp b/Qt/tests/UiChecks.cpp
+index dc1a4ee..47102e7 100644
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -720,6 +720,27 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         check(findVisual(window->contentItem(),"globalSearch") && findVisual(window->contentItem(),"globalLibrary") && findVisual(window->contentItem(),"globalSettings"),
+             "G69 one shared functional capsule exposes search, library and settings");
+         if(model && !originalDirectory->songs.isEmpty()){
++            const auto clickVisual=[&](QQuickItem *item){
++                if(!item||!item->isVisible())return false;
++                const auto point=item->mapToScene(QPointF(item->width()/2,item->height()/2));
++                QMouseEvent move(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);
++                for(const auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){
++                    QMouseEvent event(type,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,type==QEvent::MouseButtonPress?Qt::LeftButton:Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&event);
++                }settle(230);return true;
++            };
++            const auto inputKey=[&](int key,Qt::KeyboardModifiers modifiers=Qt::NoModifier,QString text={}){
++                QKeyEvent press(QEvent::KeyPress,key,modifiers,text),release(QEvent::KeyRelease,key,modifiers,text);
++                QCoreApplication::sendEvent(window,&press);QCoreApplication::sendEvent(window,&release);settle(40);refresh();
++            };
++            clickVisual(findVisual(window->contentItem(),"playlistSearch"));
++            QPointer<QQuickItem> editor=findVisual(window->contentItem(),"playlistSearchInput");
++            inputKey(Qt::Key_A,Qt::NoModifier,"a");inputKey(Qt::Key_B,Qt::NoModifier,"b");inputKey(Qt::Key_Backspace);
++            check(editor&&editor->hasActiveFocus()&&editor==findVisual(window->contentItem(),"playlistSearchInput")&&editor->property("text")=="a"&&model->query()=="a",
++                "G70 typing and deleting retain the same focused search editor across real model resets");
++            inputKey(Qt::Key_A,Qt::ControlModifier);QGuiApplication::clipboard()->setText("G70-no-match");inputKey(Qt::Key_V,Qt::ControlModifier);
++            check(model->rowCount()==0&&editor&&editor->hasActiveFocus(),"G70 paste updates results immediately and zero results cannot lock the editor");
++            clickVisual(findVisual(window->contentItem(),"playlistSearchClear"));
++            check(model->query().isEmpty()&&model->rowCount()==originalDirectory->songs.size()&&editor&&editor->hasActiveFocus(),"G70 clear restores the complete playlist while keeping input available");
+             const auto clicked=originalDirectory->songs.first().toObject();
+             auto *row=findVisual(window->contentItem(),"magazineRow_0");
+             if(row){const auto point=row->mapToScene(QPointF(row->width()*.37,row->height()/2));
+@@ -734,6 +755,17 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+             check(QGuiApplication::clipboard()->text()==music.sourceURL(clicked),"G69 context copy uses the clicked song ID");
+             model->showSongMenu("directory",0,MusicPlayer::identity(clicked),20,20);model->songAction("next");
+             check(music.player.current==originalPlay && MusicData::indexOfId(music.player.queue,clicked["id"].toString())>=0,"G69 next-play context action queues the captured song");
++            const auto likedBefore=music.likedIDs;const auto shelfBefore=music.lists[1];const auto totalBefore=music.totals[1];
++            const auto likeFixture=backend.host.fixture;const auto likeUid=music.uid;music.uid="42";bool rejectLike=true;QString likeID;
++            backend.host.fixture=[likeFixture,&rejectLike,&likeID](QString route,QJsonObject args){if(route=="/like"){likeID=args["id"].toString();return QJsonObject{{"body",QJsonObject{{"code",rejectLike?500:200}}}};}return likeFixture(route,args);};
++            music.likedIDs=QJsonArray{};music.lists[1]={};model->sync();refresh();
++            clickVisual(findVisual(window->contentItem(),"magazineHeart_0"));
++            check(likeID==clicked["id"].toString()&&music.likedIDs->isEmpty(),"G70 failed heart action targets the clicked row and keeps its confirmed state");
++            rejectLike=false;clickVisual(findVisual(window->contentItem(),"magazineHeart_0"));
++            check(MusicData::indexOf(*music.likedIDs,clicked["id"])>=0&&model->data(model->index(0),PlaylistMagazine::Heart).toBool(),"G70 successful heart click updates real liked IDs and the rendered model");
++            clickVisual(findVisual(window->contentItem(),"magazineHeart_0"));
++            check(music.likedIDs->isEmpty()&&!model->data(model->index(0),PlaylistMagazine::Heart).toBool(),"G70 second heart click confirms unlike and clears the row state");
++            backend.host.fixture=likeFixture;music.uid=likeUid;music.likedIDs=likedBefore;music.lists[1]=shelfBefore;music.totals[1]=totalBefore;model->sync();
+             model->rowAction("play",MusicPlayer::identity(clicked));refresh();
+             check(music.directory==originalDirectory && music.directoryInfo && music.current==originalItem && music.player.current["id"]==clicked["id"],
+                 "G69 cover playback plays the song without navigating away from the playlist");
+@@ -756,7 +788,11 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+                     return QJsonObject{{"body",QJsonObject{{"code",200},{"value",QJsonArray{next,QJsonArray{song},QJsonArray{"690003"}}}}}};
+                 }return previousFixture(route,values);
+             };
+-            model->openCover(next["key"].toString());refresh();
++            auto *sleeve=findVisual(window->contentItem(),"recordSleeve_"+next["key"].toString());
++            if(sleeve){const auto point=sleeve->mapToScene(QPointF(sleeve->width()/2,sleeve->height()/2));
++                QMouseEvent move(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);settle(300);}
++            auto *preview=findVisual(window->contentItem(),"recordPreview_"+next["key"].toString());
++            check(clickVisual(preview),"G70 visible record thumbnail selects its exact real collection");settle(650);refresh();
+             check(music.directory && music.directory->item["id"]=="690002" && music.player.current==originalPlay && music.player.queue==originalQueue,
+                 "G69 record browsing changes the real directory without playback or queue replacement");
+             backend.action("back");refresh();
+@@ -1714,6 +1750,25 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+         hud.queueOpen = false; hud.queueCollectionOpen = false;
+         hud.modal.clear(); hud.closing = false;
+     }
++    // G70: enter FM from a retained playlist through the actual dispatcher.
++    {
++        auto &player=music.player;const auto fixture=backend.host.fixture;const auto uid=music.uid;
++        const auto queue=player.queue;const auto playing=player.current;const int index=player.index;
++        const auto folder=music.directory;const auto selection=music.current;const bool info=music.directoryInfo;
++        int picks=0,trash=0;backend.host.fixture=[fixture,&picks,&trash](QString route,QJsonObject args){
++            if(route=="/personal/fm/mode")return QJsonObject{{"body",QJsonObject{{"code",200},{"data",QJsonArray{QJsonObject{{"id",707000+(++picks)},{"name","FM station fixture"},{"artists",QJsonArray{}},{"album",QJsonObject{}}}}}}}};
++            if(route=="/fm_trash"){++trash;return QJsonObject{{"body",QJsonObject{{"code",200}}}};}
++            return fixture(route,args);
++        };
++        music.uid="42";music.directory=std::make_shared<MusicDirectory>();music.directory->item=MusicData::item("playlist","707099","Retained FM origin");music.directoryInfo=true;music.current=music.directory->item;
++        hud.modal.clear();hud.lyricsMode=false;backend.scene.setMode("detail");refresh();
++        backend.action("discover:tab:roam");settle(450);refresh();
++        check(player.roamActive&&hud.lyricsMode&&music.current["id"]=="707001"&&hud.modal!="discover", "G70 roam entry uses personalized FM and the current-song lyric page from a playlist");
++        backend.action("player:next");settle(450);refresh();check(picks==2&&trash==0&&player.current["id"]=="707002","G70 FM skip fetches a fresh station pick without dislike feedback");
++        backend.action("roam:dislike");settle(450);refresh();check(trash==1&&picks==3&&player.current["id"]=="707003","G70 FM dislike submits real feedback before continuing recommendations");
++        backend.action("roam:exit");settle(150);refresh();check(!player.roamActive&&!hud.lyricsMode&&player.queue==queue&&player.current==playing&&player.index==index,"G70 leaving FM restores the original ordinary playback context");
++        backend.host.fixture=fixture;music.uid=uid;music.directory=folder;music.directoryInfo=info;music.current=selection;
++    }
+     qInfo() << "Frosted UI rendering and settings:" << (ok ? "passed" : "FAILED");
+     return ok ? 0 : 1;
+ }

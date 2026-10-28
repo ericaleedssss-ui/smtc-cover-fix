@@ -3,6 +3,7 @@ import QtQuick.Shapes
 Item {
     id: icon
     property string name: "more"
+    property bool filled:false
     property color color: "#50594b"
     width:24; height:24
     readonly property var paths: ({
@@ -29,7 +30,7 @@ Item {
         width:24; height:24; scale:Math.min(icon.width,icon.height)/24; transformOrigin:Item.TopLeft
         ShapePath {
             strokeColor:icon.color; strokeWidth:1.65; capStyle:ShapePath.RoundCap; joinStyle:ShapePath.RoundJoin
-            fillColor:icon.name==="play" ? icon.color : "transparent"
+            fillColor:(icon.name==="play" || icon.filled) ? icon.color : "transparent"
             PathSvg { path:icon.paths[icon.name] || icon.paths.more }
         }
     }

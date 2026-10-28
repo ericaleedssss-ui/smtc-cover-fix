@@ -55,6 +55,9 @@ Item {
     }
     function scheduleClose() { closeTimer.restart(); }
     function discover(tab) {
+        if(tab === "roam") {
+            rhine.action("roam:start");selected="roam";scheduleClose();return;
+        }
         rhine.action("discover");
         rhine.action("discover:tab:" + tab);
         selected = tab;

@@ -24,7 +24,7 @@ checks = {
     'Qt/src/NativeHudController.cpp': ['queueOpen = !queueOpen;',
                                       'if (kind == "player") { queueOpen = true; return; }'],
     'Qt/src/NativeHudMusic.cpp': ['if (queueCollectionOpen) {'],
-    'Qt/tests/UiChecks.cpp': ['Following page actually scrolls before opening the queue', 'clickQueueButton();', 'G68 retention', 'G69 real right-click opens shared song menu',
+    'Qt/tests/UiChecks.cpp': ['G70 typing and deleting retain', 'G70 leaving FM restores', 'Following page actually scrolls before opening the queue', 'clickQueueButton();', 'G68 retention', 'G69 real right-click opens shared song menu',
                             'queue retains the same Following instance, scroll, filter, query and loaded data'],
 }
 for name, markers in checks.items():
@@ -42,8 +42,10 @@ stamp = {
     'upstream_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip(),
     'generated_sha256': {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in checks},
     'magazine_controller_sha256': hashlib.sha256((source / 'Qt/src/PlaylistMagazine.cpp').read_bytes()).hexdigest(),
+    'search_qml_sha256': hashlib.sha256((source / 'Qt/qml/PlaylistSearch.qml').read_bytes()).hexdigest(),
+    'records_qml_sha256': hashlib.sha256((source / 'Qt/qml/RecordStack.qml').read_bytes()).hexdigest(),
     'magazine_qml_sha256': hashlib.sha256((source / 'Qt/qml/PlaylistMagazine.qml').read_bytes()).hexdigest(),
     'queue_patch_sha256': hashlib.sha256((maintained / 'patches/g67-independent-queue.patch').read_bytes()).hexdigest(),
 }
 args.stamp.write_text(json.dumps(stamp, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-print(f'G69 source verified: workflow and maintained checkout both {actual}; independent overlay and retained-page QA installed.')
+print(f'G70 source verified: workflow and maintained checkout both {actual}; independent overlay and retained-page QA installed.')
