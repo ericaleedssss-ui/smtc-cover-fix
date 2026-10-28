@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rhine:
-    name: Rhine G67 independent queue overlay and retained Following page QA
+    name: Rhine G68 verified source checkout and independent queue overlay QA
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -76,8 +76,12 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        git clone --depth 1 --branch rhine-g66-layered-glass-origin https://github.com/ericaleedssss-ui/smtc-cover-fix.git "$RUNNER_TEMP/rhine-maintained"
+        git init "$RUNNER_TEMP/rhine-maintained"
+        git -C "$RUNNER_TEMP/rhine-maintained" remote add origin https://github.com/ericaleedssss-ui/smtc-cover-fix.git
+        git -C "$RUNNER_TEMP/rhine-maintained" fetch --depth 1 origin "$GITHUB_SHA"
+        git -C "$RUNNER_TEMP/rhine-maintained" checkout --detach FETCH_HEAD
         python "$RUNNER_TEMP/rhine-maintained/scripts/apply-maintained.py"
+        python "$RUNNER_TEMP/rhine-maintained/scripts/verify-build-source.py" --source . --stamp "$RUNNER_TEMP/rhine-maintained-source.json"
         git diff --check
     - name: Configure MSVC
       uses: ilammy/msvc-dev-cmd@v1
@@ -171,9 +175,9 @@ jobs:
       run: npm run share
     - name: Label the test build
       shell: python
-      run: "import pathlib, shutil\nout = pathlib.Path('smtc-download')\nout.mkdir()\nsource = pathlib.Path('output/RhineMusicDatabase-v1.2.0-Windows-x64.zip')\n\
+      run: "import os, pathlib, shutil\nout = pathlib.Path('smtc-download')\nout.mkdir()\nshutil.copyfile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'rhine-maintained-source.json', out / 'MAINTAINED-SOURCE.json')\nsource = pathlib.Path('output/RhineMusicDatabase-v1.2.0-Windows-x64.zip')\n\
         assert source.is_file(), 'Expected portable application archive was not generated'\nshutil.copyfile(source, out /\
-        \ 'Rhine-G67-Independent-Queue-Overlay-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G67 independent queue and collection overlays, retained Following page; G53 base, page\
+        \ 'Rhine-G68-Verified-Independent-Queue-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G68 verified build source; independent queue and collection overlays, retained Following page; G53 base, page\
         \ history, reading sizes and glass player bar; based on Rhine v1.2.0\\n'\n    'Source: https://github.com/MikeQu223/Rhine-Music-Database/tree/b8b8ad5ed661fa32404731f1b09f7c37d34bf070\\\
         n'\n    'The application is modified with an SMTC thumbnail patch.\\n'\n    'CI build and offline tests must pass\
         \ before this artifact is uploaded.\\n'\n    'Interactive Windows playback and overlay behavior still need user verification.\\\
@@ -181,7 +185,7 @@ jobs:
     - name: Downloadable Rhine test build
       uses: actions/upload-artifact@v4
       with:
-        name: Rhine-G67-Independent-Queue-Overlay-Windows-x64
+        name: Rhine-G68-Verified-Independent-Queue-Windows-x64
         path: smtc-download/
         if-no-files-found: error
         retention-days: 7

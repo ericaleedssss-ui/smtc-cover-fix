@@ -1,0 +1,50 @@
+--- a/Qt/qml/Main.qml
++++ b/Qt/qml/Main.qml
+@@ -372,6 +372,7 @@
+             model: rhine.hits
+             delegate: Item {
+                 required property var modelData
++                objectName: "nativeHit_" + modelData.action
+                 x: modelData.x
+                 y: modelData.y + (rhine.state.modal && !modelData.fixed ? rhine.state.modalOffset || 0 : 0)
+                 width: modelData.width
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -1353,8 +1353,21 @@
+         }
+         const auto y = scroll ? scroll->property("contentY").toDouble() : 0.;
+         check(page && scroll && y>0, "Following page actually scrolls before opening the queue");
++        const auto clickQueueButton = [&] {
++            auto *button = findVisual(window->contentItem(), "nativeHit_player:open");
++            if (!button || !button->isVisible()) { check(false, "actual footer queue button is visible"); return; }
++            const auto point = button->mapToScene(QPointF(button->width()/2, button->height()/2));
++            QMouseEvent move(QEvent::MouseMove, point, window->mapToGlobal(point.toPoint()), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
++            QCoreApplication::sendEvent(window, &move); settle(100);
++            for (const auto type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
++                QMouseEvent mouse(type, point, window->mapToGlobal(point.toPoint()), Qt::LeftButton,
++                    type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton, Qt::NoModifier);
++                QCoreApplication::sendEvent(window, &mouse);
++            }
++            refresh();
++        };
+         for (int i=0; i<3; ++i) {
+-            backend.action("player:open"); refresh();
++            clickQueueButton();
+             check(hud.queueOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data() &&
+                 scroll->property("contentY").toDouble()==y && discover.items==cards && discover.tab=="following" &&
+                 discover.category=="测试筛选" && hud.query=="保留查询" && hud.listOffset==7,
+@@ -1367,12 +1380,12 @@
+                 check(hud.queueOpen && !hud.queueCollectionOpen && scroll->property("contentY").toDouble()==y,
+                     "closing collection returns to the same open queue and Following scroll");
+             }
+-            backend.action("queue-close"); refresh();
++            clickQueueButton();
+             check(!hud.queueOpen && hud.modal=="discover" && page && loader->property("item").value<QObject *>()==page.data() &&
+                 scroll->property("contentY").toDouble()==y && player.current==song && player.queue.size()==2,
+                 "ordinary queue close changes neither navigation, playback nor queue contents");
+         }
+-        backend.action("player:open"); refresh();
++        clickQueueButton();
+         window->grabWindow().save(output + "/preview-g67-following-queue.png");
+         backend.action("back"); refresh();
+         check(!hud.queueOpen && hud.modal=="discover" && page, "Escape/back dismisses only the foreground queue");
