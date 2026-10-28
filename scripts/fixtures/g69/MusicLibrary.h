@@ -16,6 +16,7 @@ struct MusicApi {
     using Reply=std::function<void(MusicReply)>;using Valid=std::function<bool()>;
     std::function<MusicReply(QString,QJsonObject)> fixture;
     QList<QPair<QString,QJsonObject>> requests;
+    void call(QString operation,QJsonArray args,Reply reply,Valid valid=[] {return true;}){request("/fixture/"+operation,{{"uid",args.first()}},reply,valid);}
     void request(QString route,QJsonObject values,Reply reply,Valid valid=[] {return true;}){
         requests.append({route,values});const auto response=fixture?fixture(route,values):MusicReply{QJsonObject{{"total",0}}, {}};
         QTimer::singleShot(0,[reply,valid,response]{if(valid())reply(response);});
@@ -55,6 +56,12 @@ public:
     QString sourceURL(QJsonObject s)const{return "https://music.163.com/#/"+s["kind"].toString()+"?id="+s["id"].toString();}
     void like(QJsonObject s){if(!likedIDs)likedIDs=QJsonArray();likedIDs->append(s["id"]);emit invalidated();}
     void loadMoreSource(int){}
+    quint64 &m_accountGeneration=account;quint64 m_likedIDsAccount=0;
+    bool m_likedIDsLoading=false;QString m_likedIDsError;QVector<Completion> m_likedIDWaiters;
+    void changed(){emit invalidated();}
+    bool likedIDsLoading()const{return m_likedIDsAccount==account&&m_likedIDsLoading;}
+    QString likedIDsError()const{return m_likedIDsAccount==account?m_likedIDsError:QString();}
+    void ensureLikedIDs(Completion done={});
     QJsonArray directoryQueue()const;
     void playDirectory(){const auto q=directoryQueue();if(!q.isEmpty())player.play(q.first().toObject(),q);}
     void loadDirectoryPage(){

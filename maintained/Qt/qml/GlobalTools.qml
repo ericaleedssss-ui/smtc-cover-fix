@@ -29,10 +29,10 @@ Item {
         Controls.ToolTip.text:label
         MouseArea {id:mouse;anchors.fill:parent;hoverEnabled:true;acceptedButtons:parent.available?Qt.LeftButton:Qt.NoButton;cursorShape:parent.available?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{if(parent.action)rhine.action(parent.action);parent.invoked();}}
     }
-    Item {objectName:"globalBack";x:28*tools.u;y:25*tools.u;width:42*tools.u;height:width
+    Item {objectName:"globalBack";x:28*tools.unit;y:75*tools.unit-height/2;width:Math.max(28,42*tools.unit);height:width
         visible:rhine.state.mode==="detail"||rhine.state.directoryOpen===true||!!rhine.state.modal
-        LiquidGlass {anchors.fill:parent;background:tools.background;sampleX:parent.x;sampleY:parent.y;uiScale:tools.u;radius:height/2;dark:rhine.state.dark===true}
-        Tool {anchors.centerIn:parent;iconName:"back";label:"返回";action:"back"}
+        Rectangle {anchors.fill:parent;radius:height/2;color:rhine.state.dark?"#343b30":"#f5f4ef";border.width:1;border.color:rhine.state.dark?"#596050":"#d3d1c8"}
+        Tool {anchors.fill:parent;radius:height/2;iconName:"back";label:"返回";action:"back"}
     }
     Row {
         id:accountRow;objectName:"globalAccountBar"

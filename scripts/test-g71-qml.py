@@ -8,6 +8,7 @@ import sys,tempfile,shutil,subprocess
 from PySide6.QtCore import QObject,Signal,Property,Slot,QAbstractListModel,QModelIndex,QUrl,QPointF,Qt,QResource
 from PySide6.QtGui import QGuiApplication,QFontDatabase,QImage,QPainter,QColor,QLinearGradient,QFont
 from PySide6.QtQuick import QQuickView
+from PySide6.QtQml import QQmlProperty
 from PySide6.QtTest import QTest
 src=Path(sys.argv[1]).resolve();repo=Path(__file__).resolve().parents[1]
 app=QGuiApplication([])
@@ -19,7 +20,7 @@ class Controller(QAbstractListModel):
     def __init__(self,images):
         super().__init__();self.actions=[];self.position=0.;self.q='';self.f='all';self.t='songs';self.menu={'visible':False};self.selection=set();self.images=images;self.ids=list(range(4080))
         self.meta=dict(key='netease:playlist:1',id='1',title='PROJECT / 一些缓慢生长的声音',artist='离线交互测试',creatorID='42',createdDate='2024-06-18',total=4080,loaded=4080,cover=images[0],description='留给午后、窗边和一个人的声音。\n不赶时间地听完一张唱片。',subscribedCount=12340,commentCount=236,editable=True,canSubscribe=True,subscribed=False,canCollect=True,canDownload=True,more=False,loading=False)
-        self.catalogIndex=0;self.catalog=[self.meta.copy()]+[dict(key=('netease:album:' if i==7 else 'netease:playlist:')+str(i+1),id=str(i+1),title='收藏 '+str(i+1),kind='album' if i==7 else 'playlist',artist='真实测试创建者',cover=images[i%4]) for i in range(1,8)]
+        self.likesKnown=True;self.detailCoverRefresh=False;self.catalogIndex=0;self.catalog=[self.meta.copy()]+[dict(key=('netease:album:' if i==7 else 'netease:playlist:')+str(i+1),id=str(i+1),title='收藏 '+str(i+1),kind='album' if i==7 else 'playlist',artist='真实测试创建者',cover=images[i%4]) for i in range(1,8)]
     @property
     def rear(self):return [{**self.catalog[(self.catalogIndex+d)%len(self.catalog)],"side":d} for d in (-1,1)]
     @Slot(int,result='QVariantMap')
@@ -27,13 +28,14 @@ class Controller(QAbstractListModel):
     @Slot()
     def prepareRecords(self):self.actions.append(("records-more",))
     def rowCount(self,parent=QModelIndex()):return 0 if parent.isValid() else len(self.ids)
-    def roleNames(self):return {257:b'track',258:b'sourceIndex',259:b'chosen',260:b'heart'}
+    def roleNames(self):return {257:b'track',258:b'sourceIndex',259:b'chosen',260:b'heart',261:b'heartKnown'}
     def data(self,index,role=Qt.DisplayRole):
         n=self.ids[index.row()]
         if role==257:return dict(id=str(60000+n),identity='netease:'+str(60000+n),kind='song',provider='netease',title=['Maia','Go!','緩やかな日々','Dawn Chorus','shanty'][n%5],artist=['CANTOMA','Public Service Broadcasting','mouse on the keys','Flying Lotus','Slowdive'][n%5],album=['Out of Town','The Race for Space','an anxious object','Cosmogramma','everything is alive'][n%5],albumID='44',cover=self.images[n%4],durationLabel='04:12')
         if role==258:return n
         if role==259:return n in self.selection
         if role==260:return n%3==0
+        if role==261:return self.likesKnown
     @Property(bool,notify=changed)
     def active(self):return True
     @Property('QVariantMap',notify=changed)
@@ -85,7 +87,9 @@ class Controller(QAbstractListModel):
     def openCover(self,k):
         self.actions.append(('open',k))
         self.beginResetModel();self.catalogIndex=next(i for i,x in enumerate(self.catalog) if x['key']==k)
-        self.meta={**self.meta,**self.catalog[self.catalogIndex]};self.position=0;self.q='';self.ids=list(range(4080));self.endResetModel();self.changed.emit()
+        self.meta={**self.meta,**self.catalog[self.catalogIndex]};
+        if self.detailCoverRefresh:self.meta["cover"]+="?detail-size=1024"
+        self.position=0;self.q='';self.ids=list(range(4080));self.endResetModel();self.changed.emit()
 
     @Slot(str,str)
     def rowAction(self,op,key):self.actions.append((op,key))
@@ -107,6 +111,8 @@ class Controller(QAbstractListModel):
         self.actions.append(('subscribe',key,enabled))
         if key==self.meta['key']:self.meta['subscribed']=enabled;self.changed.emit()
     @Slot()
+    def retryLikes(self):self.actions.append(("retry-likes",))
+    @Slot()
     def share(self):self.actions.append(('share',))
     @Slot()
     def cancelRemoval(self):pass
@@ -114,7 +120,7 @@ class Controller(QAbstractListModel):
     def removeConfirmed(self):pass
 class Spy(QObject):
     changed=Signal()
-    def __init__(self,c):super().__init__();self.c=c;self.actions=[];self.data=dict(mode='detail',directoryOpen=True,dark=False,reduced=False,modal='',queueOpen=False,accountUID='42',accountName='Erica_P',accountProvider='netease',accountProviderName='网易云音乐',accountMember='VIP',accountAvatar=c.images[0])
+    def __init__(self,c):super().__init__();self.c=c;self.actions=[];self.data=dict(mode='detail',directoryOpen=True,dark=False,reduced=False,modal='',queueOpen=False,returnSource='我的收藏',accountUID='42',accountName='Erica_P',accountProvider='netease',accountProviderName='网易云音乐',accountMember='VIP',accountAvatar=c.images[0])
     @Property('QVariantMap',notify=changed)
     def state(self):return self.data
     @Property(QObject,constant=True)
@@ -138,12 +144,20 @@ with tempfile.TemporaryDirectory() as tmp:
         image=QImage(640,640,QImage.Format_RGB32);p=QPainter(image);g=QLinearGradient(0,0,640,640);g.setColorAt(0,QColor(colors[0]));g.setColorAt(1,QColor(colors[1]));p.fillRect(image.rect(),g);p.setPen(QColor('#cfc9b5'));p.setFont(QFont(font,26));p.drawText(40,70,'OFFLINE / COLLECTION '+str(i+1));p.setPen(QColor('#90cfc9b5'));p.drawEllipse(75+i*10,150,460,460);p.end();path=d/('sleeve'+str(i)+'.png');image.save(str(path));images.append(QUrl.fromLocalFile(str(path)).toString())
     for name in ('RhineIcon','GlobalTools','RecordStack','PlaylistMagazine','SongContextMenu','LiquidGlass','PlaylistSearch','SongHeart'):
         origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
-    qrc=d/'icons.qrc';qrc.write_text('<RCC><qresource prefix="/icons">'+''.join('<file alias="'+name+'">'+str(repo/'maintained/Assets/icons'/name)+'</file>' for name in ('song-like-on.png','song-like-off.png'))+'</qresource></RCC>')
+    entries=[]
+    for name in ('magazineEdgeFade','liquidGlass','softEdgeFade'):
+        origin=repo/'maintained/Qt/shaders'/f'{name}.frag'
+        if not origin.exists():origin=src/'Qt/shaders'/f'{name}.frag'
+        out=d/f'{name}.frag.qsb'
+        subprocess.run(['/root/.local/bin/pyside6-qsb','--glsl','150,300es','--hlsl','50','--msl','12','-o',str(out),str(origin)],check=True)
+        entries.append('<file alias="'+name+'.frag.qsb">'+str(out)+'</file>')
+    qrc=d/'icons.qrc';qrc.write_text('<RCC><qresource prefix="/icons">'+''.join('<file alias="'+name+'">'+str(repo/'maintained/Assets/icons'/name)+'</file>' for name in ('song-like-on.png','song-like-off.png'))+'</qresource><qresource prefix="/shaders">'+''.join(entries)+'</qresource></RCC>')
     subprocess.run(['/root/.local/bin/pyside6-rcc','--binary','-o',str(d/'icons.rcc'),str(qrc)],check=True);assert QResource.registerResource(str(d/'icons.rcc'))
     (d/'Harness.qml').write_text('''import QtQuick
 Item {id:root;width:1400;height:900
  Rectangle {id:bg;anchors.fill:parent;color:rhine.state.dark?"#252b23":"#e9e7df"}
- Text {x:90;y:40;text:"RHINE / 音乐资料库";font.family:rhineFontFamily;font.pixelSize:13;color:"#707c63"}
+ Text {x:100*root.height/1080;y:59*root.height/1080;text:"RHINE / 音乐资料库";font.family:rhineFontFamily;font.pixelSize:14*root.height/1080;color:"#384333"}
+ Text {x:100*root.height/1080;y:80*root.height/1080;text:rhine.state.returnSource;font.family:rhineFontFamily;font.pixelSize:11*root.height/1080;color:"#384333";opacity:.58}
  PlaylistMagazine {anchors.left:parent.left;anchors.right:parent.right;height:parent.height-90;controller:rhine.magazine;background:bg;unit:root.height/1080}
  GlobalTools {anchors.fill:parent;background:bg;unit:root.height/1080;topRightReserved:132}
  SongContextMenu {anchors.fill:parent;controller:rhine.magazine;background:bg}
@@ -192,6 +206,13 @@ Item {id:root;width:1400;height:900
     click(v,find(root,'playlistSearch'));QGuiApplication.clipboard().setText('Maia');QTest.keyClick(v,Qt.Key_V,Qt.ControlModifier);assert c.q=='Maia' and field.hasActiveFocus()
     c.meta['key']=original;c.q='';c.changed.emit();c.search('');QTest.qWait(360)
     print('PASS G71 QML: append/delete/paste/clear/no-result, noisy backend/model resets, focus and page reentry')
+    # G76: unknown is a distinct UI state, and background completion updates every heart.
+    c.likesKnown=False;c.meta['likesLoading']=True;c.dataChanged.emit(c.index(0),c.index(c.rowCount()-1),[260,261]);c.changed.emit();QTest.qWait(60)
+    assert not find(root,'magazineHeart_0').property('known') and not find(find(root,'magazineHeart_0'),'songHeartIcon').isVisible()
+    before=len(c.actions);click(v,find(root,'magazineHeart_0'));assert not any(a[0]=='like' for a in c.actions[before:])
+    c.likesKnown=True;c.meta['likesLoading']=False;c.dataChanged.emit(c.index(0),c.index(c.rowCount()-1),[260,261]);c.changed.emit();QTest.qWait(60)
+    for n in (0,3):assert find(root,'magazineHeart_'+str(n)).property('known') and find(find(root,'magazineHeart_'+str(n)),'songHeartIcon').property('source').toString().endswith('song-like-on.png')
+    print('PASS G76 QML: unknown hearts never appear as confirmed unliked; multiple hearts update automatically on data completion')
     # Shared heart geometry has a real filled state and an immutable row action.
     listing.setProperty('contentY',listing.property('startY'));QTest.qWait(80)
     heart=find(root,'magazineHeart_0');icon=find(heart,'songHeartIcon');assert icon.property('source').toString().endswith('song-like-on.png')
@@ -246,7 +267,9 @@ Item {id:root;width:1400;height:900
     def rowsIn(item):
         if item.objectName().startswith('magazineRow_'):fadeRows.append(item)
         for child in item.childItems():rowsIn(child)
-    rowsIn(root);assert any(0<x.opacity()<1 for x in fadeRows),[(x.objectName(),x.opacity()) for x in fadeRows]
+    rowsIn(root)
+    if os.environ.get('QT_QUICK_BACKEND')=='software':assert any(0<x.opacity()<1 for x in fadeRows),[(x.objectName(),x.opacity()) for x in fadeRows]
+    else:assert QQmlProperty(listing,'layer.enabled').read(), 'RHI uses the list shader mask, not per-row opacity'
     print('PASS G74: sticky play/subscribe, confirmation/cancel, no identity art and two-edge fade')
     # G74: use the actual exposed left corner; no navigation before motion ends.
     listing.setProperty('contentY',listing.property('startY'));QTest.qWait(360)
@@ -268,7 +291,7 @@ Item {id:root;width:1400;height:900
     print('PASS G74: real previous-corner click, delayed navigation and stable centre after both turn directions')
     # G75: sample the real QML scene during both directions, including the last frame.
     import json,time
-    motionEvidence=[];motionFrames=[]
+    motionEvidence=[];motionFrames=[];c.detailCoverRefresh=True
     def recordKey(item):
         data=item.property('record')
         if hasattr(data,'toVariant'):data=data.toVariant()
@@ -278,13 +301,14 @@ Item {id:root;width:1400;height:900
         mainKey=c.meta['key'];target=next(x for x in c.rear if x['side']==direction)['key']
         leavingKey=next(x for x in c.rear if x['side']==-direction)['key']
         enteringKey=c.recordNeighbour(2*direction)['key']
-        beforeMain=find(root,'recordSleeve_'+mainKey);beforeChosen=find(root,'recordSleeve_'+target)
+        beforeMain=find(root,'recordSleeve_'+mainKey);beforeChosen=find(root,'recordSleeve_'+target);chosenSource=beforeChosen.property('coverSource')
         hit=find(root,'recordHit_'+target);point=hit.mapToScene(QPointF(6 if direction<0 else hit.width()/2,hit.height()*.6)).toPoint()
         QTest.mouseMove(v,point);QTest.qWait(260)
         QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point)
         assert stack.property('turning')
         watched={k:find(root,'recordSleeve_'+k) for k in (leavingKey,mainKey,target,enteringKey)}
         assert all(x is not None for x in watched.values())
+        layers={key:QQmlProperty(card,'layer.enabled').read() for key,card in watched.items()}
         assert watched[mainKey]==beforeMain and watched[target]==beforeChosen
         entered=watched[enteringKey];assert entered.y()>stack.property('frontY')+stack.property('size')*.1
         samples=[];marks=[.04,.25,.5,.75,.98];started=time.monotonic()
@@ -293,6 +317,7 @@ Item {id:root;width:1400;height:900
             for key,card in watched.items():
                 rows[key]=[card.x(),card.y(),card.rotation(),card.opacity()]
                 if abs(card.property('slot'))<=1 or card.opacity()>.01:assert recordKey(card)==key,(key,recordKey(card),progress)
+            for key,card in watched.items():assert QQmlProperty(card,'layer.enabled').read()==layers[key],'cover render target must not toggle at the handoff'
             assert abs(watched[mainKey].opacity()-1)<.001,'main card must move to the side, never fade out'
             samples.append(dict(t=time.monotonic()-started,p=progress,cards=rows))
             if marks and progress>=marks[0]:
@@ -310,11 +335,20 @@ Item {id:root;width:1400;height:900
         assert last['p']>.96,last['p']
         for key,end in terminal.items():
             assert max(abs(last['cards'][key][j]-end[j]) for j in (0,1))<4,(direction,key,last['cards'][key],end)
+        def assertPaintedTarget():
+            art=QImage(QUrl(chosenSource).toLocalFile());expected=art.pixelColor(art.width()//2,art.height()//2)
+            frame=v.grabWindow();point=watched[target].mapToScene(QPointF(watched[target].width()/2,watched[target].height()/2));ratio=frame.devicePixelRatio()
+            actual=frame.pixelColor(round(point.x()*ratio),round(point.y()*ratio))
+            assert max(abs(expected.red()-actual.red()),abs(expected.green()-actual.green()),abs(expected.blue()-actual.blue()))<30,(expected.name(),actual.name())
+        assertPaintedTarget()
         QTest.qWait(260)
+        assertPaintedTarget()
         for key,end in terminal.items():
             card=watched[key];assert max(abs(card.x()-end[0]),abs(card.y()-end[1]))<.02,(key,end,card.x(),card.y())
         assert c.meta['key']==target
+        assert watched[target].property('coverSource')==chosenSource and c.meta['cover']!=chosenSource,'detail size/URL refresh must not reload the displayed sleeve'
         motionEvidence.append(dict(direction=direction,leaving=leavingKey,main=mainKey,target=target,entering=enteringKey,samples=samples,terminal=terminal))
+    c.detailCoverRefresh=False
     (repo.parent/'g75-motion-samples.json').write_text(json.dumps(motionEvidence),encoding='utf-8')
     # A contact sheet is an intermediate visual check, never installed as UI art.
     sheet=QImage(5*540,2*470,QImage.Format_RGB32);sheet.fill(QColor('#e9e7df'));painter=QPainter(sheet)
@@ -322,6 +356,32 @@ Item {id:root;width:1400;height:900
         x=(n%5)*540;y=(n//5)*470;painter.drawImage(x,y+24,frame.scaled(530,430,Qt.KeepAspectRatio,Qt.SmoothTransformation));painter.setPen(QColor('#30392e'));painter.drawText(x+12,y+18,f'direction {direction}, progress {progress:.3f}')
     painter.end();sheet.save(str(repo.parent/'g75-turn-contact-sheet.png'))
     print('PASS G75: sampled both directions; A exits, B stays opaque and moves aside, C retains identity, D inserts from below; last frame and post-navigation positions are continuous')
+    # G76: emulate first-use network images, not pre-cached file thumbnails.
+    import threading,http.server
+    class SlowArt(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            time.sleep(.18)
+            n=int(self.path.split('?')[0].split('/')[-1].split('.')[0])%len(images)
+            payload=Path(QUrl(images[n]).toLocalFile()).read_bytes()
+            try:self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload)
+            except (BrokenPipeError,ConnectionResetError):pass
+        def log_message(self,*args):pass
+    server=http.server.ThreadingHTTPServer(('127.0.0.1',0),SlowArt);threading.Thread(target=lambda:server.serve_forever(poll_interval=.05),daemon=True).start()
+    savedCatalog,savedMeta,savedIndex=c.catalog,c.meta.copy(),c.catalogIndex
+    fresh=[dict(key='netease:playlist:'+str(7600+i),id=str(7600+i),kind='playlist',title='Cold '+str(i),cover=f'http://127.0.0.1:{server.server_port}/{i}.png') for i in range(4)]
+    c.catalog=fresh;c.catalogIndex=1;c.meta={**savedMeta,**fresh[1]};c.position=0;c.changed.emit();QTest.qWait(12)
+    target=fresh[2]['key'];hit=find(root,'recordHit_'+target);point=hit.mapToScene(QPointF(hit.width()/2,hit.height()*.6)).toPoint()
+    before=len([a for a in c.actions if a[0]=='open']);QTest.mouseMove(v,point);QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point)
+    assert stack.property('queuedKey')==target and not stack.property('turning'),'cold art should be decoded before starting the unchanged turn'
+    QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point)
+    started=time.monotonic()
+    while not stack.property('turning') and time.monotonic()-started<3:QTest.qWait(12)
+    assert stack.property('turning') and len([a for a in c.actions if a[0]=='open'])==before
+    for record in fresh:
+        card=find(root,'recordSleeve_'+record['key']);assert card is not None and not card.property('imageLoading')
+    QTest.qWait(650);assert c.meta['key']==target and len([a for a in c.actions if a[0]=='open'])==before+1
+    c.catalog=savedCatalog;c.catalogIndex=savedIndex;c.meta=savedMeta;c.position=0;c.changed.emit();QTest.qWait(360);server.shutdown();server.server_close()
+    print('PASS G76 QML: immediate cold-image click and duplicate click wait for decode, then execute one unchanged 460ms turn')
     # Every exposed sleeve maps to its own key, title and single navigation.
     retainedStack=find(root,'playlistRecordStack')
     for ordinal in range(5):

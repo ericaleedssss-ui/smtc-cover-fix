@@ -26,7 +26,7 @@ class PlaylistMagazine : public QAbstractListModel {
     Q_PROPERTY(bool downloading READ downloading NOTIFY changed)
     Q_PROPERTY(QVariantMap songMenu READ songMenu NOTIFY menuChanged)
 public:
-    enum Role { Track=Qt::UserRole+1, SourceIndex, Chosen, Heart };
+    enum Role { Track=Qt::UserRole+1, SourceIndex, Chosen, Heart, HeartKnown };
     PlaylistMagazine(MusicLibrary *music, NativeHud *hud, QObject *parent=nullptr);
     ~PlaylistMagazine() override;
     int rowCount(const QModelIndex &parent={}) const override;
@@ -56,6 +56,7 @@ public:
     Q_INVOKABLE void more();
     Q_INVOKABLE void openCover(QString key);
     Q_INVOKABLE void prepareRecords();
+    Q_INVOKABLE void retryLikes();
     Q_INVOKABLE QVariantMap recordNeighbour(int offset) const;
     Q_INVOKABLE void rowAction(QString op, QString key);
     Q_INVOKABLE void selectAll(bool selected);
@@ -88,6 +89,11 @@ private:
     QString m_recordKey;
     int m_recordIndex=-1;
     bool m_recordsComplete=false;
+    bool m_likesAttempted=false,m_likesKnown=false,m_collectorsRequested=false;
+    qint64 m_collectorCount=-1;
+    QString m_collectorError;
+    quint64 m_collectorToken=0;
+    void loadCollectorCount();
     QString m_status, m_pending, m_modelQuery, m_modelFilter;
     QJsonArray m_likedSnapshot;
     bool m_downloading=false;

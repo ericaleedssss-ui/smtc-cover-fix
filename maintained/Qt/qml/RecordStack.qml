@@ -11,6 +11,8 @@ Item {
     readonly property var rear:controller.covers
     property var paintedFront:({})
     property string awaitingKey:""
+    property string queuedKey:""
+    property string queuedFromKey:""
     property var chosen:({})
     property string startingKey:""
     property string lastPreparedKey:""
@@ -45,8 +47,19 @@ Item {
     }
     function cardFor(key){for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(c&&c.record.key===key)return c;}return null;}
     function freeCard(){for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(c&&!c.record.key)return c;}return null;}
+    function assignRecord(card,record){
+        if(card.record.key!==record.key||!card.coverSource)card.coverSource=record.cover||"";
+        card.record=record;
+    }
+    function resumeQueuedTurn(){
+        if(!queuedKey||turning)return;
+        Qt.callLater(function(){
+            for(var i=0;i<stack.rear.length;++i)if(stack.rear[i].key===stack.queuedKey){stack.choose(stack.rear[i]);return;}
+            stack.queuedKey="";stack.syncCards();
+        });
+    }
     function syncCards(){
-        if(turning||(awaitingKey&&String(front.key||"")!==awaitingKey))return;
+        if(turning||queuedKey||(awaitingKey&&String(front.key||"")!==awaitingKey))return;
         awaitingKey="";
         var desired=[];
         if(front&&front.key)desired.push({record:front,slot:0});
@@ -56,9 +69,9 @@ Item {
             if(!keep)c.record=({});
         }
         for(i=0;i<desired.length;++i){var d=desired[i];var existing=cardFor(d.record.key);
-            if(existing){existing.record=d.record;existing.slot=d.slot;continue;}
+            if(existing){assignRecord(existing,d.record);existing.slot=d.slot;continue;}
             var added=freeCard();if(!added)continue;
-            added.snapping=true;added.entering=d.slot!==0;added.slot=d.slot===0?0:d.slot*2;added.record=d.record;
+            added.snapping=true;added.entering=d.slot!==0;added.slot=d.slot===0?0:d.slot*2;assignRecord(added,d.record);
             // Late metadata uses the same entry path instead of appearing at rest.
             if(d.slot!==0)settleCard(added,d.slot);else releaseSnap(added);
         }
@@ -66,17 +79,22 @@ Item {
     }
     function releaseSnap(card){Qt.callLater(function(){card.snapping=false;});}
     function settleCard(card,slot){Qt.callLater(function(){if(!stack.turning&&card.record.key){card.snapping=false;card.slot=slot;card.entering=false;}});}
-    function hold(key){if(turning||switchCooldown)return;hoveredKey=key;expanded=true;closeFan.stop();}
-    function release(key){if(turning||switchCooldown)return;if(hoveredKey===key)hoveredKey="";closeFan.restart();}
+    function hold(key){if(turning||switchCooldown||queuedKey)return;hoveredKey=key;expanded=true;closeFan.stop();}
+    function release(key){if(turning||switchCooldown||queuedKey)return;if(hoveredKey===key)hoveredKey="";closeFan.restart();}
     function choose(value){
         if(turning||switchCooldown||awaitingKey||!value||!value.key||value.key===front.key)return;
+        if(queuedKey&&queuedKey!==value.key)return;
         direction=value.side===-1?-1:1;
         if(reduced){switchCooldown=true;controller.openCover(value.key);cooldown.restart();return;}
         chosen=value;startingKey=String(front.key||"");
         var entering=controller.recordNeighbour(2*direction);
         if(entering&&entering.key&&!cardFor(entering.key)){
-            var extra=freeCard();if(extra){extra.snapping=true;extra.entering=true;extra.slot=2*direction;extra.record=entering;}
+            var extra=freeCard();if(extra){extra.snapping=true;extra.entering=true;extra.slot=2*direction;assignRecord(extra,entering);}
         }
+        for(var n=0;n<cards.count;++n){var imageCard=cards.itemAt(n);
+            if(imageCard&&imageCard.record.key&&imageCard.imageLoading){queuedKey=value.key;queuedFromKey=String(front.key||"");closeFan.stop();return;}
+        }
+        queuedKey="";queuedFromKey="";
         for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(!c||!c.record.key)continue;
             c.startX=c.x;c.startY=c.y;c.startRotation=c.rotation;c.startScale=c.scale;c.startOpacity=c.opacity;
             c.targetSlot=c.slot-direction;
@@ -85,6 +103,7 @@ Item {
     }
     onFrontChanged:{
         var key=String(front.key||"");
+        if(queuedKey&&key!==queuedFromKey){queuedKey="";queuedFromKey="";}
         if(key&&key!==lastPreparedKey){lastPreparedKey=key;recordPrefetch.restart();}
         if(awaitingKey&&key!==awaitingKey&&key!==startingKey){commitTurn.stop();pendingKey="";awaitingKey="";}
         if(turning&&key!==startingKey&&key!==chosen.key){turn.stop();turning=false;awaitingKey="";}
@@ -98,9 +117,9 @@ Item {
     Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
     Timer {id:recordPrefetch;interval:280;repeat:false;onTriggered:if(!stack.turning)stack.controller.prepareRecords()}
     Timer {id:commitTurn;interval:16;repeat:false;onTriggered:{var key=stack.pendingKey;stack.pendingKey="";if(key)stack.controller.openCover(key);}}
-    Timer {id:closeFan;interval:170;onTriggered:if(!stack.turning&&!area.hovered&&!stack.hoveredKey)stack.expanded=false}
+    Timer {id:closeFan;interval:170;onTriggered:if(!stack.turning&&!stack.queuedKey&&!area.hovered&&!stack.hoveredKey)stack.expanded=false}
     Item {x:-18*stack.unit;y:-8*stack.unit;width:stack.width+36*stack.unit;height:stack.height+64*stack.unit
-        HoverHandler {id:area;onHoveredChanged:{if(stack.turning||stack.switchCooldown)return;if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
+        HoverHandler {id:area;onHoveredChanged:{if(stack.turning||stack.switchCooldown||stack.queuedKey)return;if(hovered){stack.expanded=true;closeFan.stop();stack.controller.prepareRecords();}else closeFan.restart();}}
     }
     // Four existing render slots: three resting cards and the real entering neighbour.
     // Their image identity never changes while the turn is running.
@@ -110,6 +129,8 @@ Item {
         delegate:Item {
             id:card
             property var record:({})
+            property string coverSource:""
+            readonly property bool imageLoading:!!coverSource&&(coverImage.status===Image.Loading||coverImage.status===Image.Null)
             property bool snapping:false
             property bool entering:false
             property int slot:99
@@ -144,10 +165,10 @@ Item {
             Behavior on rotation {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:220;easing.type:Easing.OutCubic}}
             Behavior on scale {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:160;easing.type:Easing.OutCubic}}
             Behavior on opacity {enabled:!stack.turning&&!card.snapping;NumberAnimation {duration:stack.reduced?0:210;easing.type:Easing.OutCubic}}
-            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software&&slot===0
-            layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:.2;shadowVerticalOffset:6;shadowColor:"#48533e"}
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
+            layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:card.slot===0?.2:0;shadowVerticalOffset:6;shadowColor:"#48533e"}
             Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
-            Image {objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.record.cover||"";sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+            Image {id:coverImage;objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.coverSource;onStatusChanged:if(status===Image.Ready||status===Image.Error)stack.resumeQueuedTurn();sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
             MouseArea {
                 objectName:"recordHit_"+card.record.key
                 x:card.slot<0?0:parent.width-width;y:0

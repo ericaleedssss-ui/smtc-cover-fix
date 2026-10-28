@@ -1,0 +1,29 @@
+void MusicLibrary::ensureLikedIDs(Completion done) {
+    if(provider!="netease"||uid.isEmpty()){if(done)done(false);return;}
+    if(likedIDs){if(done)done(true);return;}
+    if(m_likedIDsAccount!=m_accountGeneration){
+        m_likedIDWaiters.clear();m_likedIDsLoading=false;m_likedIDsError.clear();m_likedIDsAccount=m_accountGeneration;
+    }
+    if(done)m_likedIDWaiters.append(std::move(done));
+    if(m_likedIDsLoading)return;
+    m_likedIDsLoading=true;m_likedIDsError.clear();
+    const auto account=m_accountGeneration;const auto user=uid;
+    changed();
+    api.call("likedIDs",{user},[this](MusicReply reply){
+        const bool ok=reply.ok()&&reply.value.isArray();
+        if(ok&&!likedIDs){
+            QJsonArray ids;QSet<QString> seen;
+            for(const auto &v:reply.value.toArray()){
+                const auto id=v.isString()?v.toString():QString::number(v.toInteger());
+                if(id.isEmpty()||id=="0"||seen.contains(id))continue;
+                seen.insert(id);ids.append(id);
+            }
+            likedIDs=ids;
+        }
+        m_likedIDsLoading=false;
+        m_likedIDsError=ok?QString():reply.ok()?QString("喜欢状态返回格式无效"):reply.error;
+        auto waiters=std::move(m_likedIDWaiters);m_likedIDWaiters.clear();
+        changed();
+        for(const auto &waiter:waiters)if(waiter)waiter(ok);
+    },[this,account,user]{return m_accountGeneration==account&&uid==user&&provider=="netease";});
+}

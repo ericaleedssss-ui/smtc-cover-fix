@@ -21,9 +21,14 @@ int main(int argc,char **argv){
     auto a=std::make_shared<MusicDirectory>();a->item=MusicData::item("playlist","123","Collection A","Owner");a->item["creatorID"]="42";a->item["cover"]="https://example.org/a.jpg";
     for(int i=0;i<4080;++i){a->songs.append(song(i+100));a->ids.append(QString::number(i+100));}a->cursor=4080;a->item["trackCount"]=4080;music.directory=a;
     for(int i=0;i<10;++i){auto s=MusicData::item(i==9?"album":"playlist",QString::number(2000+i),"Actual collection "+QString::number(i));s["cover"]="https://example.org/"+QString::number(i)+".jpg";music.lists[i==9?4:2].append(s);}
+    music.api.fixture=[](QString route,QJsonObject)->MusicReply{if(route=="/fixture/likedIDs")return{QJsonArray{"100","101","102"},{}};return{QJsonObject{{"total",0}},{}};};
     PlaylistMagazine model(&music,&hud);QAbstractItemModelTester tester(&model,QAbstractItemModelTester::FailureReportingMode::Fatal);
     QSignalSpy resets(&model,&QAbstractItemModel::modelReset);QSignalSpy inserts(&model,&QAbstractItemModel::rowsInserted);
     require(model.rowCount()==4080&&model.covers().size()==2,"4,080 real model rows, only two adjacent real collection covers");
+    require(!model.data(model.index(0),PlaylistMagazine::HeartKnown).toBool(),"G76 unknown initial heart state is explicit, not silently unliked");
+    events();require(model.data(model.index(0),PlaylistMagazine::Heart).toBool()&&model.data(model.index(1),PlaylistMagazine::Heart).toBool()&&model.data(model.index(2),PlaylistMagazine::Heart).toBool(),"G76 multiple existing likes appear automatically before any click");
+    require(model.data(model.index(3),PlaylistMagazine::HeartKnown).toBool()&&!model.data(model.index(3),PlaylistMagazine::Heart).toBool()&&resets.count()==0,"G76 authoritative response updates heart roles without resetting the song model");
+    int likeLoads=0;for(const auto &r:music.api.requests)if(r.first=="/fixture/likedIDs")++likeLoads;require(likeLoads==1,"G76 initial state uses one shared request");
     const auto covers=model.covers();for(int i=0;i<30;++i)model.sync();require(resets.count()==0&&model.covers()==covers,"unrelated sync does not reset large list or reshuffle records");
     model.savePosition(model.session(),777);hud.queueCollectionOpen=true;model.sync();require(model.scrollPosition()==777&&resets.count()==0,"secondary overlays preserve exact page scroll and model");hud.queueCollectionOpen=false;
     music.player.current=song(9999);music.player.queue={music.player.current};music.player.index=0;
@@ -113,5 +118,16 @@ int main(int argc,char **argv){
     auto album=std::make_shared<MusicDirectory>();album->item=MusicData::item("album","7401","Album target");music.directory=album;model.sync();require(!model.active(),"G74 normal album details retain their native introduction reader");
     album->recordBrowse=true;model.sync();require(model.active(),"G74 album handoff keeps the persistent magazine active");
     model.setSubscribed(model.session(),true);events(30);require(music.api.requests.last().first=="/album/sub"&&music.lists[4].size()==1,"G74 album collection uses the album mutation endpoint");
+    auto countsA=std::make_shared<MusicDirectory>();countsA->item=MusicData::item("playlist","7601","Count A");countsA->item["subscribedCount"]=9999;
+    auto countsB=std::make_shared<MusicDirectory>();countsB->item=MusicData::item("playlist","7602","Count B");countsB->item["subscribedCount"]=8888;
+    music.api.fixture=[](QString route,QJsonObject args)->MusicReply{if(route=="/playlist/subscribers")return{QJsonObject{{"total",args["id"]=="7601"?17:29},{"subscribers",QJsonArray{}}},{}};return{QJsonObject{}, {}};};
+    music.directory=countsA;model.sync();require(!model.info().contains("collectorCount"),"G76 a new playlist never reuses an old collector count");
+    music.directory=countsB;model.sync();events();require(model.info()["collectorCount"].toInt()==29,"G76 only the current playlist subscriber total is accepted, not collection counts or late A responses");
+    music.api.fixture=[](QString,QJsonObject)->MusicReply{return{QJsonObject{{"subscribers",QJsonArray{QJsonObject{}}}}, {}};};
+    music.directory=countsA;model.sync();events();require(!model.info().contains("collectorCount")&&!model.info()["collectorError"].toString().isEmpty(),"G76 missing total remains unknown; neither page length nor subscribedCount is substituted");
+    music.likedIDs.reset();music.api.fixture=[](QString route,QJsonObject)->MusicReply{if(route=="/fixture/likedIDs")return{{},"offline"};return{QJsonObject{}, {}};};
+    model.retryLikes();events();require(!music.likedIDs&&!model.info()["likesError"].toString().isEmpty(),"G76 failed initial state stays explicit and retryable");
+    music.api.fixture=[](QString route,QJsonObject)->MusicReply{if(route=="/fixture/likedIDs")return{QJsonArray{"500"},{}};return{QJsonObject{}, {}};};
+    music.directory=countsB;model.sync();events();require(music.likedIDs==QJsonArray{"500"},"G76 entering another playlist retries an unknown failed state automatically");
     qInfo()<<"All actual PlaylistMagazine controller/model checks passed (fixture domain dependencies).";
 }

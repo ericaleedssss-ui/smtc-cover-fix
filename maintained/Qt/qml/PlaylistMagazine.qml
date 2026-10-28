@@ -110,7 +110,7 @@ Item {
                             Label {visible:(page.info.tags||[]).length>0;text:(page.info.tags||[]).slice(0,3).join(" / ");width:Math.min(implicitWidth,160*page.u);height:parent.height;font.pixelSize:12*page.u;color:page.muted}
                             Label {visible:!!page.info.createdDate;text:(page.info.createdDate||"")+" 创建";height:parent.height;font.pixelSize:12*page.u;color:page.muted}
                         }
-                        Label {id:statistics;text:Number(page.info.total||0).toLocaleString()+" 首歌曲"+(page.info.subscribedCount!==undefined?"    "+Number(page.info.subscribedCount).toLocaleString()+" 次收藏":"");color:page.muted;font.pixelSize:12*page.u}
+                        Label {id:statistics;text:Number(page.info.total||0).toLocaleString()+" 首歌曲"+(page.info.subscribedCount!==undefined?"    收藏数 "+Number(page.info.subscribedCount).toLocaleString():"");color:page.muted;font.pixelSize:12*page.u}
                     }
                     Row {id:actionRow;objectName:"playlistActions";anchors.left:parent.left;anchors.bottom:parent.bottom;spacing:12*page.unit
                         Action {objectName:"magazinePlayAll";label:"播放全部";iconName:"play";primary:true;enabled:Number(page.info.total)>0;onInvoked:page.controller.bulk("play-all")}
@@ -124,7 +124,7 @@ Item {
             Item {
                 y:page.heroHeight;width:parent.width;height:56*page.u
                 Row {anchors.verticalCenter:parent.verticalCenter;spacing:25*page.unit
-                    Repeater {model:[{key:"songs",label:"歌曲 "+(page.info.total||0)},{key:"comments",label:"评论"+(page.info.commentCount!==undefined?" "+page.info.commentCount:"")},{key:"collectors",label:"收藏者"}].filter(function(t){return t.key!=="collectors"||page.info.kind!=="album";})
+                    Repeater {model:[{key:"songs",label:"歌曲 "+(page.info.total||0)},{key:"comments",label:"评论"+(page.info.commentCount!==undefined?" "+page.info.commentCount:"")},{key:"collectors",label:"收藏者"+(page.info.collectorCount!==undefined?" "+Number(page.info.collectorCount).toLocaleString():"")}].filter(function(t){return t.key!=="collectors"||page.info.kind!=="album";})
                         delegate:Item {required property var modelData;width:tabLabel.implicitWidth;height:43*page.u
                             Label {id:tabLabel;anchors.verticalCenter:parent.verticalCenter;text:modelData.label;color:page.controller.tab===modelData.key?page.ink:page.muted;font.weight:page.controller.tab===modelData.key?Font.DemiBold:Font.Normal}
                             Rectangle {anchors.bottom:parent.bottom;width:28*page.unit;height:3*page.unit;radius:1;color:page.accent;visible:page.controller.tab===modelData.key}
@@ -164,7 +164,8 @@ Item {
             property var song:page.controller.tab==="songs"?model.track:({})
             property int songIndex:page.controller.tab==="songs"?model.sourceIndex:-1
             property bool chosen:page.controller.tab==="songs"?model.chosen:false
-            property bool heart:page.controller.tab==="songs"?model.heart:false
+            property bool heart:page.controller.tab==="songs"?model.heart===true:false
+            property bool heartKnown:page.controller.tab==="songs"?model.heartKnown===true:true
             property var social:page.controller.tab!=="songs"?modelData:({})
             sourceComponent:Item {
                 implicitHeight:page.controller.tab==="songs"?page.rowHeight:(page.controller.tab==="comments"?Math.max(102*page.u,socialText.implicitHeight+60*page.u):72*page.u)
@@ -205,7 +206,7 @@ Item {
                     Label {x:parent.width*.65;width:parent.width*.35-188*page.unit;height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
                         MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;enabled:!!rowLoader.song.albumID;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"album",rowLoader.song.identity);}}
                     }
-                    SongHeart {objectName:"magazineHeart_"+rowLoader.songIndex;x:parent.width-180*page.unit;anchors.verticalCenter:parent.verticalCenter;unit:page.u;liked:rowLoader.heart;pending:page.info.likeBusy===true;onToggled:page.controller.rowAction("like",rowLoader.song.identity)}
+                    SongHeart {objectName:"magazineHeart_"+rowLoader.songIndex;x:parent.width-180*page.unit;anchors.verticalCenter:parent.verticalCenter;unit:page.u;liked:rowLoader.heart;known:rowLoader.heartKnown;pending:page.info.likeBusy===true||page.info.likesLoading===true;onToggled:if(rowLoader.heartKnown)page.controller.rowAction("like",rowLoader.song.identity);else page.controller.retryLikes()}
                     Label {x:parent.width-104*page.unit;width:52*page.unit;height:parent.height;text:rowLoader.song.durationLabel||"—";color:page.muted;font.pixelSize:12*page.u}
                     RhineIcon {x:parent.width-32*page.unit;anchors.verticalCenter:parent.verticalCenter;width:20*page.u;height:width;name:"more";color:page.muted
                         MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);}}
@@ -221,6 +222,8 @@ Item {
         footer:Item {
             width:listing.width;height:page.controller.downloading?170*page.u:112*page.u
             Column {anchors.horizontalCenter:parent.horizontalCenter;spacing:12*page.unit;y:18*page.unit
+                Action {label:"重新读取喜欢状态";visible:!!page.info.likesError;onInvoked:page.controller.retryLikes()}
+                Label {visible:page.controller.tab==="collectors"&&!!page.info.collectorError;text:page.info.collectorError||"";color:page.muted;font.pixelSize:12*page.u}
                 Label {anchors.horizontalCenter:parent.horizontalCenter;objectName:"playlistResultStatus";text:page.info.loadError || page.controller.status || (page.controller.tab==="songs"&&page.controller.query&&page.info.visibleCount===0&&!page.info.loading&&!page.controller.busy?(page.info.searchComplete?"没有匹配的歌曲":"当前已载入曲目无匹配，可重试读取其余曲目"):page.info.loading?"正在载入曲目…":page.controller.tab==="songs"?"已载入 "+(page.info.loaded||0)+" / "+(page.info.total||0)+" 首":"");color:page.muted;font.pixelSize:12*page.u}
                 Action {anchors.horizontalCenter:parent.horizontalCenter;visible:page.controller.downloading===true;label:"取消下载";onInvoked:page.controller.cancelDownload()}
                 Action {anchors.horizontalCenter:parent.horizontalCenter;visible:page.controller.tab==="songs"?page.info.more===true:page.info.socialMore===true;label:page.info.loading||page.info.socialLoading?"正在读取…":"加载更多";enabled:!page.info.loading&&!page.info.socialLoading;onInvoked:page.controller.more()}
