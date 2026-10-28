@@ -1,0 +1,36 @@
+            // G77 uses the real Engine/Host/controller/QML chain with explicit offline replies.
+            {
+                const auto previousFixture=backend.host.fixture;const auto previousUID=music.uid;
+                music.uid="42";music.changed();
+                int writes=0;
+                backend.host.fixture=[previousFixture,&writes,artworkURL](QString route,QJsonObject values){
+                    const QJsonObject user{{"userId","7"},{"nickname","消息测试听众"},{"avatarUrl",artworkURL},{"authStatus",1}};
+                    QJsonObject body{{"code",200}};
+                    if(route=="/pl/count")body={{"code",200},{"msg",505},{"comment",2},{"forward",1},{"notice",0}};
+                    else if(route=="/msg/private")body["msgs"]=QJsonArray{QJsonObject{{"fromUser",user},{"lastMsg","{\"msg\":\"测试私信摘要\"}"},{"lastMsgTime",1700000000000.},{"newMsgCount",63}}};
+                    else if(route=="/msg/private/history")body["msgs"]=QJsonArray{QJsonObject{{"id","1"},{"fromUser",user},{"msg","{\"msg\":\"真实传输链的离线会话\"}"},{"time",1700000000000.}}};
+                    else if(route=="/send/text"){++writes;if(values["user_ids"]!="7"||values["msg"]!="G77 offline send")body["code"]=400;}
+                    else if(route=="/msg/comments")body["comments"]=QJsonArray{QJsonObject{{"id","2"},{"user",user},{"content","测试评论"},{"updateTime",1700000000000.}}};
+                    else if(route=="/msg/forwards")body["forwards"]=QJsonArray{QJsonObject{{"id","3"},{"user",user},{"json","{\"msg\":\"测试提及\"}"},{"time",1700000000000.}}};
+                    else if(route=="/msg/notices")body["notices"]=QJsonArray{QJsonObject{{"id","4"},{"notice","{\"content\":\"测试通知\"}"},{"time",1700000000000.}}};
+                    else return previousFixture(route,values);
+                    return QJsonObject{{"body",body}};
+                };
+                auto *messages=qobject_cast<MessageCenter*>(backend.messages());
+                check(messages&&clickVisual(findVisual(window->contentItem(),"globalInbox")),"G77 existing inbox opens the real message drawer");settle(350);
+                check(messages&&messages->state()["open"].toBool()&&messages->rowCount()==1&&messages->state()["counts"].toList().value(0).toInt()==505,"G77 drawer loads real Host fixture messages and unread counts");
+                if(messages){
+                    for(int t=1;t<4;++t){messages->selectTab(t);settle(80);check(messages->rowCount()==1&&messages->state()["tab"].toInt()==t,"G77 all four message tabs load their own endpoint");}
+                    messages->selectTab(0);settle(60);messages->activate(0);settle(100);
+                    check(messages->history().size()==1&&findVisual(window->contentItem(),"messageComposer"),"G77 conversation and history render through the production drawer");
+                    window->grabWindow().save(output+"/preview-message-conversation.png");
+                    messages->setDraft("G77 offline send");messages->send();messages->send();settle(120);
+                    check(writes==1&&messages->draft().isEmpty(),"G77 text send is confirmed by Host and duplicate submits are suppressed");
+                    messages->leaveConversation();messages->allRead();settle(50);
+                    check(messages->state()["counts"].toList().value(0).toInt()==505&&!messages->state()["allReadSupported"].toBool(),"G77 unsupported batch-read preserves server unread counts");
+                    window->grabWindow().save(output+"/preview-message-center.png");
+                    check(clickVisual(findVisual(window->contentItem(),"messageClose")),"G77 close button dismisses only the message overlay");settle(230);
+                    check(!messages->state()["open"].toBool()&&music.directory==originalDirectory&&music.current==originalItem&&music.player.queue==originalQueue&&music.player.current==originalPlay,"G77 opening and closing messages retains underlying playlist and playback");
+                }
+                backend.host.fixture=previousFixture;music.uid=previousUID;music.changed();refresh();
+            }

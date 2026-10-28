@@ -41,6 +41,12 @@ for name in ('PlayerQueueGlass.qml', 'SideNavigation.qml', 'DiscoverGlass.qml'):
     if (source / 'Qt/qml' / name).read_bytes() != (maintained / 'maintained/Qt/qml' / name).read_bytes():
         raise SystemExit(f'Maintained QML was not installed: {name}')
 
+for name in ('Qt/src/MessageCenter.cpp','Qt/src/MessageCenter.h','Qt/qml/MessageDrawer.qml'):
+    if (source/name).read_bytes().replace(b'\r\n',b'\n') != (maintained/'maintained'/name).read_bytes().replace(b'\r\n',b'\n'):
+        raise SystemExit(f'G77 message source not installed: {name}')
+for name,marker in [('Qt/src/Engine.cpp','m_messages = new MessageCenter'),('Qt/qml/GlobalTools.qml','controller:rhine.messages'),('MusicBridge/worker.cjs',"'/send/text': 'send_text'"),('Qt/tests/UiChecks.cpp','G77 text send is confirmed by Host')]:
+    if marker not in (source/name).read_text(encoding='utf-8'):raise SystemExit(f'G77 missing integration: {name}')
+
 stamp = {
     'workflow_commit': expected,
     'maintained_commit': actual,
