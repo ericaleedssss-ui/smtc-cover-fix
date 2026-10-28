@@ -54,6 +54,7 @@ Item { id:root; width:1100; height:720
  property real stageScale:height/1080
  property var commentsScrollMemory:({})
  property var discoverScrollMemory:({})
+ Loader {id:magazineLoader;active:false}
  Rectangle {id:backgroundLayer;anchors.fill:parent;color:"#e8e8df"}
  Item {id:baseVisual;anchors.fill:parent;Rectangle {anchors.fill:parent;color:"#e8e8df"}}
  MouseArea {anchors.fill:parent;onClicked:rhine.action("underlying-page")}

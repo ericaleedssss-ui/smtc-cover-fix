@@ -228,7 +228,8 @@ Item {
                 objectName: "queueRowPlay_" + track.trackIndex
                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                 onWheel: function(wheel) { wheel.accepted = false }
-                onClicked: queue.rowAction("queue-play", track.trackIndex, track.trackKey)
+                acceptedButtons:Qt.LeftButton|Qt.RightButton
+                onClicked:function(mouse){if(mouse.button===Qt.RightButton){var p=mapToItem(null,mouse.x,mouse.y);rhine.magazine.showSongMenu("queue",track.trackIndex,track.trackKey,p.x,p.y);}else queue.rowAction("queue-play",track.trackIndex,track.trackKey);}
             }
             Rectangle {
                 id: artwork
@@ -251,7 +252,8 @@ Item {
                     objectName: "queueCoverPlay_" + track.trackIndex
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                     onWheel: function(wheel) { wheel.accepted = false }
-                    onClicked: queue.rowAction("queue-play", track.trackIndex, track.trackKey)
+                    acceptedButtons:Qt.LeftButton|Qt.RightButton
+                onClicked:function(mouse){if(mouse.button===Qt.RightButton){var p=mapToItem(null,mouse.x,mouse.y);rhine.magazine.showSongMenu("queue",track.trackIndex,track.trackKey,p.x,p.y);}else queue.rowAction("queue-play",track.trackIndex,track.trackKey);}
                 }
             }
             Column {

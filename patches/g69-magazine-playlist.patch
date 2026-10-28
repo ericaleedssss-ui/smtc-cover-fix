@@ -1,0 +1,805 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9dab81e..5660f36 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -134,6 +134,8 @@ set(RHINE_APP_SOURCES
+     Qt/src/SceneMotion.h
+     Qt/src/SceneMotion.cpp
+     Qt/src/BootTimeline.cpp
++    Qt/src/PlaylistMagazine.cpp
++    Qt/src/PlaylistMagazine.h
+     Qt/src/MusicDirectory.cpp
+     Qt/src/MusicAccount.cpp
+     Qt/src/MusicMutation.cpp
+diff --git a/MusicBridge/client/items.mjs b/MusicBridge/client/items.mjs
+index 514c56a..47c7cef 100644
+--- a/MusicBridge/client/items.mjs
++++ b/MusicBridge/client/items.mjs
+@@ -36,7 +36,7 @@ export function parse(rawItem, kind) {
+         id,
+         rawItem.name,
+         kind === 'playlist'
+-            ? (creator.nickname ?? '暂无创建者')
++            ? (creator.nickname ?? '')
+             : artists
+                   .map((artist) => artist.name)
+                   .filter((v) => typeof v === 'string')
+@@ -50,6 +50,10 @@ export function parse(rawItem, kind) {
+                 name: artist.name,
+             })),
+         creatorID: String(creator.userId ?? ''),
++        creatorAvatar: creator.avatarUrl || '',
++
++        ...Object.fromEntries(['subscribedCount','commentCount','playCount'].filter(k => Number.isFinite(rawItem[k])).map(k => [k,rawItem[k]])),
++        unavailable: (rawItem.privilege?.st ?? 0) < 0,
+         albumID: String(album.id ?? ''),
+         album: album.name ?? '',
+         cover: rawItem.picUrl ?? rawItem.coverImgUrl ?? album.picUrl ?? '',
+@@ -57,6 +61,10 @@ export function parse(rawItem, kind) {
+         trackCount: rawItem.trackCount ?? rawItem.size ?? 0,
+         description: rawItem.description ?? rawItem.briefDesc ?? '',
+     });
++    if (rawItem.createTime > 0) {
++        const date = new Date(rawItem.createTime);
++        value.createdDate = date.getFullYear() + '-' + pad(date.getMonth()+1) + '-' + pad(date.getDate());
++    }
+     if (rawItem.publishTime > 0) {
+         const date = new Date(rawItem.publishTime);
+         value.date = date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+diff --git a/MusicBridge/client/netease.mjs b/MusicBridge/client/netease.mjs
+index 2b470f2..a6cc790 100644
+--- a/MusicBridge/client/netease.mjs
++++ b/MusicBridge/client/netease.mjs
+@@ -2,7 +2,11 @@
+ import { providerName } from './providers.mjs';
+ import { parse } from './items.mjs';
+ import { safeLoginDetails } from './failure.mjs';
+-const parsed = (raw, kind) => (raw || []).map((rawItem) => parse(rawItem, kind)).filter(Boolean);
++const parsed = (raw, kind, privileges = []) => {
++    const rights = new Map((privileges || []).map(p => [String(p.id), p]));
++    return (raw || []).map(rawItem => parse(kind === 'song'
++        ? {...rawItem, privilege: rawItem.privilege || rights.get(String(rawItem.id))} : rawItem, kind)).filter(Boolean);
++};
+ export class API {
+     constructor(host) {
+         this.host = host;
+@@ -141,19 +145,8 @@ export class API {
+         if (!ids.length) {
+             return [];
+         }
+-        return parsed(
+-            (
+-                await this.request(
+-                    '/song/detail',
+-                    {
+-                        ids: ids.join(','),
+-                    },
+-                    [200],
+-                    valid,
+-                )
+-            ).songs,
+-            'song',
+-        );
++        const body = await this.request('/song/detail', {ids:ids.join(',')}, [200], valid);
++        return parsed(body.songs, 'song', body.privileges);
+     }
+     /**
+      * 按歌曲、歌手、专辑或歌单读取详情，统一返回条目、曲目和完整 ID 列表。
+@@ -200,7 +193,7 @@ export class API {
+         const info = responseBody[album ? 'album' : 'playlist'] || {};
+         return [
+             parse(info, value.kind) || value,
+-            parsed(album ? responseBody.songs : info.tracks, 'song'),
++            parsed(album ? responseBody.songs : info.tracks, 'song', responseBody.privileges),
+             (info.trackIds || []).filter((x) => typeof x.id === 'number').map((x) => String(x.id)),
+         ];
+     }
+diff --git a/MusicBridge/worker.cjs b/MusicBridge/worker.cjs
+index 6977b34..2431e12 100644
+--- a/MusicBridge/worker.cjs
++++ b/MusicBridge/worker.cjs
+@@ -98,6 +98,9 @@ if (!fs.existsSync(tokenPath)) {
+ console.log = console.info = console.warn = console.error = console.debug = () => {};
+ const apiRoot = path.join(__dirname, 'node_modules', '@neteasecloudmusicapienhanced', 'api');
+ const routes = Object.freeze({
++    '/comment/playlist': 'comment_playlist',
++    '/playlist/subscribers': 'playlist_subscribers',
++    '/song/download/url/v1': 'song_download_url_v1',
+     '/fm_trash': 'fm_trash',
+     '/song/red/count': 'song_red_count',
+     '/scrobble': 'scrobble',
+diff --git a/Qt/CMakeLists.txt b/Qt/CMakeLists.txt
+index af6276e..aa94062 100644
+--- a/Qt/CMakeLists.txt
++++ b/Qt/CMakeLists.txt
+@@ -16,6 +16,11 @@ set_source_files_properties(qml/SideNavigation.qml PROPERTIES QT_RESOURCE_ALIAS
+ set_source_files_properties(qml/PlayerTitleMarquee.qml PROPERTIES QT_RESOURCE_ALIAS PlayerTitleMarquee.qml)
+ set_source_files_properties(qml/PlayerQueueGlass.qml PROPERTIES QT_RESOURCE_ALIAS PlayerQueueGlass.qml)
+ set_source_files_properties(qml/DiscoverGlass.qml PROPERTIES QT_RESOURCE_ALIAS DiscoverGlass.qml)
++set_source_files_properties(qml/RhineIcon.qml PROPERTIES QT_RESOURCE_ALIAS RhineIcon.qml)
++set_source_files_properties(qml/GlobalTools.qml PROPERTIES QT_RESOURCE_ALIAS GlobalTools.qml)
++set_source_files_properties(qml/RecordStack.qml PROPERTIES QT_RESOURCE_ALIAS RecordStack.qml)
++set_source_files_properties(qml/SongContextMenu.qml PROPERTIES QT_RESOURCE_ALIAS SongContextMenu.qml)
++set_source_files_properties(qml/PlaylistMagazine.qml PROPERTIES QT_RESOURCE_ALIAS PlaylistMagazine.qml)
+ qt_add_qml_module(
+     RhineMusicDatabase
+     URI
+@@ -26,6 +31,11 @@ qt_add_qml_module(
+     "${CMAKE_BINARY_DIR}/RhineMusic"
+     QML_FILES
+     qml/Main.qml
++    qml/RhineIcon.qml
++    qml/GlobalTools.qml
++    qml/RecordStack.qml
++    qml/SongContextMenu.qml
++    qml/PlaylistMagazine.qml
+     qml/UserProfile.qml
+     qml/SideNavigation.qml
+     qml/PlayerTitleMarquee.qml
+diff --git a/Qt/qml/Main.qml b/Qt/qml/Main.qml
+index 1581c62..1538336 100644
+--- a/Qt/qml/Main.qml
++++ b/Qt/qml/Main.qml
+@@ -14,7 +14,12 @@ Window {
+     Shortcut {
+         sequence: "Escape"
+         context: Qt.WindowShortcut
+-        onActivated: { rhine.action("back"); inputLayer.forceActiveFocus(); }
++        onActivated: {
++            if(rhine.magazine.songMenu.visible)rhine.magazine.closeMenu();
++            else if(rhine.magazine.removalCount>0)rhine.magazine.cancelRemoval();
++            else rhine.action("back");
++            inputLayer.forceActiveFocus();
++        }
+     }
+     property real pendingHoverX: 0
+     property real pendingHoverY: 0
+@@ -424,9 +429,11 @@ Window {
+                             hoverClearTimer.restart();
+                         }
+                     }
+-                    onPressed: {
++                    acceptedButtons:Qt.LeftButton|Qt.RightButton
++                    onPressed:function(mouse) {
+                         inputLayer.forceActiveFocus();
+-                        rhine.action(modelData.action);
++                        if(mouse.button===Qt.RightButton){var p=mapToItem(null,mouse.x,mouse.y);rhine.magazine.showHitMenu(modelData.action,p.x,p.y);}
++                        else rhine.action(modelData.action);
+                     }
+                     onWheel: function (wheel) {
+                         var p = mapToItem(inputLayer, wheel.x, wheel.y);
+@@ -708,6 +715,32 @@ Window {
+         sequence: "F10"
+         onActivated: profiler.toggleVisible()
+     }
++    Loader {
++        id: magazineLoader
++        objectName: "playlistMagazineLoader"
++        x:0; y:0; width:root.width; height:984*root.stageScale
++        z:85
++        active:rhine.magazine.active && !rhine.state.viewer && rhine.state.mode!=="boot"
++        // Legacy blocking native pages paint above the room. Retain this
++        // Loader and its view state beneath them; the nonblocking queue never
++        // changes this visibility condition.
++        visible:active && (!rhine.state.modal || rhine.state.modal==="discover" || rhine.state.modal==="profile")
++        sourceComponent: PlaylistMagazine {controller:rhine.magazine; background:backgroundLayer; unit:root.stageScale}
++    }
++    GlobalTools {anchors.fill:parent;z:330;background:backgroundLayer;unit:root.stageScale}
++    SongContextMenu {anchors.fill:parent;z:500;controller:rhine.magazine;background:backgroundLayer}
++    Rectangle {
++        id:operationToast
++        property string lastMessage:""
++        z:480;anchors.horizontalCenter:parent.horizontalCenter;y:root.height-150*root.stageScale
++        visible:(toastExpiry.running || rhine.magazine.downloading) && lastMessage!==""
++        width:Math.min(root.width-40,toastText.implicitWidth+40);height:48;radius:16
++        color:rhine.state.dark?"#ef30382b":"#f2f3f0e5";border.color:"#50758265"
++        Text {id:toastText;anchors.centerIn:parent;width:Math.min(implicitWidth,parent.width-30);text:operationToast.lastMessage+(rhine.magazine.downloading?" · 点击取消下载":"");elide:Text.ElideRight;color:rhine.state.dark?"#e3e8d9":"#4a5940";font.family:rhineFontFamily;font.pixelSize:14}
++        MouseArea {anchors.fill:parent;enabled:rhine.magazine.downloading;cursorShape:Qt.PointingHandCursor;onClicked:rhine.magazine.cancelDownload()}
++        Timer {id:toastExpiry;interval:4500}
++        Connections {target:rhine.magazine;function onChanged(){var message=rhine.magazine.status;if(message!==operationToast.lastMessage){operationToast.lastMessage=message;toastExpiry.restart();}}}
++    }
+     Loader {
+         id: commentsLoader
+         objectName: "commentsLoader"
+@@ -772,7 +805,8 @@ Window {
+             if (rhine.state.queueOpen) return;
+             if (profileLoader.active && profileLoader.item) profileLoader.item.navigateKey(key);
+             else if (!rhine.state.modal) {
+-                if (commentsLoader.active && commentsLoader.visible && commentsLoader.item) commentsLoader.item.navigateKey(key);
++                if(magazineLoader.active && magazineLoader.item)magazineLoader.item.navigateKey(key);
++                else if (commentsLoader.active && commentsLoader.visible && commentsLoader.item) commentsLoader.item.navigateKey(key);
+                 else if (recommendationsLoader.active && recommendationsLoader.item) recommendationsLoader.item.navigateKey(key);
+                 else if (detailReaderLoader.active && detailReaderLoader.item && rhine.state.currentKind === "song") detailReaderLoader.item.navigateKey(key);
+             }
+@@ -810,6 +844,20 @@ Window {
+                     textureSize: Qt.size(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)))
+                     live: true; smooth: true; hideSource: false
+                 }
++                Loader {
++                    anchors.fill:parent
++                    active:magazineLoader.active && magazineLoader.visible
++                    sourceComponent:Item {
++                        ShaderEffectSource {
++                            objectName:"queueMagazineTile"
++                            x:glassQueueLoader.x-queueGlassBackdrop.pad;y:glassQueueLoader.y-queueGlassBackdrop.pad
++                            width:glassQueueLoader.width+2*queueGlassBackdrop.pad;height:glassQueueLoader.height+2*queueGlassBackdrop.pad
++                            sourceItem:magazineLoader;sourceRect:Qt.rect(x,y,width,height)
++                            textureSize:Qt.size(Math.max(1,Math.ceil(width/2)),Math.max(1,Math.ceil(height/2)))
++                            live:true;smooth:true;hideSource:false
++                        }
++                    }
++                }
+                 Loader {
+                     anchors.fill: parent
+                     active: detailReaderLoader.active && detailReaderLoader.visible
+@@ -931,7 +979,7 @@ Window {
+         objectName: "queueCollectionOverlay"
+         anchors.fill: parent
+         z: 360
+-        visible: rhine.state.queueOpen === true && rhine.state.queueCollectionOpen === true
++        visible: rhine.state.queueCollectionOpen === true
+         enabled: visible
+         MouseArea { anchors.fill: parent; onClicked: rhine.action("queue-collection-close"); onWheel: function(wheel) { wheel.accepted = true } }
+         Rectangle { anchors.fill: parent; color: "#20000000" }
+diff --git a/Qt/qml/RecommendationsPage.qml b/Qt/qml/RecommendationsPage.qml
+index a01665a..ec189e6 100644
+--- a/Qt/qml/RecommendationsPage.qml
++++ b/Qt/qml/RecommendationsPage.qml
+@@ -168,7 +168,8 @@ Item {
+                         MouseArea {
+                             anchors.fill: parent
+                             cursorShape: Qt.PointingHandCursor
+-                            onClicked: rhine.action("music:recommend-song:" + song.index)
++                            acceptedButtons:Qt.LeftButton|Qt.RightButton
++                            onClicked:function(mouse){if(mouse.button===Qt.RightButton){var p=mapToItem(null,mouse.x,mouse.y);rhine.magazine.showSongMenu("recommendations",song.index,(song.modelData.provider||"netease")+":"+song.modelData.id,p.x,p.y);}else rhine.action("music:recommend-song:"+song.index);}
+                         }
+                     }
+                 }
+diff --git a/Qt/qml/UserProfile.qml b/Qt/qml/UserProfile.qml
+index f183c29..aaf550b 100644
+--- a/Qt/qml/UserProfile.qml
++++ b/Qt/qml/UserProfile.qml
+@@ -55,7 +55,7 @@ Rectangle {
+         Rectangle { anchors.bottom: parent.bottom; width: parent.width - 20 * page.unit; anchors.horizontalCenter: parent.horizontalCenter; height: page.unit; color: page.accent; visible: parent.selected }
+         MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: rhine.action(parent.action) }
+     }
+-    Control { anchors.right: parent.right; anchors.rightMargin: 24 * page.unit; y: 16 * page.unit; label: "← 返回"; action: "profile:close" }
++
+     Column {
+         x: 26 * page.unit; y: 48 * page.unit; width: 270 * page.unit; spacing: 18 * page.unit
+         Label { text: "PERSONAL / 个人主页"; font.pixelSize: 11 * page.unit; color: page.muted }
+@@ -178,7 +178,8 @@ Rectangle {
+                                 anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                 onEntered: if (!page.hudState.keyboardNavigation) page.hoverCard(card.index, this, {x:mouseX,y:mouseY})
+                                 onPositionChanged: function(mouse) { page.hoverCard(card.index, this, mouse); }
+-                                onClicked: rhine.action("profile:item:" + card.index)
++                                acceptedButtons:Qt.LeftButton|Qt.RightButton
++                                onClicked:function(mouse){if(mouse.button===Qt.RightButton){var p=mapToItem(null,mouse.x,mouse.y);rhine.magazine.showSongMenu("profile",card.index,(card.modelData.provider||"netease")+":"+card.modelData.id,p.x,p.y);}else rhine.action("profile:item:"+card.index);}
+                             }
+                             Rectangle {
+                                 objectName: "profileCardPlay"
+diff --git a/Qt/src/Engine.cpp b/Qt/src/Engine.cpp
+index ea35e47..ea74111 100644
+--- a/Qt/src/Engine.cpp
++++ b/Qt/src/Engine.cpp
+@@ -30,6 +30,8 @@ Engine::Engine(QString path, bool offline, QObject *parent)
+     connect(&app->music, &MusicLibrary::playbackInvalidated, this, &Engine::refreshPlayback);
+     connect(&app->music, &MusicLibrary::invalidated, this, &Engine::refreshTaskbar);
+     connect(&app->hud, &NativeHud::localImportRequested, this, &Engine::localImportRequested);
++    m_magazine = new PlaylistMagazine(&app->music, &app->hud, this);
++    connect(m_magazine,&PlaylistMagazine::navigate,this,&Engine::action);
+     app->initialize();
+     connect(&app->music.player.lyrics, &LyricsController::changed, this, &Engine::refreshDesktopLyrics);
+     refreshDesktopLyrics();
+@@ -52,6 +54,7 @@ Engine::~Engine() {
+     timer.stop();
+     mediaTimer.stop();
+     m_taskbar.reset();
++    delete m_magazine; m_magazine=nullptr;
+     app.reset();
+     host.shutdown();
+ }
+@@ -728,6 +731,12 @@ void Engine::step(double time) {
+     const auto previousDiscAngle = m_frame["discAngle"].toDouble();
+     m_frame = scene.frame;
+     m_frame["originalActorBlend"] = scene.originalActorBlend();
++    if(m_magazine && m_magazine->active() && !m_frame["viewer"].toBool()){
++        QJsonArray room;
++        for(const auto &v:m_frame["draws"].toArray())if(!v.toObject()["musicSelected"].toBool())room.append(v);
++        m_frame["draws"]=room;m_frame["originalActorBlend"]=0;
++    }
++
+     auto signature = m_frame;
+     for (const auto &key : {"time", "stats", "labels", "boot", "pointerCursor", "originalActorBlend"}) {
+         signature.remove(key);
+@@ -812,6 +821,7 @@ void Engine::step(double time) {
+     notifySceneRenderers(visualChanged);
+     auto state = object["state"].toObject().toVariantMap();
+     state["originalActorVisible"] = m_frame["originalActorBlend"].toDouble() > 0;
++    m_magazine->sync();
+     if (state != m_state) {
+         m_state = state;
+         const auto loginMethod = m_state.value("loginMethod").toString();
+diff --git a/Qt/src/Engine.h b/Qt/src/Engine.h
+index 2db3744..e4e2e8b 100644
+--- a/Qt/src/Engine.h
++++ b/Qt/src/Engine.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include "Glyphs.h"
++#include "PlaylistMagazine.h"
+ #include "Host.h"
+ #include "TaskbarIntegration.h"
+ #include "NativeApplication.h"
+@@ -11,6 +12,7 @@
+ #include <atomic>
+ class Engine : public QObject {
+     Q_OBJECT
++    Q_PROPERTY(QObject *magazine READ magazine CONSTANT)
+     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
+     Q_PROPERTY(QVariantList hits READ hits NOTIFY hitsChanged)
+     Q_PROPERTY(QVariantMap performance READ performance NOTIFY stateChanged)
+@@ -18,6 +20,7 @@ class Engine : public QObject {
+   public:
+     Engine(QString root, bool offline = false, QObject *parent = nullptr);
+     ~Engine() override;
++    QObject *magazine() const { return m_magazine; }
+     QVariantMap state() const {
+         return m_state;
+     }
+@@ -135,6 +138,7 @@ class Engine : public QObject {
+     bool eventFilter(QObject *watched, QEvent *event) override;
+ 
+   private:
++    PlaylistMagazine *m_magazine = nullptr;
+     QPoint m_keyboardCursor;
+     bool m_keyboardMouseGuard = false;
+     void refreshTaskbar();
+diff --git a/Qt/src/MusicData.cpp b/Qt/src/MusicData.cpp
+index cc27d2b..2acce8e 100644
+--- a/Qt/src/MusicData.cpp
++++ b/Qt/src/MusicData.cpp
+@@ -61,9 +61,14 @@ QJsonObject parse(const QJsonObject &raw, const QString &kind) {
+         }
+     }
+     auto value = item(kind, id, raw["name"].toString(),
+-                      kind == "playlist" ? creator["nickname"].toString("暂无创建者") : names.join(" / "));
++                      kind == "playlist" ? creator["nickname"].toString() : names.join(" / "));
+     value["artists"] = entries;
+     value["creatorID"] = identifier(creator["userId"]);
++    value["creatorAvatar"] = creator["avatarUrl"];
++    for (const auto &field : {"subscribedCount", "commentCount", "playCount"}) if(raw.contains(field)) value[field]=raw[field];
++    if(raw["createTime"].toDouble()>0) value["createdDate"]=QDateTime::fromMSecsSinceEpoch(raw["createTime"].toInteger()).date().toString("yyyy-MM-dd");
++    const auto privilege=raw["privilege"].toObject();
++    value["unavailable"]=privilege["st"].toInt() < 0;
+     value["albumID"] = identifier(album["id"]);
+     value["album"] = album["name"].toString();
+     value["cover"] = raw["picUrl"].toString(raw["coverImgUrl"].toString(album["picUrl"].toString()));
+diff --git a/Qt/src/MusicDirectory.cpp b/Qt/src/MusicDirectory.cpp
+index 91eb7fb..82097ed 100644
+--- a/Qt/src/MusicDirectory.cpp
++++ b/Qt/src/MusicDirectory.cpp
+@@ -14,7 +14,7 @@ void MusicLibrary::enterDirectory(QJsonObject value) {
+         choose(value);
+         return;
+     }
+-    const auto token = ++m_directoryGeneration;
++    ++m_directoryGeneration;
+     // 进入子目录会取消父目录请求；保留已载入内容，但清除父目录未完成的加载标记。
+     if (directory) { directory->albumsLoading = false; }
+     ++m_selectionGeneration;
+@@ -62,12 +62,28 @@ void MusicLibrary::enterDirectory(QJsonObject value) {
+         changed();
+         return;
+     }
++    next->detailsPending = true;
+     showDirectoryInfo();
++}
++
++// A cancelled request belongs to its directory generation. Returning through
++// real navigation history resumes the same folder, without pushing history again.
++void MusicLibrary::loadDirectoryDetails() {
++    const auto next = directory;
++    if (!next || !next->detailsPending || next->detailsGeneration == m_directoryGeneration) {
++        return;
++    }
++    const auto token = m_directoryGeneration;
++    next->detailsGeneration = token;
++    directoryLoading = true;
++    const auto value = next->item;
+     api.call(
+         "detail", {value},
+         [this, next, value](MusicReply result) {
++            next->detailsPending = false;
+             if (!result.ok()) {
+                 directoryLoading = false;
++                next->item["loadError"] = result.error;
+                 status = QStringLiteral("读取失败：") + result.error;
+                 changed();
+                 return;
+@@ -357,6 +373,7 @@ void MusicLibrary::showDirectoryInfo() {
+     emit musicIdentityRequested(directory->item["key"].toString());
+     loadCover(directory->item);
+     emit modeRequested("detail");
++    loadDirectoryDetails();
+     changed();
+ }
+ 
+@@ -426,6 +443,9 @@ void MusicLibrary::leaveDirectory(bool restore) {
+ 
+ /** 切歌沿用原物理选中与取出顺序，队列外曲目建立可返回的播放队列目录。 */
+ void MusicLibrary::followPlayback(QJsonObject value) {
++    // Playback controls do not take the user out of a browsed playlist.
++    // Opening song detail/lyrics remains an explicit navigation action.
++    if (directory && directoryInfo && directory->item["kind"] == "playlist") { return; }
+     if (current.value("key") == value["key"] && current.value("id") == value["id"]) {
+         return;
+     }
+diff --git a/Qt/src/MusicLibrary.h b/Qt/src/MusicLibrary.h
+index 99c6a9f..8381099 100644
+--- a/Qt/src/MusicLibrary.h
++++ b/Qt/src/MusicLibrary.h
+@@ -25,6 +25,12 @@ struct MusicDirectory {
+     bool parentSongDetails = false;
+     QString returnTab = "overview";
+     bool openDetails = false;
++    bool detailsPending = false;
++    quint64 detailsGeneration = 0;
++    double magazineScroll = 0;
++    QString magazineQuery;
++    QString magazineFilter = "all";
++    QString magazineTab = "songs";
+     QString hudTab = "songs";
+     int hudOffset = 0;
+     int albumCursor = 0;
+@@ -218,8 +224,10 @@ class MusicLibrary : public QObject {
+     MusicApi m_identityApi;
+     MusicApi::Valid valid(quint64 token, const quint64 *counter);
+     void loadCover(const QJsonObject &value);
++    void loadDirectoryDetails();
+     void loadLikedIDs(int lane, quint64 token, QString user);
+     void completePersonal(int lane, QString error = {});
++    void playlistTracksPage(QString id, QJsonArray tracks, int offset, quint64 account, Completion done);
+     int m_pendingLane = -1;
+     bool m_playLiked = false;
+     QString m_accountError;
+diff --git a/Qt/src/MusicMutation.cpp b/Qt/src/MusicMutation.cpp
+index 3807f65..662a893 100644
+--- a/Qt/src/MusicMutation.cpp
++++ b/Qt/src/MusicMutation.cpp
+@@ -354,6 +354,7 @@ void MusicLibrary::playlistTrack(QString id, QJsonObject value, bool remove, Com
+ // Batch queue collection uses the existing account-aware mutation path and
+ // one NetEase write, rather than thousands of concurrent per-track mutations.
+ void MusicLibrary::playlistTracks(QString id, QJsonArray tracks, Completion done) {
++    if (tracks.size()>100) { playlistTracksPage(id, tracks, 0, accountGeneration(), std::move(done)); return; }
+     if (tracks.size() == 1) { playlistTrack(id, tracks.first().toObject(), false, done); return; }
+     if (provider != "netease" || tracks.isEmpty() || MusicData::indexOfId(lists[2], id) < 0) {
+         if (done) { done(false); } return;
+@@ -385,3 +386,13 @@ void MusicLibrary::playlistTracks(QString id, QJsonArray tracks, Completion done
+             }
+         }, done);
+ }
++
++void MusicLibrary::playlistTracksPage(QString id,QJsonArray tracks,int offset,quint64 account,Completion done){
++    if(accountGeneration()!=account){if(done)done(false);return;}
++    const auto page=MusicData::slice(tracks,offset,100);const QPointer<MusicLibrary> owner(this);
++    playlistTracks(id,page,[owner,id,tracks,offset,account,done](bool ok){
++        if(!owner)return;if(!ok||owner->accountGeneration()!=account){if(done)done(false);return;}
++        if(offset+100<tracks.size())owner->playlistTracksPage(id,tracks,offset+100,account,done);
++        else if(done)done(true);
++    });
++}
+diff --git a/Qt/src/MusicPlayer.cpp b/Qt/src/MusicPlayer.cpp
+index bcebf85..8397123 100644
+--- a/Qt/src/MusicPlayer.cpp
++++ b/Qt/src/MusicPlayer.cpp
+@@ -280,6 +280,17 @@ void MusicPlayer::startHeart(const QString &uid, MusicApi::Valid accountValid, b
+         }, alive);
+ }
+ 
++int MusicPlayer::enqueueMany(const QJsonArray &tracks) {
++    if (roamActive) return 0;
++    QSet<QString> seen;for(const auto &v:queue)seen.insert(identity(v.toObject()));
++    int added=0;
++    for(const auto &v:tracks){const auto s=v.toObject();const auto id=identity(s);
++        if(s["kind"]!="song"||s["unavailable"].toBool()||(m_api->provider=="local")!=(s["provider"]=="local")||seen.contains(id))continue;
++        queue.append(s);seen.insert(id);++added;
++    }
++    if(added)emit changed();return added;
++}
++
+ void MusicPlayer::enqueue(const QJsonObject &track, bool next) {
+     if (track["kind"] != "song" || (m_api->provider == "local") != (track["provider"] == "local")) {
+         return;
+diff --git a/Qt/src/MusicPlayer.h b/Qt/src/MusicPlayer.h
+index 89aa5dc..f2147a0 100644
+--- a/Qt/src/MusicPlayer.h
++++ b/Qt/src/MusicPlayer.h
+@@ -11,6 +11,7 @@ class MusicPlayer : public QObject {
+     void cancelHeart();
+     bool heartPending = false;
+     void enqueue(const QJsonObject &track, bool next = false);
++    int enqueueMany(const QJsonArray &tracks);
+     void play(QJsonObject track, std::optional<QJsonArray> source = std::nullopt,
+               std::optional<int> queueIndex = std::nullopt, bool preview = false);
+     void tick(double time, bool force = false);
+diff --git a/Qt/src/NativeHud.cpp b/Qt/src/NativeHud.cpp
+index 5266cff..cb96101 100644
+--- a/Qt/src/NativeHud.cpp
++++ b/Qt/src/NativeHud.cpp
+@@ -398,9 +398,9 @@ void NativeHud::draw(QJsonObject next, double stageWidth, double time) {
+     }
+ }
+ void NativeHud::brand() {
+-    roll("music-brand", m_music->libraryName(), 59, 115.425, 44, std::min(720.0, width * 0.45), "bold");
+-    aligned("RHINE LAB / MUSIC DATABASE", 59, 173, 14, "demibold", 1);
++    text("RHINE / 音乐资料库", 100, 59, 14, "demibold", .4);
+ }
++
+ void NativeHud::brandLine(int index) {
+     if (index == 0) {
+         text("RHINE LAB", 59, 115.425, 50.75, "bold", 1);
+@@ -411,17 +411,10 @@ void NativeHud::brandLine(int index) {
+         text("INDEX / COLLECTION / TRACK", 59, 228, 11, "regular", 1.2);
+     }
+ }
+-void NativeHud::navigation(double width) {
+-    const auto x = width - 579;
+-    if (m_music->isLocal()) {
+-        control("文件夹管理 ＋", x - 210, 118, 184, "discover");
+-    } else {
+-        control("发现音乐 ↗", x - 210, 118, 184, "discover");
+-    }
+-    control("音乐检索  /", x, 118, 184, "search");
+-    control(m_music->isLocal() ? "本地曲库" : "＋ 我的音乐", x + 200, 118, 184, "saved");
+-    control(m_host->updater.available() ? "设置 · 更新" : "设置", x + 400, 118, 120, "settings");
++void NativeHud::navigation(double) {
++    // Shared GlobalTools.qml owns the functional navigation for every page.
+ }
++
+ void NativeHud::footer(double width) {
+     fill(59, 971, 5, 5, {119.0 / 255, 123.0 / 255, 96.0 / 255, 1});
+     QString session = m_music->isLocal() ? "LOCAL LIBRARY" : "GUEST SESSION";
+@@ -441,7 +434,7 @@ void NativeHud::empty(double width) {
+     const auto x = width * 0.50520833;
+     auto &music = *m_music;
+     if (music.directory) {
+-        control("← 返回上一级", 59, 211, 280, "music:parent");
++
+     }
+     text("MUSIC DATABASE / " + music.libraryName(), x, 471, 12);
+     QString title = "音乐资料库";
+@@ -473,7 +466,7 @@ void NativeHud::archive(double width) {
+     if (!item.isEmpty() && !item["id"].toString().isEmpty()) {
+         const auto x = width * 0.50520833;
+         if (music.directory) {
+-            control("← 返回上一级", 59, 211, 280, "music:parent");
++
+             const auto kind = music.directory->item["kind"].toString();
+             QString label = "查看歌单详情 ↗";
+             if (kind == "album") {
+@@ -553,7 +546,7 @@ void NativeHud::archive(double width) {
+     if (supportsTrackList()) {
+         archiveTabButton(width);
+     }
+-    text(music.directory ? "← → 浏览曲目列 / ↑ ↓ 选曲 / ENTER 查看 / ESC 上一级"
++    text(music.directory ? "← → 浏览曲目列 / ↑ ↓ 选曲 / ENTER 查看"
+                          : "← → 切换来源 / ↑ ↓ 选曲 / ENTER 查看 / 检索",
+          nav, 850, 12);
+ }
+diff --git a/Qt/src/NativeHudController.cpp b/Qt/src/NativeHudController.cpp
+index c8f1a4b..7a0bc57 100644
+--- a/Qt/src/NativeHudController.cpp
++++ b/Qt/src/NativeHudController.cpp
+@@ -803,6 +803,7 @@ void NativeHud::action(QString value) {
+         if (!m_music->writeLoading) { queueCollectionOpen = false; queueCollectionTracks = {}; }
+         return;
+     }
++    if ((value == "back" || value == "close-modal") && queueCollectionOpen) { action("queue-collection-close"); return; }
+     if (value == "queue-close" || ((value == "back" || value == "close-modal") && queueOpen)) {
+         if (queueCollectionOpen) { action("queue-collection-close"); return; }
+         queueOpen = false; return;
+@@ -817,6 +818,7 @@ void NativeHud::action(QString value) {
+     if (value == "back" && restorePage()) { return; }
+     const bool destination = value == "open" || value == "navigation:likes" ||
+         value.startsWith("navigation:playlist:") || value.startsWith("discover:item:") || value == "discover:open" ||
++        value.startsWith("music:collection-open:") || value.startsWith("music:context-comments:") ||
+         value.startsWith("music:result:") || value.startsWith("music:track:") ||
+         value.startsWith("music:artist:") || value.startsWith("music:artist-album:") ||
+         value.startsWith("music:row-artist:") || value.startsWith("music:row-album:") ||
+diff --git a/Qt/src/NativeHudDetail.cpp b/Qt/src/NativeHudDetail.cpp
+index 98f24b6..66eb1d6 100644
+--- a/Qt/src/NativeHudDetail.cpp
++++ b/Qt/src/NativeHudDetail.cpp
+@@ -66,7 +66,7 @@ void NativeHud::detail(double width, double opacity) {
+         fill(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+              dark ? QJsonArray{0.08, 0.095, 0.09, 0.96} : QJsonArray{0.929, 0.922, 0.894, 0.96});
+     }
+-    button("← 返回上一级   ESC", 59, 211, 360, 54, "back", 20, "demibold");
++
+     text("MUSIC DATABASE", 64, 819, 9, "demibold", 1.4);
+     limited(item["id"].toString(), 64, 838, 32, 322);
+     text("DRAG TO INSPECT", 64, 883, 9, "regular", .6);
+@@ -381,6 +381,7 @@ void NativeHud::lyricsPanel(double x, double width) {
+ void NativeHud::container(double width, double opacity) {
+     auto &music = *m_music;
+     const auto item = music.current;
++    if (music.directoryInfo && music.directory && item["kind"] == "playlist") return;
+     const auto layout = containerLayout(width);
+     const auto left = layout.left;
+     const auto sidebar = layout.sidebar;
+@@ -407,8 +408,7 @@ void NativeHud::container(double width, double opacity) {
+          dark ? QJsonArray{0.08, 0.095, 0.09, 1} : QJsonArray{0.929, 0.922, 0.894, 1});
+     rule(x - 18, 278, 1, 0.12);
+     const bool albumPage = item["kind"] == "album";
+-    button("← 返回上一级   ESC", sx, 211, sideWidth, 54,
+-           "back", 20, "demibold");
++
+     QString collection = "PLAYLIST / 歌单";
+     if (item["kind"] == "album") {
+         collection = "ALBUM / 专辑";
+diff --git a/Qt/src/NativeHudMusic.cpp b/Qt/src/NativeHudMusic.cpp
+index 42ff5e3..e45ab51 100644
+--- a/Qt/src/NativeHudMusic.cpp
++++ b/Qt/src/NativeHudMusic.cpp
+@@ -2,6 +2,7 @@
+ #include "MusicData.h"
+ #include <QPointer>
+ #include <QUrl>
++#include <QJsonDocument>
+ #include <QDateTime>
+ #include <algorithm>
+ 
+@@ -26,7 +27,17 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
+             .contains(name)) {
+         return;
+     }
+-    if (name == "row-artist" || name == "row-album") {
++    if (name == "collection-open") {
++        const auto item=QJsonDocument::fromJson(QUrl::fromPercentEncoding(value.mid(QString("music:collection-open:").size()).toUtf8()).toUtf8()).object();
++        if(item["provider"].toString()!=music.provider || !QStringList{"playlist","album"}.contains(item["kind"].toString()) || item["id"].toString().isEmpty())return;
++        closeModal(false);music.enterDirectory(item);tab="overview";trackOffset=0;
++    } else if (name == "context-comments") {
++        const auto song=QJsonDocument::fromJson(QUrl::fromPercentEncoding(value.mid(QString("music:context-comments:").size()).toUtf8()).toUtf8()).object();
++        if(song["kind"]!="song"||song["provider"].toString()!=music.provider)return;
++        closeModal(false);queueOpen=false;music.directoryInfo=false;
++        music.choose(song,false,true);m_scene.mode("detail");frame["mode"]="detail";music.frame["mode"]="detail";
++        tab="comments";openComments();
++    } else if (name == "row-artist" || name == "row-album") {
+         const auto index = parts.value(2).toInt();
+         const auto songs = music.directory ? music.directory->songs : music.tracks;
+         if (index < 0 || index >= songs.size()) { return; }
+diff --git a/Qt/tests/UiChecks.cpp b/Qt/tests/UiChecks.cpp
+index 3281bad..40628ba 100644
+--- a/Qt/tests/UiChecks.cpp
++++ b/Qt/tests/UiChecks.cpp
+@@ -701,16 +701,69 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+     while (music.directoryLoading && folderWait.elapsed() < 10000) { settle(30); }
+     refresh();
+     check(music.directory && music.directoryInfo && music.current.value("kind") == "playlist" &&
+-          music.directory->songs.size() == 10 && hasHudAction("back"),
++          music.directory->songs.size() == 10 && findVisual(window->contentItem(),"globalBack") && findVisual(window->contentItem(),"globalBack")->isVisible(),
+           "new entry opens the loaded playlist detail with a return-to-selection action");
+     check(music.player.current == playlistPlayback, "opening playlist details keeps playback unchanged");
+     settle(150); refresh();
+-    bool playlistCovers = false;
+-    for (const auto &value : hud.commands) {
+-        const auto command = value.toArray();
+-        playlistCovers |= command.size() > 4 && command.at(0) == "image" && command.at(4).toDouble() == 40;
++    auto *magazinePage = findVisual(window->contentItem(),"playlistMagazinePage");
++    auto *magazineRow = findVisual(window->contentItem(),"magazineRow_0");
++    check(magazinePage && magazineRow && backend.magazine()->property("active").toBool(), "playlist virtual table renders actual track artwork delegates");
++    // G69: actual shared menu, captured target, record navigation and queue overlay.
++    {
++        auto *model=qobject_cast<PlaylistMagazine*>(backend.magazine());
++        check(model && model->rowCount()==10, "G69 playlist controller exposes real directory rows");
++        const auto originalDirectory=music.directory;
++        const auto originalItem=music.current;
++        const auto originalPlay=music.player.current;
++        const auto originalQueue=music.player.queue;
++        const auto originalIndex=music.player.index;
++        check(findVisual(window->contentItem(),"globalSearch") && findVisual(window->contentItem(),"globalLibrary") && findVisual(window->contentItem(),"globalSettings"),
++            "G69 one shared functional capsule exposes search, library and settings");
++        if(model && !originalDirectory->songs.isEmpty()){
++            const auto clicked=originalDirectory->songs.first().toObject();
++            auto *row=findVisual(window->contentItem(),"magazineRow_0");
++            if(row){const auto point=row->mapToScene(QPointF(row->width()*.37,row->height()/2));
++                for(const auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){
++                    QMouseEvent mouse(type,point,window->mapToGlobal(point.toPoint()),Qt::RightButton,type==QEvent::MouseButtonPress?Qt::RightButton:Qt::NoButton,Qt::NoModifier);
++                    QCoreApplication::sendEvent(window,&mouse);
++                }
++                refresh();
++            }
++            check(model->songMenu().value("visible").toBool() && music.player.current==originalPlay,"G69 real right-click opens shared song menu without starting playback");
++            model->songAction("copy");
++            check(QGuiApplication::clipboard()->text()==music.sourceURL(clicked),"G69 context copy uses the clicked song ID");
++            model->showSongMenu("directory",0,MusicPlayer::identity(clicked),20,20);model->songAction("next");
++            check(music.player.current==originalPlay && MusicData::indexOfId(music.player.queue,clicked["id"].toString())>=0,"G69 next-play context action queues the captured song");
++            model->rowAction("play",MusicPlayer::identity(clicked));refresh();
++            check(music.directory==originalDirectory && music.directoryInfo && music.current==originalItem && music.player.current["id"]==clicked["id"],
++                "G69 cover playback plays the song without navigating away from the playlist");
++            music.player.queue=originalQueue;music.player.current=originalPlay;music.player.index=originalIndex;
++            model->savePosition(model->session(),75);refresh();
++            auto *page=findVisual(window->contentItem(),"playlistMagazinePage");
++            backend.action("player:open");refresh();
++            check(page && findVisual(window->contentItem(),"playlistMagazinePage")==page && model->scrollPosition()==75 && music.current==originalItem,
++                "G69 queue retains the magazine instance, scroll and browsed playlist");
++            backend.action("queue-close");refresh();
++            const auto previousFixture=backend.host.fixture;
++            const auto previousCollections=music.lists[2];
++            auto next=MusicData::item("playlist","690002","翻阅到的真实测试歌单","测试听众");next["cover"]=artworkURL;
++            // Distinct real collection identity/cover URL; no random placeholders are installed.
++            QImage sleeveFixture(320,320,QImage::Format_RGB32);sleeveFixture.fill(QColor("#7b8264"));sleeveFixture.save(output+"/g69-record-fixture.png");
++            next["cover"]=QUrl::fromLocalFile(output+"/g69-record-fixture.png").toString();music.lists[2]=QJsonArray{next};model->sync();
++            backend.host.fixture=[previousFixture,next](QString route,QJsonObject values){
++                if(route=="/native/netease/detail" && values["args"].toArray().first().toObject()["id"]=="690002"){
++                    auto song=MusicData::item("song","690003","新歌单曲目","测试歌手");
++                    return QJsonObject{{"body",QJsonObject{{"code",200},{"value",QJsonArray{next,QJsonArray{song},QJsonArray{"690003"}}}}}};
++                }return previousFixture(route,values);
++            };
++            model->openCover(next["key"].toString());refresh();
++            check(music.directory && music.directory->item["id"]=="690002" && music.player.current==originalPlay && music.player.queue==originalQueue,
++                "G69 record browsing changes the real directory without playback or queue replacement");
++            backend.action("back");refresh();
++            check(music.directory==originalDirectory && music.directoryInfo && model->scrollPosition()==75,"G69 record navigation returns through real history to the prior playlist view state");
++            backend.host.fixture=previousFixture;music.lists[2]=previousCollections;model->savePosition(model->session(),0);model->sync();
++        }
+     }
+-    check(playlistCovers, "playlist table draws individual track artwork");
+     const auto beforeNavigation = music.current;
+     const auto playingBeforeNavigation = music.player.current;
+     hud.hoverItem("music:track:0", 500, 450); refresh();
+@@ -727,6 +780,8 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+     for (int i = 0; i < 10; ++i) { backend.key("ArrowDown", false); refresh(); }
+     check(hud.trackOffset > 0 && hud.focusAction == "music:track:9", "keyboard row focus scrolls into view at the bottom");
+     hud.trackOffset = 0; hud.focusAction.clear(); refresh();
++    hud.requestListCover(artworkURL);
++    settle(150);
+     const auto thumbnailKey = hud.listCovers.value(artworkURL);
+     QImage pressure(1024, 1024, QImage::Format_RGBA8888); pressure.fill(Qt::blue);
+     for (int i = 0; i < 12; ++i) { backend.host.fixtureImage("pressure:" + QString::number(i), pressure); }
+@@ -772,7 +827,7 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
+             << "tracks" << (music.directory ? music.directory->songs.size() : -1)
+             << "hasFirstTrack" << hasHudAction("music:track:0");
+     check(music.directory && music.directoryInfo && music.current.value("kind") == "playlist" &&
+-          hasHudAction("music:track:0"),
++          findVisual(window->contentItem(),"magazineRow_0"),
+           "the main playlist entry opens its detail page consistently with navigation and discovery");
+     backend.action("back"); refresh();
+     // Render the new navigation and discover surface in the same real Qt window.
+diff --git a/Qt/tests/g69-magazine-client.mjs b/Qt/tests/g69-magazine-client.mjs
+new file mode 100644
+index 0000000..4196846
+--- /dev/null
++++ b/Qt/tests/g69-magazine-client.mjs
+@@ -0,0 +1,18 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {parse} from '../../MusicBridge/client/items.mjs';
++import {API} from '../../MusicBridge/client/netease.mjs';
++import {createFakeHost} from './fixtures/client-harness.mjs';
++test('magazine preserves real creator, creation date and counts; missing values stay absent',()=>{
++    const item=parse({id:123,name:'Actual playlist',creator:{userId:42,nickname:'Owner',avatarUrl:'https://example.org/avatar'},createTime:1700000000000,subscribedCount:84,commentCount:23},'playlist');
++    assert.equal(item.creatorID,'42');assert.equal(item.creatorAvatar,'https://example.org/avatar');assert.equal(item.subscribedCount,84);assert.equal(item.commentCount,23);assert.match(item.createdDate,/^\d{4}-\d{2}-\d{2}$/);
++    const missing=parse({id:124,name:'No statistics'},'playlist');assert.equal(missing.artist,'');assert.equal(missing.subscribedCount,undefined);assert.equal(missing.createdDate,undefined);
++});
++test('magazine pages join privileges by song ID, not response position',async()=>{
++    const {host}=createFakeHost({responses:{'/song/detail':{code:200,songs:[{id:12,name:'Available'},{id:13,name:'Unavailable'}],privileges:[{id:13,st:-200},{id:12,st:0}]}}});
++    const tracks=await new API(host).songs(['12','13']);assert.equal(tracks[0].unavailable,false);assert.equal(tracks[1].unavailable,true);
++});
++test('magazine playlist details preserve full IDs and per-track rights without invoking playback',async()=>{
++    const {host,calls}=createFakeHost({responses:{'/playlist/detail':{code:200,playlist:{id:123,name:'Collection',creator:{userId:42,nickname:'Owner'},trackCount:5000,trackIds:[{id:12},{id:13}],tracks:[{id:12,name:'A'},{id:13,name:'B'}]},privileges:[{id:13,st:-200}]}}});
++    const [info,tracks,ids]=await new API(host).detail({kind:'playlist',id:'123'});assert.equal(info.trackCount,5000);assert.deepEqual(ids,['12','13']);assert.equal(tracks[1].unavailable,true);assert.deepEqual(calls.map(c=>c.route),['/playlist/detail']);
++});
+diff --git a/scripts/test.cjs b/scripts/test.cjs
+index 3832755..f9f1ca6 100644
+--- a/scripts/test.cjs
++++ b/scripts/test.cjs
+@@ -38,6 +38,7 @@ const bridgeTests = [
+     'Qt/tests/comments-bridge.cjs',
+     'Qt/tests/local-lyrics.cjs',
+     'Qt/tests/netease-client.mjs',
++    'Qt/tests/g69-magazine-client.mjs',
+     'Qt/tests/qq-client.mjs',
+     'Qt/tests/kugou-client.mjs',
+ ];

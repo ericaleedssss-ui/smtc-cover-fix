@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rhine:
-    name: Rhine G68 verified source checkout and independent queue overlay QA
+    name: Rhine G69 magazine playlists and shared song actions QA
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -177,7 +177,7 @@ jobs:
       shell: python
       run: "import os, pathlib, shutil\nout = pathlib.Path('smtc-download')\nout.mkdir()\nshutil.copyfile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'rhine-maintained-source.json', out / 'MAINTAINED-SOURCE.json')\nsource = pathlib.Path('output/RhineMusicDatabase-v1.2.0-Windows-x64.zip')\n\
         assert source.is_file(), 'Expected portable application archive was not generated'\nshutil.copyfile(source, out /\
-        \ 'Rhine-G68-Verified-Independent-Queue-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G68 verified build source; independent queue and collection overlays, retained Following page; G53 base, page\
+        \ 'Rhine-G69-Magazine-Playlists-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G69 magazine playlists, shared capsule and captured song context actions; independent queue overlays; G53 base, page\
         \ history, reading sizes and glass player bar; based on Rhine v1.2.0\\n'\n    'Source: https://github.com/MikeQu223/Rhine-Music-Database/tree/b8b8ad5ed661fa32404731f1b09f7c37d34bf070\\\
         n'\n    'The application is modified with an SMTC thumbnail patch.\\n'\n    'CI build and offline tests must pass\
         \ before this artifact is uploaded.\\n'\n    'Interactive Windows playback and overlay behavior still need user verification.\\\
@@ -185,7 +185,7 @@ jobs:
     - name: Downloadable Rhine test build
       uses: actions/upload-artifact@v4
       with:
-        name: Rhine-G68-Verified-Independent-Queue-Windows-x64
+        name: Rhine-G69-Magazine-Playlists-Windows-x64
         path: smtc-download/
         if-no-files-found: error
         retention-days: 7
