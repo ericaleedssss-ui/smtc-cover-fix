@@ -19,3 +19,35 @@ print('G90: all album routes use the magazine; only real pop/popularity supplies
 edit('Qt/tests/UiChecks.cpp','    check(music.player.current == playbackBefore, "browsing an album does not change playback");','''    check(music.player.current == playbackBefore, "browsing an album does not change playback");
     check(findVisual(window->contentItem(),"playlistMagazinePage")&&findVisual(window->contentItem(),"magazineHeat_0"),
           "G90 ordinary artist-album route renders the shared magazine and heat column");''')
+
+# Ordinary albums now use the same real description popup as playlists. Exercise
+# that entry and wheel scrolling rather than expecting the retired native reader.
+edit('Qt/tests/UiChecks.cpp','''    scrollText();
+    backend.action("tab:comments");''','''    {
+        const auto clickAlbumControl=[&](QQuickItem *item){
+            if(!item||!item->isVisible())return false;
+            const auto point=item->mapToScene(QPointF(item->width()/2,item->height()/2));
+            QMouseEvent move(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);
+            QCoreApplication::sendEvent(window,&move);
+            for(const auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){
+                QMouseEvent event(type,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,type==QEvent::MouseButtonPress?Qt::LeftButton:Qt::NoButton,Qt::NoModifier);
+                QCoreApplication::sendEvent(window,&event);
+            }
+            settle(230);return true;
+        };
+        check(clickAlbumControl(findVisual(window->contentItem(),"playlistDescriptionOpen")),"G90 album description opens through its real magazine entry");
+        auto *reader=findVisual(window->contentItem(),"playlistDescriptionReader");
+        auto *text=findVisual(window->contentItem(),"playlistDescriptionText");
+        check(reader&&reader->isVisible()&&text&&text->property("text").toString()==music.current.value("description").toString(),"G90 album popup displays the actual complete description");
+        if(reader){
+            check(reader->property("contentHeight").toDouble()>reader->height(),"G90 long album description retains overflow content");
+            const auto point=reader->mapToScene(QPointF(reader->width()/2,reader->height()/2));
+            const auto before=reader->property("contentY").toDouble();
+            QWheelEvent wheel(point,window->mapToGlobal(point.toPoint()),QPoint(),QPoint(0,-120),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
+            QCoreApplication::sendEvent(window,&wheel);settle(230);
+            check(reader->property("contentY").toDouble()>before,"G90 album description scrolls with the actual mouse wheel");
+        }
+        check(clickAlbumControl(findVisual(window->contentItem(),"playlistDescriptionClose")),"G90 album description closes before reading comments");
+        check(!reader||!reader->isVisible(),"G90 album description releases the comment interaction area");
+    }
+    backend.action("tab:comments");''')

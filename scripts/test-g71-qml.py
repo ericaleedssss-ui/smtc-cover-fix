@@ -5,8 +5,8 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen');os.environ.setdefault('QT_QUICK_BACKEND','software')
 from pathlib import Path
 import sys,tempfile,shutil,subprocess
-from PySide6.QtCore import QObject,Signal,Property,Slot,QAbstractListModel,QModelIndex,QUrl,QPointF,Qt,QResource
-from PySide6.QtGui import QGuiApplication,QFontDatabase,QImage,QPainter,QColor,QLinearGradient,QFont
+from PySide6.QtCore import QObject,Signal,Property,Slot,QAbstractListModel,QModelIndex,QUrl,QPointF,QPoint,Qt,QResource
+from PySide6.QtGui import QGuiApplication,QFontDatabase,QImage,QPainter,QColor,QLinearGradient,QFont,QWheelEvent
 from PySide6.QtQuick import QQuickView
 from PySide6.QtQml import QQmlProperty
 from PySide6.QtTest import QTest
@@ -137,6 +137,18 @@ def click(view,item,button=Qt.LeftButton,point=None):
     assert item is not None
     if point is None:point=QPointF(item.width()/2,item.height()/2)
     point=item.mapToScene(point).toPoint();QTest.mouseMove(view,point);QTest.mouseClick(view,button,Qt.NoModifier,point);QTest.qWait(120)
+def checkAlbumDescription(v,root,c):
+    c.meta['description']='Actual full album description.\n'*100;c.changed.emit();QTest.qWait(100)
+    click(v,find(root,'playlistDescriptionOpen'));QTest.qWait(230)
+    reader=find(v.contentItem(),'playlistDescriptionReader');text=find(v.contentItem(),'playlistDescriptionText')
+    assert reader is not None and reader.isVisible() and text.property('text')==c.meta['description']
+    assert reader.property('contentHeight')>reader.height()
+    point=reader.mapToScene(QPointF(reader.width()/2,reader.height()/2));before=reader.property('contentY')
+    event=QWheelEvent(point,v.mapToGlobal(point.toPoint()),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.NoScrollPhase,False)
+    QGuiApplication.sendEvent(v,event);QTest.qWait(230)
+    assert reader.property('contentY')>before
+    click(v,find(v.contentItem(),'playlistDescriptionClose'));QTest.qWait(230);assert not reader.isVisible()
+
 with tempfile.TemporaryDirectory() as tmp:
     d=Path(tmp);images=[]
     # Clearly synthetic, deterministic TEST sleeves. Production only reads account collections.
@@ -169,6 +181,14 @@ Item {id:root;width:1400;height:900
     warnings=[];v.engine().warnings.connect(lambda items:warnings.extend(x.toString() for x in items))
     v.setSource(QUrl.fromLocalFile(str(d/'Harness.qml')));assert v.status()==QQuickView.Ready
     v.show();QTest.qWait(400);root=v.rootObject()
+    if '--album-description-only' in sys.argv:
+        c.meta={**c.meta,'kind':'album','date':'2024-03-02','artists':[{'id':'5','name':'Actual album artist'}]}
+        c.changed.emit();QTest.qWait(180)
+        checkAlbumDescription(v,root,c)
+        assert not [w for w in warnings if 'ReferenceError' in w or 'TypeError' in w or 'Binding loop' in w],warnings
+        print('PASS G90 focused production QML: album full description opens, actual wheel scrolls, close restores interaction')
+        v.setSource(QUrl());QTest.qWait(50)
+        sys.exit(0)
     for width,height in ((1400,900),(960,540),(960,720),(1920,1080)):
         v.resize(width,height);root.setWidth(width);root.setHeight(height);QTest.qWait(150)
         listing=find(root,'magazineTrackList');assert listing is not None
@@ -415,7 +435,8 @@ Item {id:root;width:1400;height:900
     c.search('');c.meta={**c.meta,'kind':'album','date':'2024-03-02','artists':[{'id':'5','name':'Actual album artist'}]};c.changed.emit()
     listing.setProperty('contentY',listing.property('startY'));QTest.qWait(180)
     assert find(root,'magazineHeat_0').property('known') and not find(root,'magazineHeat_1').property('known') and find(root,'magazineHeat_2').property('known')
-    print('PASS G90 album QML: shared magazine, actual heat including zero, unavailable heat remains unknown')
+    checkAlbumDescription(v,root,c)
+    print('PASS G90 album QML: actual heat states and real full-description open, mouse-wheel scroll and close')
     v.grabWindow().save(str(repo.parent/'g71-magazine-dark-preview.png'))
     assert not [w for w in warnings if 'ReferenceError' in w or 'TypeError' in w or 'Cannot assign' in w or 'Binding loop' in w],warnings
     v.setSource(QUrl());QTest.qWait(50)

@@ -315,8 +315,8 @@ Item {
         contentItem:Item {
             Label {text:page.info.kind==="album"?"专辑详情":"歌单简介";font.weight:Font.DemiBold}
             RhineIcon {objectName:"playlistDescriptionClose";anchors.right:parent.right;width:18*page.u;height:width;name:"close";color:page.muted;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:descriptionPopup.close()}}
-            Flickable {x:0;y:34*page.u;width:parent.width;height:parent.height-y;contentHeight:fullDescription.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds
-                Text {id:fullDescription;width:parent.width;text:page.info.description||"";textFormat:Text.PlainText;wrapMode:Text.Wrap;lineHeight:1.45;color:page.ink;font.family:rhineFontFamily;font.pixelSize:14*page.u}
+            Flickable {objectName:"playlistDescriptionReader";x:0;y:34*page.u;width:parent.width;height:parent.height-y;contentHeight:fullDescription.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds
+                Text {id:fullDescription;objectName:"playlistDescriptionText";width:parent.width;text:page.info.description||"";textFormat:Text.PlainText;wrapMode:Text.Wrap;lineHeight:1.45;color:page.ink;font.family:rhineFontFamily;font.pixelSize:14*page.u}
                 Controls.ScrollBar.vertical:Controls.ScrollBar {}
             }
         }
