@@ -94,6 +94,12 @@ private:
     QString m_collectorError;
     quint64 m_collectorToken=0;
     void loadCollectorCount();
+    void loadAlbumArtist(bool fallback=false);
+    void displayAlbumArtist(QString url,bool fallback);
+    QString m_artistID,m_artistAvatar;
+    QHash<QString,QString> m_artistAvatars;
+    bool m_artistRequested=false;
+    quint64 m_artistToken=0;
     QString m_status, m_pending, m_modelQuery, m_modelFilter;
     QJsonArray m_likedSnapshot;
     bool m_downloading=false;

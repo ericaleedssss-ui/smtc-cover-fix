@@ -22,6 +22,9 @@ Item {
     property bool selecting:false
     property string activeRowMenu:""
     readonly property bool sticky:listing.contentY-listing.startY>heroHeight
+    function titleX(){return 78*page.unit+Math.max(40,44*page.unit);}
+    function secondaryWidth(w){var room=Math.max(20*page.unit,w*.35-188*page.unit);return page.info.kind==="album"?Math.min(110*page.u,room):room;}
+    function secondaryCenter(w){return page.info.kind==="album"?((w*.42+(w*.23-22*page.unit)/2)+(w-180*page.unit+16*page.u))/2:w*.65+(w*.35-188*page.unit)/2;}
     function toggleSubscription(){
         if(page.info.subscribed){unsubscribeDialog.collectionKey=page.session;unsubscribeDialog.open();}
         else page.controller.setSubscribed(page.session,true);
@@ -103,7 +106,7 @@ Item {
                             MouseArea {objectName:"playlistDescriptionOpen";anchors.fill:parent;enabled:!!page.info.description;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:descriptionPopup.open();Controls.ToolTip.visible:containsMouse;Controls.ToolTip.delay:450;Controls.ToolTip.text:"查看完整简介"}
                         }
                         Row {id:metaGroup;width:parent.width;height:26*page.u;spacing:8*page.unit
-                            Image {visible:!!(page.info.kind==="album"?(page.info.artists||[])[0]?.avatar:page.info.creatorAvatar);width:24*page.u;height:width;source:(page.info.kind==="album"?(page.info.artists||[])[0]?.avatar:page.info.creatorAvatar)||"";asynchronous:true;sourceSize.width:64;sourceSize.height:64;fillMode:Image.PreserveAspectCrop}
+                            Image {objectName:"magazineArtistAvatar";visible:!!(page.info.kind==="album"?page.info.artistAvatar:page.info.creatorAvatar);width:24*page.u;height:width;source:(page.info.kind==="album"?page.info.artistAvatar:page.info.creatorAvatar)||"";asynchronous:true;sourceSize.width:64;sourceSize.height:64;fillMode:Image.PreserveAspectCrop}
                             Label {visible:page.info.kind!=="album";text:page.info.artist||"";width:Math.min(implicitWidth,130*page.u);height:parent.height;font.pixelSize:12*page.u
                                 MouseArea {anchors.fill:parent;enabled:!!page.info.creatorID;cursorShape:Qt.PointingHandCursor;onClicked:rhine.action("profile:open:"+page.info.creatorID)}
                             }
@@ -145,12 +148,12 @@ Item {
             }
             Item {y:parent.height-48*page.u;width:parent.width;height:48*page.u;visible:page.controller.tab==="songs"
                 Rectangle {width:parent.width;height:1;y:2;color:page.dark?"#306a7c60":"#1973805f"}
-                Label {x:12*page.unit;text:page.selecting?"选择":"#";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:62*page.unit;text:"标题";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:parent.width*.42;text:"艺术家";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:parent.width*.65;text:page.info.kind==="album"?"热度":"专辑";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:parent.width-180*page.unit;width:32*page.u;horizontalAlignment:Text.AlignHCenter;text:"喜欢";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {x:parent.width-104*page.unit;text:"时长";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderIndex";x:10*page.unit;width:35*page.unit;horizontalAlignment:Text.AlignHCenter;text:page.selecting?"选择":"#";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderTitle";x:page.titleX();width:parent.width*.42-x-22*page.unit;horizontalAlignment:Text.AlignHCenter;text:"标题";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderArtist";x:parent.width*.42;width:parent.width*.23-22*page.unit;horizontalAlignment:Text.AlignHCenter;text:"艺术家";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderSecondary";width:page.secondaryWidth(parent.width);x:page.secondaryCenter(parent.width)-width/2;horizontalAlignment:Text.AlignHCenter;text:page.info.kind==="album"?"热度":"专辑";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderHeart";x:parent.width-180*page.unit;width:32*page.u;horizontalAlignment:Text.AlignHCenter;text:"喜欢";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderDuration";x:parent.width-104*page.unit;width:52*page.unit;horizontalAlignment:Text.AlignHCenter;text:"时长";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
             }
         }
         delegate:Loader {
@@ -181,7 +184,7 @@ Item {
                     onDoubleClicked:function(mouse){if(mouse.button===Qt.LeftButton&&page.controller.tab==="songs"&&!page.selecting)page.controller.rowAction("play",rowLoader.song.identity);}
                 }
                 Item {anchors.fill:parent;visible:page.controller.tab==="songs"
-                    Label {x:10*page.unit;width:35*page.unit;height:parent.height;text:page.selecting?(rowLoader.chosen?"✓":"○"):String(rowLoader.songIndex+1).padStart(2,"0");font.pixelSize:12*page.u;color:page.muted}
+                    Label {x:10*page.unit;width:35*page.unit;horizontalAlignment:Text.AlignHCenter;height:parent.height;text:page.selecting?(rowLoader.chosen?"✓":"○"):String(rowLoader.songIndex+1).padStart(2,"0");font.pixelSize:12*page.u;color:page.muted}
                     Rectangle {id:art;x:60*page.unit;anchors.verticalCenter:parent.verticalCenter;width:Math.max(40,44*page.unit);height:width;radius:3;color:page.dark?"#3a4433":"#dce1d1"
                         Image {anchors.fill:parent;source:rowLoader.song.cover||"";asynchronous:true;sourceSize.width:96;sourceSize.height:96;fillMode:Image.PreserveAspectCrop}
                         Rectangle {anchors.fill:parent;color:"#52000000";visible:coverMouse.containsMouse}
@@ -189,35 +192,35 @@ Item {
                         MouseArea {id:coverMouse;objectName:"magazineCoverPlay_"+rowLoader.songIndex;anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor
                             onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"play",rowLoader.song.identity);}}
                     }
-                    Label {x:art.x+art.width+18*page.unit;width:parent.width*.42-x-22*page.unit;height:parent.height;text:rowLoader.song.title||"";font.pixelSize:17*page.u;font.weight:Font.Medium;color:rowLoader.song.unavailable?page.muted:page.ink
+                    Label {objectName:"magazineTitle_"+rowLoader.songIndex;horizontalAlignment:Text.AlignHCenter;x:art.x+art.width+18*page.unit;width:parent.width*.42-x-22*page.unit;height:parent.height;text:rowLoader.song.title||"";font.pixelSize:17*page.u;font.weight:Font.Medium;color:rowLoader.song.unavailable?page.muted:page.ink
                         MouseArea {objectName:"magazineTitleHit_"+rowLoader.songIndex;anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else if(page.selecting)page.controller.rowAction("select",rowLoader.song.identity);}onDoubleClicked:function(mouse){if(mouse.button===Qt.LeftButton&&!page.selecting)page.controller.rowAction("play",rowLoader.song.identity);}}
                     }
-                    Item {id:artistArea;x:parent.width*.42;width:parent.width*.23-22*page.unit;height:parent.height;clip:true
-                        Label {anchors.fill:parent;visible:!(rowLoader.song.artists||[]).length;text:rowLoader.song.artist||"";color:page.muted;font.pixelSize:14*page.u}
-                        Row {height:parent.height
+                    Item {id:artistArea;objectName:"magazineArtist_"+rowLoader.songIndex;x:parent.width*.42;width:parent.width*.23-22*page.unit;height:parent.height;clip:true
+                        Label {anchors.fill:parent;horizontalAlignment:Text.AlignHCenter;visible:!(rowLoader.song.artists||[]).length;text:rowLoader.song.artist||"";color:page.muted;font.pixelSize:14*page.u}
+                        Row {anchors.horizontalCenter:parent.horizontalCenter;height:parent.height
                             Repeater {model:rowLoader.song.artists||[]
                                 delegate:Label {required property var modelData;required property int index
                                     width:Math.min(implicitWidth+6*page.unit,artistArea.width/Math.max(1,(rowLoader.song.artists||[]).length));height:artistArea.height
-                                    text:(index?" / ":"")+(modelData.name||"");color:page.muted;font.pixelSize:14*page.u
+                                    horizontalAlignment:Text.AlignHCenter;text:(index?" / ":"")+(modelData.name||"");color:page.muted;font.pixelSize:14*page.u
                                     MouseArea {anchors.fill:parent;enabled:!!parent.modelData.id;cursorShape:Qt.PointingHandCursor;acceptedButtons:Qt.LeftButton|Qt.RightButton
                                         onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"artist:"+parent.index,rowLoader.song.identity);}}
                                 }
                             }
                         }
                     }
-                    Label {visible:page.info.kind!=="album";x:parent.width*.65;width:parent.width*.35-188*page.unit;height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
+                    Label {objectName:"magazineAlbum_"+rowLoader.songIndex;horizontalAlignment:Text.AlignHCenter;visible:page.info.kind!=="album";x:parent.width*.65;width:parent.width*.35-188*page.unit;height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
                         MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;enabled:!!rowLoader.song.albumID;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"album",rowLoader.song.identity);}}
                     }
-                    Item {objectName:"magazineHeat_"+rowLoader.songIndex;visible:page.info.kind==="album";x:parent.width*.65;width:Math.max(20*page.unit,parent.width*.35-188*page.unit);height:parent.height
+                    Item {objectName:"magazineHeat_"+rowLoader.songIndex;visible:page.info.kind==="album";width:page.secondaryWidth(parent.width);x:page.secondaryCenter(parent.width)-width/2;height:parent.height
                         readonly property bool known:typeof rowLoader.song.popularity==="number"&&Number.isFinite(rowLoader.song.popularity)&&Number(rowLoader.song.popularity)>=0&&Number(rowLoader.song.popularity)<=100
-                        Rectangle {anchors.verticalCenter:parent.verticalCenter;width:Math.min(88*page.u,parent.width-12*page.unit);height:4*page.u;radius:height/2;color:page.dark?"#42677957":"#30788567";visible:parent.known
+                        Rectangle {anchors.centerIn:parent;width:Math.min(88*page.u,parent.width-12*page.unit);height:4*page.u;radius:height/2;color:page.dark?"#42677957":"#30788567";visible:parent.known
                             Rectangle {height:parent.height;width:parent.width*(Number(rowLoader.song.popularity)||0)/100;radius:height/2;color:page.accent}
                         }
-                        Label {anchors.fill:parent;visible:!parent.known;text:"—";font.pixelSize:12*page.u;color:page.muted}
+                        Label {anchors.fill:parent;horizontalAlignment:Text.AlignHCenter;visible:!parent.known;text:"—";font.pixelSize:12*page.u;color:page.muted}
                         MouseArea {anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.NoButton;Controls.ToolTip.visible:containsMouse;Controls.ToolTip.text:parent.known?"接口热度 "+rowLoader.song.popularity+" / 100":"接口未提供热度"}
                     }
                     SongHeart {objectName:"magazineHeart_"+rowLoader.songIndex;x:parent.width-180*page.unit;anchors.verticalCenter:parent.verticalCenter;unit:page.u;liked:rowLoader.heart;known:rowLoader.heartKnown;pending:page.info.likeBusy===true||page.info.likesLoading===true;onToggled:if(rowLoader.heartKnown)page.controller.rowAction("like",rowLoader.song.identity);else page.controller.retryLikes()}
-                    Label {x:parent.width-104*page.unit;width:52*page.unit;height:parent.height;text:rowLoader.song.durationLabel||"—";color:page.muted;font.pixelSize:12*page.u}
+                    Label {objectName:"magazineDuration_"+rowLoader.songIndex;horizontalAlignment:Text.AlignHCenter;x:parent.width-104*page.unit;width:52*page.unit;height:parent.height;text:rowLoader.song.durationLabel||"—";color:page.muted;font.pixelSize:12*page.u}
                     RhineIcon {x:parent.width-32*page.unit;anchors.verticalCenter:parent.verticalCenter;width:20*page.u;height:width;name:"more";color:page.muted
                         MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);}}
                     }

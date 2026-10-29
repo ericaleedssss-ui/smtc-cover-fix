@@ -2,6 +2,9 @@
 #include "MusicData.h"
 #include "MusicDiscover.h"
 #include <QDateTime>
+#include <QBuffer>
+#include <QPainter>
+#include <QPainterPath>
 #include <QDir>
 #include <QJsonDocument>
 #include <QFileInfo>
@@ -67,7 +70,7 @@ QString PlaylistMagazine::tab() const { return m_folder?m_folder->magazineTab:QS
 double PlaylistMagazine::scrollPosition() const { return m_folder?m_folder->magazineScroll:0.; }
 QVariantMap PlaylistMagazine::info() const {
     if(!m_folder)return {};
-    auto i=m_folder->item.toVariantMap();i.remove("collectorCount");
+    auto i=m_folder->item.toVariantMap();i.remove("collectorCount");i["artistAvatar"]=m_artistAvatar;
     i["loaded"]=m_songs.size();i["total"]=std::max({int(m_folder->ids.size()),m_folder->item["trackCount"].toInt(),int(m_songs.size())});
     i["loading"]=m_music->directoryLoading;i["more"]=m_folder->cursor<m_folder->ids.size();
     i["editable"]=m_music->canEditPlaylist(m_folder->item);i["canCollect"]=m_music->provider=="netease"&&!m_music->uid.isEmpty();
@@ -98,6 +101,41 @@ void PlaylistMagazine::loadCollectorCount(){
         emit self->changed();
     },[self,folder,account,token]{return self&&self->m_folder==folder&&self->m_music->accountGeneration()==account&&self->m_collectorToken==token;});
 }
+// Album summaries often contain only artist IDs/names. Fetch a real portrait,
+// decode once via Host and publish bounded pixels through the existing image cache.
+void PlaylistMagazine::loadAlbumArtist(bool fallback){
+    if(!m_folder||m_folder->item["kind"]!="album"||m_music->provider!="netease")return;
+    const auto people=m_folder->item["artists"].toArray();
+    if(people.isEmpty())return;
+    const auto person=people.first().toObject();m_artistID=textID(person["id"]);
+    const auto cacheKey=m_music->provider+":"+m_artistID;
+    if(!fallback&&m_artistAvatars.contains(cacheKey)){m_artistAvatar=m_artistAvatars[cacheKey];emit changed();return;}
+    if(m_artistID.isEmpty()||m_artistID=="0")return;
+    QPointer<PlaylistMagazine> self(this);const auto token=m_artistToken,account=m_account;
+    m_music->api.request(fallback?"/artists":"/artist/detail",{{"id",m_artistID}},[self,fallback](MusicReply reply){
+        if(!self)return;
+        const auto body=reply.value.toObject();const auto artist=fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject();
+        QString url;for(const auto &name:{"avatar","img1v1Url","picUrl","cover"})if(!artist[name].toString().isEmpty()){url=artist[name].toString();break;}
+        if(!reply.ok()||url.isEmpty()){if(!fallback)self->loadAlbumArtist(true);return;}
+        QUrl address(url);if(address.scheme()=="http")address.setScheme("https");
+        self->displayAlbumArtist(address.toString(),fallback);
+    },[self,token,account]{return self&&self->m_artistToken==token&&self->m_music->accountGeneration()==account;});
+}
+void PlaylistMagazine::displayAlbumArtist(QString url,bool fallback){
+    QPointer<PlaylistMagazine> self(this);const auto token=m_artistToken,account=m_account;const auto cacheKey=m_music->provider+":"+m_artistID;
+    m_music->host->loadCover(url,[self,token,account,cacheKey,fallback](QString imageKey){
+        if(!self||self->m_artistToken!=token||self->m_music->accountGeneration()!=account)return;
+        const auto source=self->m_music->host->image(imageKey);
+        if(source.isNull()){if(!fallback)self->loadAlbumArtist(true);return;}
+        QImage avatar(96,96,QImage::Format_ARGB32_Premultiplied);avatar.fill(Qt::transparent);
+        {QPainter painter(&avatar);painter.setRenderHint(QPainter::Antialiasing);QPainterPath circle;circle.addEllipse(QRectF(0,0,96,96));painter.setClipPath(circle);
+         const auto scaled=source.scaled(96,96,Qt::KeepAspectRatioByExpanding,Qt::SmoothTransformation);painter.drawImage((96-scaled.width())/2,(96-scaled.height())/2,scaled);}
+        QByteArray bytes;QBuffer buffer(&bytes);buffer.open(QIODevice::WriteOnly);if(!avatar.save(&buffer,"PNG"))return;
+        self->m_artistAvatar="data:image/png;base64,"+QString::fromLatin1(bytes.toBase64());
+        if(self->m_artistAvatars.size()>=64)self->m_artistAvatars.clear();
+        self->m_artistAvatars[cacheKey]=self->m_artistAvatar;emit self->changed();
+    },96);
+}
 void PlaylistMagazine::report(QString s){m_status=s;emit changed();m_music->host->invalidate();}
 void PlaylistMagazine::sync() {
     if(m_syncing)return;m_syncing=true;
@@ -105,12 +143,13 @@ void PlaylistMagazine::sync() {
     if(account){m_likesAttempted=false;m_recordAnchor={};m_recordSequence={};m_recordInputs={};m_recordKey.clear();m_mutating=false;m_unavailableCovers.clear();m_account=m_music->accountGeneration();m_menuSong={};++m_menuToken;m_downloads={};++m_downloadSerial;if(m_reply)m_reply->abort();m_reply=nullptr;m_file.reset();m_downloading=false;m_pending.clear();m_remove={};m_removeFolder.reset();emit menuChanged();}
     const auto folder=(m_music->directory && QStringList{"playlist","album"}.contains(m_music->directory->item["kind"].toString()))?m_music->directory:nullptr;
     const bool reset=folder!=m_folder||account;
-    if(reset){m_likesAttempted=false;m_collectorsRequested=false;m_collectorCount=-1;m_collectorError.clear();++m_collectorToken;if(folder&&!folder->recordBrowse)m_recordAnchor=folder->item;m_recordKey.clear();m_searchRequested=false;m_status.clear();m_folder=folder;m_selected.clear();m_pending.clear();m_waitCursor=-1;m_social={};m_socialOffset=0;m_socialTotal=0;++m_socialToken;m_socialLoading=false;}
+    if(reset){++m_artistToken;m_artistRequested=false;m_artistID.clear();m_artistAvatar.clear();if(account)m_artistAvatars.clear();m_likesAttempted=false;m_collectorsRequested=false;m_collectorCount=-1;m_collectorError.clear();++m_collectorToken;if(folder&&!folder->recordBrowse)m_recordAnchor=folder->item;m_recordKey.clear();m_searchRequested=false;m_status.clear();m_folder=folder;m_selected.clear();m_pending.clear();m_waitCursor=-1;m_social={};m_socialOffset=0;m_socialTotal=0;++m_socialToken;m_socialLoading=false;}
     if(m_folder&&!m_music->directoryLoading){if(!m_folder->item["loadError"].toString().isEmpty())m_unavailableCovers.insert(session());else m_unavailableCovers.remove(session());}
     rebuild(reset);refreshCovers();m_syncing=false;emit changed();
     if(m_folder&&m_music->provider=="netease"&&!m_music->uid.isEmpty()&&!m_music->likedIDs&&!m_likesAttempted){
         m_likesAttempted=true;const auto account=m_account;QTimer::singleShot(0,this,[this,account]{if(m_folder&&account==m_music->accountGeneration())m_music->ensureLikedIDs();else if(account==m_account)m_likesAttempted=false;});
     }
+    if(m_folder&&m_folder->item["kind"]=="album"&&!m_music->directoryLoading&&!m_artistRequested){m_artistRequested=true;loadAlbumArtist();}
     if(m_folder&&!m_collectorsRequested&&!m_music->directoryLoading){m_collectorsRequested=true;loadCollectorCount();}
     if(!m_pending.isEmpty())QTimer::singleShot(0,this,&PlaylistMagazine::finishAll);
     if(reset && m_folder && tab()!="songs")loadSocial(true);

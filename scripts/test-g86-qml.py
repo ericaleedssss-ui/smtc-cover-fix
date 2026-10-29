@@ -139,11 +139,17 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  shortcut.setProperty('available',True)
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
+ arm=find('nowTonearm');assert arm and find('nowTonearmPlane')
+ assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.18
+ assert abs(arm.property('armAngle'))<.01
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==32
  assert edge.y()==3*page.property('unit') and base.rotation()==0 and platter.rotation()==0
  angle=spin.property('spinAngle');QTest.qWait(180);assert spin.property('spinAngle')>angle+.3
  assert spin.rotation()==0 and base.rotation()==0 and platter.rotation()==0 and edge.rotation()==0
+ w.grabWindow().save(str(repo.parent/'g91-arm-playing.png'))
  c.playing=False;c.playbackChanged.emit();QTest.qWait(200);angle=spin.property('spinAngle');QTest.qWait(150);assert abs(spin.property('spinAngle')-angle)<.01 and find('nowRecordRings').opacity()==0
+ assert abs(arm.property('armAngle')+12)<.01
+ w.grabWindow().save(str(repo.parent/'g91-arm-paused.png'))
  if os.environ.get('QT_QUICK_BACKEND')=='rhi':
   rings=find('nowRecordRings');record=find('nowRecord');rings.setOpacity(1)
   record.setProperty('phase',.03);QTest.qWait(80);first=w.grabWindow();first.save(str(repo.parent/'g89-ripples-a.png'))

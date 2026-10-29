@@ -137,6 +137,23 @@ def click(view,item,button=Qt.LeftButton,point=None):
     assert item is not None
     if point is None:point=QPointF(item.width()/2,item.height()/2)
     point=item.mapToScene(point).toPoint();QTest.mouseMove(view,point);QTest.mouseClick(view,button,Qt.NoModifier,point);QTest.qWait(120)
+def checkColumnAlignment(v,root,c):
+    for kind in ('playlist','album'):
+        c.meta['kind']=kind;c.changed.emit();QTest.qWait(100)
+        listing=find(root,'magazineTrackList');listing.setProperty('contentY',listing.property('startY'));QTest.qWait(100)
+        for header,cell in [('Title','magazineTitle_0'),('Artist','magazineArtist_0'),('Secondary','magazineHeat_0' if kind=='album' else 'magazineAlbum_0'),('Heart','magazineHeart_0'),('Duration','magazineDuration_0')]:
+            a=find(root,'magazineHeader'+header);b=find(root,cell);assert a is not None and b is not None,(kind,header)
+            ax=a.mapToScene(QPointF(a.width()/2,0)).x();bx=b.mapToScene(QPointF(b.width()/2,0)).x()
+            assert abs(ax-bx)<.5,(kind,header,ax,bx)
+        if kind=='album':
+            artist=find(root,'magazineArtist_0');heart=find(root,'magazineHeart_0');heat=find(root,'magazineHeat_0')
+            middle=(artist.mapToScene(QPointF(artist.width()/2,0)).x()+heart.mapToScene(QPointF(heart.width()/2,0)).x())/2
+            assert abs(heat.mapToScene(QPointF(heat.width()/2,0)).x()-middle)<.5
+            assert heat.mapToScene(QPointF()).x()>artist.mapToScene(QPointF(artist.width(),0)).x()
+            assert heat.mapToScene(QPointF(heat.width(),0)).x()<heart.mapToScene(QPointF()).x()
+    c.meta['artistAvatar']=c.images[0];c.changed.emit();QTest.qWait(100)
+    avatar=find(root,'magazineArtistAvatar');assert avatar.isVisible() and avatar.property('source').toString()==c.images[0]
+
 def checkAlbumDescription(v,root,c,long=True):
     # Match the Windows self-test's actual Chinese fixture rather than a separate
     # English-only paragraph. A short description should fit without scrolling.
@@ -195,9 +212,10 @@ Item {id:root;width:1400;height:900
         for width,height in ((1400,900),(960,540),(960,720),(1920,1080)):
             v.resize(width,height);root.setWidth(width);root.setHeight(height);QTest.qWait(150)
             listing=find(root,'magazineTrackList');listing.setProperty('contentY',listing.property('startY'));QTest.qWait(150)
+            checkColumnAlignment(v,root,c)
             checkAlbumDescription(v,root,c,long=False)
             checkAlbumDescription(v,root,c,long=True)
-            print('PASS album short/long description and actual wheel:',width,height)
+            print('PASS G91 album/playlist columns, portrait binding, short/long description and wheel:',width,height)
         assert not [w for w in warnings if 'ReferenceError' in w or 'TypeError' in w or 'Binding loop' in w],warnings
         print('PASS G90 focused production QML: album full description opens, actual wheel scrolls, close restores interaction')
         v.setSource(QUrl());QTest.qWait(50)

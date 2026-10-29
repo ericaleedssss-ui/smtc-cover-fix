@@ -131,5 +131,28 @@ int main(int argc,char **argv){
     model.retryLikes();events();require(!music.likedIDs&&!model.info()["likesError"].toString().isEmpty(),"G76 failed initial state stays explicit and retryable");
     music.api.fixture=[](QString route,QJsonObject)->MusicReply{if(route=="/fixture/likedIDs")return{QJsonArray{"500"},{}};return{QJsonObject{}, {}};};
     music.directory=countsB;model.sync();events();require(music.likedIDs==QJsonArray{"500"},"G76 entering another playlist retries an unknown failed state automatically");
+    {
+        Host portraitHost;MusicLibrary portraits(&portraitHost);NativeHud portraitHud;
+        portraits.likedIDs=QJsonArray{};
+        portraits.api.fixture=[](QString route,QJsonObject args)->MusicReply{
+            const auto id=args["id"].toString();
+            if(route=="/artist/detail")return {QJsonObject{{"data",QJsonObject{{"artist",QJsonObject{{"avatar",id=="1"?"https://fixture/missing":"https://fixture/portrait-B"}}}}}}, {}};
+            if(route=="/artists")return {QJsonObject{{"artist",QJsonObject{{"img1v1Url","http://fixture/portrait-A"}}}}, {}};
+            return {QJsonObject{}, {}};
+        };
+        const auto albumFor=[](QString id){auto f=std::make_shared<MusicDirectory>();f->item=MusicData::item("album",id,"Portrait album");f->item["artists"]=QJsonArray{QJsonObject{{"id",id},{"name","Real artist"}}};return f;};
+        auto a=albumFor("1"),b=albumFor("2");portraits.directory=a;PlaylistMagazine portraitModel(&portraits,&portraitHud);
+        events(80);
+        const auto pixels=portraitModel.info()["artistAvatar"].toString();
+        const auto image=QImage::fromData(QByteArray::fromBase64(pixels.section(',',1).toLatin1()));
+        require(pixels.startsWith("data:image/png;base64,")&&image.size()==QSize(96,96)&&image.pixelColor(48,48).green()>100&&image.pixelColor(0,0).alpha()==0,"G91 missing album summary portrait is resolved via detail/image fallback into real bounded round pixels");
+        const auto requests=portraits.api.requests.size();portraitModel.sync();events();require(portraits.api.requests.size()==requests,"G91 repeated invalidations do not refetch the artist portrait");
+        portraits.directory=b;portraitModel.sync();require(portraitModel.info()["artistAvatar"].toString().isEmpty(),"G91 switching albums clears previous artist pixels immediately");
+        portraits.directory=a;portraitModel.sync();events(80);
+        require(portraitModel.info()["artistAvatar"].toString()==pixels,"G91 a stale artist response cannot overwrite the current album or its cached portrait");
+        portraits.directory=b;portraitModel.sync();events(80);
+        const auto second=QImage::fromData(QByteArray::fromBase64(portraitModel.info()["artistAvatar"].toString().section(',',1).toLatin1()));
+        require(!second.isNull()&&second.pixelColor(48,48).blue()>100,"G91 a different album receives its own artist portrait");
+    }
     qInfo()<<"All actual PlaylistMagazine controller/model checks passed (fixture domain dependencies).";
 }
