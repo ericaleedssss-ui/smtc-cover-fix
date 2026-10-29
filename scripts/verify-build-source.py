@@ -19,7 +19,7 @@ if actual != expected:
     raise SystemExit(f'Maintained source mismatch: workflow={expected}, checkout={actual}')
 
 source = args.source.resolve()
-protected_g70 = {'Qt/src/MusicPlayer.cpp': '08c2c1fe6a2f013118ac8461c09d651f2417ba34a5f71be42b4625f8a999ffc7', 'Qt/src/MusicPlayer.h': '52efbeb7f2eb1161ddf9458f814bc8afbf2d478d7ed0fb76e5ecec97965d7a83', 'Qt/src/NativeHudPlayer.cpp': '5c4e9b1588c35d8546f1e618639d7fe8c1595319509a6e19d12e804859fb1677', 'Qt/src/NativeHudController.cpp': 'df2cfc3e020fde270f9cf86a9a209e980c246f43e58f764e3766ad0d096c704e', 'Qt/qml/LyricsReading.qml': '7e91a10eda232acfd8b119f73829435974b72b3e76cf5d38033f0ebe77dd54ce'}
+protected_g70 = {'Qt/src/MusicPlayer.cpp': '08c2c1fe6a2f013118ac8461c09d651f2417ba34a5f71be42b4625f8a999ffc7', 'Qt/src/MusicPlayer.h': '52efbeb7f2eb1161ddf9458f814bc8afbf2d478d7ed0fb76e5ecec97965d7a83', 'Qt/src/NativeHudPlayer.cpp': '5c4e9b1588c35d8546f1e618639d7fe8c1595319509a6e19d12e804859fb1677', 'Qt/src/NativeHudController.cpp': 'fd51836918b00202c070e32afaacd28764f4e45d4561fb3745850c05b9fc4416', 'Qt/qml/LyricsReading.qml': '7e91a10eda232acfd8b119f73829435974b72b3e76cf5d38033f0ebe77dd54ce'}
 for name, expected_hash in protected_g70.items():
     if hashlib.sha256((source / name).read_bytes().replace(b'\r\n',b'\n')).hexdigest() != expected_hash:
         raise SystemExit(f"Protected G70 playback source changed: {name}")

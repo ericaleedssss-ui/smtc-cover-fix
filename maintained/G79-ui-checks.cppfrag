@@ -23,6 +23,9 @@
             showcase->playSong(0);refresh();
             check(music.archiveNowPlaying&&findVisual(window->contentItem(),"nowPlayingPanel"),"G87 explicit home track selection enters actual shared now-playing content");
             music.enterDirectory(savedArchiveSelection);refresh();
+            QElapsedTimer directoryPlayWait;directoryPlayWait.start();
+            while(music.directoryLoading&&directoryPlayWait.elapsed()<5000)settle(20);
+            music.playDirectory();refresh();
             check(music.directory&&!findVisual(window->contentItem(),"nowPlayingPanel"),"G87 opening a playlist keeps its list above pending now-playing content");
             music.leaveDirectory();refresh();
             check(!music.directory&&music.frame["mode"]=="archive"&&findVisual(window->contentItem(),"nowPlayingPanel"),"G87 leaving a played playlist returns home to actual rotating-record content");

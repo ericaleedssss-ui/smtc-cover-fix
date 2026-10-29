@@ -67,7 +67,7 @@ class Backend(QObject):
 errors=[]
 from PySide6.QtCore import qInstallMessageHandler
 def log(kind,ctx,text):
- if any(k in text for k in ['TypeError','ReferenceError','Binding loop','unavailable','Unexpected token','Cannot override','Cannot assign','is not defined']):errors.append(text)
+ if any(k in text for k in ['TypeError','ReferenceError','Binding loop','unavailable','Unexpected token','Cannot override','Cannot assign','is not defined','setPaused() cannot']):errors.append(text)
 qInstallMessageHandler(log)
 class PlaybackFixture(Controller):
  playbackChanged=Signal()
@@ -120,6 +120,10 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   return walk(w.contentItem())
  def click(o):assert o is not None;QTest.mouseClick(w,Qt.LeftButton,Qt.NoModifier,o.mapToScene(o.boundingRect().center()).toPoint());QTest.qWait(60)
  reading=find('archiveReading');glass=find('textFrostedPanel');assert find('nowPlayingPanel') and glass
+ reading.setVisible(False);QTest.qWait(50);assert find('textFrostedPanel') is glass
+ reading.setVisible(True);QTest.qWait(50);assert find('textFrostedPanel') is glass
+ reading.setProperty('frosted',False);QTest.qWait(50);assert not find('textFrostedPanel')
+ reading.setProperty('frosted',True);QTest.qWait(50);glass=find('textFrostedPanel');assert glass
  for width,height in [(1600,900),(960,540),(960,720),(1920,1080)]:
   w.setWidth(width);w.setHeight(height);QTest.qWait(80);page=find('nowPlayingPanel');disc=find('nowRecord');lyric=find('nowPlayingLyrics');assert disc.x()>page.width()*.6 and lyric.x()+lyric.width()<disc.x()+5*height/1080
   assert page.height()==440*height/1080 and abs(page.width()-reading.width())<1

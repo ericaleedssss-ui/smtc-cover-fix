@@ -44,6 +44,7 @@ int main(int argc,char **argv){QCoreApplication app(argc,argv);Host host;MusicLi
  // A new identity immediately drops old lyrics and any delayed old image work.
  auto second=song;second["id"]="2";second["key"]="netease:song:2";second["title"]="Second";second["cover"]="https://example.org/second";library.player.current=second;library.player.changed();assert(model.lines().isEmpty());model.seekLine(1,"netease:1");assert(host.mediaPosition==1950);QTest::qWait(60);assert(model.info()["title"]=="Second"&&!model.info()["coverPixels"].toString().isEmpty());
  library.archiveNowPlaying=true;library.archiveReturnItem=MusicData::item("playlist","77","Source",{},"netease");model.operate("browse");assert(!library.archiveNowPlaying&&library.current["id"]=="77");
+ library.archiveNowPlaying=true;library.archiveReturnItem={};model.operate("browse");assert(!library.archiveNowPlaying&&actions.takeLast()[0]=="back");
  qInfo("G86 production now-playing adapter passed: cached circular pixels, artist/album metadata, shared heart/share/comments/collect actions, pause state, timed seeking and stale lyric/identity isolation.");}
 ''')
  flags=['-I'+str(d),'-I'+str(root.parent/'upstream/Qt/src'),'-I'+str(inc)]+['-I'+str(inc/x) for x in ['QtCore','QtGui','QtNetwork','QtTest']];mocs=[]

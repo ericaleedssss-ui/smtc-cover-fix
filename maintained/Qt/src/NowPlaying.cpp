@@ -93,12 +93,12 @@ void NowPlaying::openArtist(QString artistID){
 void NowPlaying::operate(QString operation){
     if(m_key.isEmpty()||m_key!=identity(m_music->player.current))return;
     if(operation=="browse"){
-        m_music->archiveNowPlaying=false;
+        m_music->archiveNowPlaying=false;m_music->archivePlayingDirectory.reset();
         const auto origin=m_music->archiveReturnItem;
         if(!m_music->directory&&(origin["kind"]=="playlist"||origin["kind"]=="album")){
             auto item=origin;if(item["key"].toString().isEmpty())item=MusicData::item(origin["kind"].toString(),origin["id"].toString(),origin["title"].toString(),{},origin["provider"].toString());
             if(m_music->current["key"]!=item["key"])m_music->choose(item,false,false);
-        }
+        }else if(!m_music->directory){m_music->changed();emit navigate("back");return;}
         m_music->changed();return;
     }
     if(operation=="details"){emit navigate("player:song-detail");return;}

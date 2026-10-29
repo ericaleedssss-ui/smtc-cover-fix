@@ -23,10 +23,11 @@ Item {
         parent:reading.materialLayer
         z:-1
         x:reading.x;y:reading.y;width:reading.width;height:reading.height
-        active:reading.visible&&reading.frosted
+        active:reading.frosted
+        visible:reading.visible&&reading.frosted
         sourceComponent:LiquidGlass {
             objectName:"textFrostedPanel"
-            background:reading.background
+            background:reading.visible&&reading.frosted?reading.background:null
             sampleX:materialLoader.x;sampleY:materialLoader.y
             uiScale:reading.unit;dark:reading.dark
         }

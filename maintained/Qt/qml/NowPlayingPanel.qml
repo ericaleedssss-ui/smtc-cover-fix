@@ -14,6 +14,15 @@ Item {
     readonly property real discSize:Math.min(286*unit,width*.34)
     readonly property real textWidth:width-discSize-82*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced
+    function syncMotion(){
+        for(var animation of [discSpin,ringPulse]){
+            if(!animation)continue;
+            if(motion){if(animation.paused)animation.resume();else if(!animation.running)animation.start();}
+            else if(animation.running&&!animation.paused)animation.pause();
+        }
+    }
+    onMotionChanged:syncMotion()
+    Component.onCompleted:syncMotion()
     property bool following:true
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
     function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Center);}
@@ -97,7 +106,7 @@ Item {
     Item {
         id:record;objectName:"nowRecord";x:parent.width-width-22*unit;y:65*unit;width:page.discSize;height:width
         property real phase:0
-        NumberAnimation on phase {from:0;to:1;duration:6500;loops:Animation.Infinite;running:!rhine.state.reduced;paused:!page.motion}
+        NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
         // The perspective belongs to the stationary platter. Only its inset print spins.
         Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent
             transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
@@ -128,7 +137,7 @@ Item {
             }
             Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:4*page.unit;transformOrigin:Item.Center
                 property real spinAngle:0
-                NumberAnimation on spinAngle {from:0;to:360;duration:40000;loops:Animation.Infinite;running:!rhine.state.reduced;paused:!page.motion}
+                NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
                 Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
                     visible:GraphicsInfo.api===GraphicsInfo.Software
                     rotation:visible?recordPrint.spinAngle:0
