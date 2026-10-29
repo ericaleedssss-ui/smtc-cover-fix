@@ -29,6 +29,9 @@ struct MusicLibrary {
 int main(){MusicLibrary m;auto album=MusicData::item("album","1","Album","Artist");auto song=MusicData::item("song","2","Next","Artist");m.player.queue={song};m.frame={{"mode","archive"},{"selected",0}};m.current=album;
  m.followPlayback(song);assert(m.current==album&&!m.directory&&m.frame["mode"]=="archive"&&m.selected==0);
  m.current={};m.followPlayback(song);assert(m.current.isEmpty()&&!m.directory&&m.selected==0);
+ // Album/podcast detail lists keep their browsing folder while playing.
+ m.directory=std::make_shared<MusicDirectory>();m.directory->item={{"kind","album"}};m.directoryInfo=true;m.current=album;m.frame["mode"]="detail";auto folder=m.directory;m.followPlayback(song);assert(m.directory==folder&&m.current==album&&m.selected==0);
+ m.directory.reset();m.directoryInfo=false;
  // Existing detail browsing still follows the playing track.
  m.frame["mode"]="detail";m.followPlayback(song);assert(m.current==song&&m.directory&&m.selected==1&&m.frame["mode"]=="detail");
  // Roaming is exempt from the landing-page guard and keeps its original route.

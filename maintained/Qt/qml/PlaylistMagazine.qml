@@ -175,8 +175,9 @@ Item {
                     onClicked:function(mouse){
                         if(page.controller.tab!=="songs"){if(rowLoader.social.id)rhine.action("profile:open:"+rowLoader.social.id);return;}
                         if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);
-                        else page.controller.rowAction(page.selecting?"select":"detail",rowLoader.song.identity);
+                        else if(page.selecting)page.controller.rowAction("select",rowLoader.song.identity);
                     }
+                    onDoubleClicked:function(mouse){if(mouse.button===Qt.LeftButton&&page.controller.tab==="songs"&&!page.selecting)page.controller.rowAction("play",rowLoader.song.identity);}
                 }
                 Item {anchors.fill:parent;visible:page.controller.tab==="songs"
                     Label {x:10*page.unit;width:35*page.unit;height:parent.height;text:page.selecting?(rowLoader.chosen?"✓":"○"):String(rowLoader.songIndex+1).padStart(2,"0");font.pixelSize:12*page.u;color:page.muted}
@@ -188,7 +189,7 @@ Item {
                             onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"play",rowLoader.song.identity);}}
                     }
                     Label {x:art.x+art.width+18*page.unit;width:parent.width*.42-x-22*page.unit;height:parent.height;text:rowLoader.song.title||"";font.pixelSize:17*page.u;font.weight:Font.Medium;color:rowLoader.song.unavailable?page.muted:page.ink
-                        MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"detail",rowLoader.song.identity);}}
+                        MouseArea {objectName:"magazineTitleHit_"+rowLoader.songIndex;anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else if(page.selecting)page.controller.rowAction("select",rowLoader.song.identity);}onDoubleClicked:function(mouse){if(mouse.button===Qt.LeftButton&&!page.selecting)page.controller.rowAction("play",rowLoader.song.identity);}}
                     }
                     Item {id:artistArea;x:parent.width*.42;width:parent.width*.23-22*page.unit;height:parent.height;clip:true
                         Label {anchors.fill:parent;visible:!(rowLoader.song.artists||[]).length;text:rowLoader.song.artist||"";color:page.muted;font.pixelSize:14*page.u}

@@ -309,7 +309,8 @@ void PlaylistMagazine::setSubscribed(QString sessionKey,bool enabled){
 void PlaylistMagazine::share(){if(!m_folder)return;if(m_folder->item["virtual"].toBool()){report("这个临时列表没有公开歌单链接");return;}const auto url=m_music->sourceURL(m_folder->item);if(url.isEmpty()){report("此歌单暂不支持分享");return;}m_music->host->copy(m_folder->item["title"].toString()+"\n"+url);report("已复制歌单分享链接");}
 void PlaylistMagazine::showSongMenu(QString scope,int i,QString identity,double x,double y){
     QJsonArray songs;std::shared_ptr<MusicDirectory> folder;
-    if(scope=="queue")songs=m_music->player.queue;
+    if(scope=="playing")songs=QJsonArray{m_music->player.current};
+    else if(scope=="queue")songs=m_music->player.queue;
     else if(scope=="discover")songs=m_music->discover->items;
     else if(scope=="profile")songs=m_hud->profileRows;
     else if(scope=="recommendations")songs=m_hud->recommendationSongs;
@@ -321,7 +322,7 @@ void PlaylistMagazine::showSongMenu(QString scope,int i,QString identity,double 
     if(folder)song=MusicData::withQueueSource(song,folder->item);
     else if(scope.startsWith("lane")||scope=="library")song=MusicData::withQueueSource(song,m_music->sourceOrigin(scope=="library"?m_music->selectedLane:scope.mid(4).toInt()));
     m_menuSong=song;m_menuIndex=i;m_menuFolder=folder;m_menuScope=scope;m_menuX=x;m_menuY=y;m_menuComments=-1;const auto token=++m_menuToken;const auto account=m_account;emit menuChanged();
-    if(m_music->provider!="netease")return;QPointer<PlaylistMagazine> self(this);
+    if(scope=="playing"||m_music->provider!="netease")return;QPointer<PlaylistMagazine> self(this);
     m_music->api.request("/comment/music",{{"id",song["id"]},{"limit",1}},[self](MusicReply r){if(self&&r.ok()){self->m_menuComments=r.value.toObject()["total"].toInt(-1);emit self->menuChanged();}},[self,token,account]{return self&&self->m_menuToken==token&&self->m_music->accountGeneration()==account;});
 }
 void PlaylistMagazine::showHitMenu(QString hit,double x,double y){

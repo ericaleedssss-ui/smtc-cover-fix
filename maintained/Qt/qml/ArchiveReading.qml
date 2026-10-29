@@ -12,8 +12,10 @@ Item {
     property bool dark:false
     property bool frosted:true
     property bool collection:false
-    readonly property bool collectionActive:visible&&collection
-    readonly property Item content:collectionLoader.item
+    property bool playing:false
+    property var playbackController:null
+    readonly property bool collectionActive:visible&&collection&&!playing
+    readonly property Item content:playing?playingLoader.item:collectionLoader.item
     function dismissTopOverlay(){return content?content.dismissTopOverlay():false;}
     Loader {
         id:materialLoader
@@ -30,10 +32,15 @@ Item {
         }
     }
     Loader {
+        id:playingLoader;objectName:"nowPlayingLoader";anchors.fill:parent
+        active:reading.playing&&!!reading.playbackController;visible:active&&reading.visible
+        sourceComponent:NowPlayingPanel {controller:reading.playbackController;unit:reading.unit}
+    }
+    Loader {
         id:collectionLoader
         objectName:"playlistShowcaseLoader"
         anchors.fill:parent
-        active:reading.collection
+        active:reading.collection&&!reading.playing
         visible:reading.collectionActive
         enabled:visible
         sourceComponent:PlaylistShowcase {controller:reading.controller;background:reading.background;unit:reading.unit}

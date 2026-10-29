@@ -177,6 +177,8 @@ Item {id:root;width:1400;height:900
         click(v,find(root,'magazinePlayAll'));assert c.actions[-1]==('bulk','play-all')
         click(v,find(root,'globalSearch'));assert spy.actions[-1]=='search'
         row=find(root,'magazineRow_0');assert row is not None
+        titleHit=find(root,'magazineTitleHit_0');before=len(c.actions);click(v,titleHit);assert len(c.actions)==before
+        QTest.mouseDClick(v,Qt.LeftButton,Qt.NoModifier,titleHit.mapToScene(titleHit.boundingRect().center()).toPoint());QTest.qWait(80);assert c.actions[-1][0]=='play' and not any(x[0]=='detail' for x in c.actions[before:])
         click(v,find(root,'magazineCoverPlay_0'));assert c.actions[-1]==('play','netease:60000')
         click(v,row,Qt.RightButton,QPointF(row.width()*.38,row.height()/2));assert c.actions[-1]==('context','directory',0,'netease:60000')
         menu=find(v.contentItem(),'songMenu_next');assert menu is not None

@@ -1,4 +1,5 @@
     {
+        music.archiveNowPlaying=false;music.changed();refresh();
         auto *showcase=qobject_cast<PlaylistShowcase*>(backend.showcase());
         QElapsedTimer showcaseWait;showcaseWait.start();
         while(showcase&&showcase->busy()&&showcaseWait.elapsed()<5000)settle(20);
@@ -16,8 +17,9 @@
         const QJsonValue savedArchiveMode=music.frame["mode"];
         music.player.trackSelected(MusicData::item("song","85101","Playback should not navigate","Fixture"));
         refresh();
-        check(music.current==savedArchiveSelection&&music.directory==savedArchiveDirectory&&music.frame["mode"]==savedArchiveMode&&findVisual(window->contentItem(),"playlistShowcase")==archivePage,"G85 transport track selection preserves archive glass content and browsing navigation");
+        check(music.current==savedArchiveSelection&&music.directory==savedArchiveDirectory&&music.frame["mode"]==savedArchiveMode&&findVisual(window->contentItem(),"nowPlayingPanel")&&findVisual(window->contentItem(),"textFrostedPanel")==originalMaterial.data(),"G86 transport retains archive selection and changes only the shared glass content");
         check(findVisual(window->contentItem(),"archiveNavigator")&&findVisual(window->contentItem(),"archiveColumnPrevious")&&findVisual(window->contentItem(),"archiveColumnNext")&&findVisual(window->contentItem(),"archiveBrowseNext"),"G85 archive has one compact column controller and separate next-item arrow");
+        music.archiveNowPlaying=false;music.changed();refresh();
         const auto savedTrackMode=hud.trackListMode;hud.trackListMode=false;
         for(const QString &kind:QStringList{"song","album","empty","playlist"}){
             music.current=kind=="playlist"?savedArchiveSelection:kind=="empty"?QJsonObject{}:MusicData::item(kind,"81001","Shared glass identity test","Fixture");
