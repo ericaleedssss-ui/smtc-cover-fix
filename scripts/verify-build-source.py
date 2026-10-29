@@ -17,7 +17,7 @@ if actual != expected:
     raise SystemExit(f'Maintained source mismatch: workflow={expected}, checkout={actual}')
 
 source = args.source.resolve()
-protected_g70 = {'Qt/src/MusicPlayer.cpp': '08c2c1fe6a2f013118ac8461c09d651f2417ba34a5f71be42b4625f8a999ffc7', 'Qt/src/MusicPlayer.h': '52efbeb7f2eb1161ddf9458f814bc8afbf2d478d7ed0fb76e5ecec97965d7a83', 'Qt/src/NativeHudPlayer.cpp': '581160e2820922e69d7c43a11a4abc6de3c785b0e747d86325672ad09d8f7ed1', 'Qt/src/NativeHudController.cpp': '74041330e44aa32627e6e6da1ff3df22e584144ea97764cc11e488b421069887', 'Qt/qml/LyricsReading.qml': '7e91a10eda232acfd8b119f73829435974b72b3e76cf5d38033f0ebe77dd54ce'}
+protected_g70 = {'Qt/src/MusicPlayer.cpp': '08c2c1fe6a2f013118ac8461c09d651f2417ba34a5f71be42b4625f8a999ffc7', 'Qt/src/MusicPlayer.h': '52efbeb7f2eb1161ddf9458f814bc8afbf2d478d7ed0fb76e5ecec97965d7a83', 'Qt/src/NativeHudPlayer.cpp': 'e4ec7833c7ac7b213764b5eb5d5e732ef6900a9cbd8c615afcbb035d0293005f', 'Qt/src/NativeHudController.cpp': '74041330e44aa32627e6e6da1ff3df22e584144ea97764cc11e488b421069887', 'Qt/qml/LyricsReading.qml': '7e91a10eda232acfd8b119f73829435974b72b3e76cf5d38033f0ebe77dd54ce'}
 for name, expected_hash in protected_g70.items():
     if hashlib.sha256((source / name).read_bytes().replace(b'\r\n',b'\n')).hexdigest() != expected_hash:
         raise SystemExit(f"Protected G70 playback source changed: {name}")
@@ -41,7 +41,7 @@ for name in ('PlayerQueueGlass.qml', 'SideNavigation.qml', 'DiscoverGlass.qml'):
     if (source / 'Qt/qml' / name).read_bytes() != (maintained / 'maintained/Qt/qml' / name).read_bytes():
         raise SystemExit(f'Maintained QML was not installed: {name}')
 
-for name in ('Qt/src/MessageCenter.cpp','Qt/src/MessageCenter.h','Qt/qml/MessageDrawer.qml','Qt/qml/DrawerFrost.qml','Qt/qml/DrawerInputGate.qml'):
+for name in ('Qt/src/MessageCenter.cpp','Qt/src/MessageCenter.h','Qt/qml/MessageDrawer.qml','Qt/qml/DrawerFrost.qml','Qt/qml/DrawerInputGate.qml','Qt/qml/PlaylistShowcase.qml','Qt/src/PlaylistShowcase.cpp','Qt/src/PlaylistShowcase.h'):
     if (source/name).read_bytes().replace(b'\r\n',b'\n') != (maintained/'maintained'/name).read_bytes().replace(b'\r\n',b'\n'):
         raise SystemExit(f'G77 message source not installed: {name}')
 for name,marker in [('Qt/src/Engine.cpp','m_messages = new MessageCenter'),('Qt/qml/GlobalTools.qml','controller:rhine.messages'),('MusicBridge/worker.cjs',"'/send/text': 'send_text'"),('Qt/tests/UiChecks.cpp','G77 text send is confirmed by Host')]:

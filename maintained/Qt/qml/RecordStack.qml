@@ -7,6 +7,7 @@ Item {
     property Item background
     property real unit:1
     property bool reduced:false
+    property bool editorial:false
     readonly property var front:controller.info
     readonly property var rear:controller.covers
     property var paintedFront:({})
@@ -38,10 +39,11 @@ Item {
         return items;
     }
     function pose(slot,insert){
-        if(slot===0)return {x:frontX,y:frontY,r:0,s:1,a:1,z:10};
+        if(slot===0)return {x:frontX,y:frontY,r:editorial?2:0,s:1,a:1,z:10};
         var side=slot<0?-1:1;
         var far=Math.abs(slot)>1;
         if(far)return {x:frontX+side*size*(insert?.34:.68),y:frontY+size*(insert?.22:-.10),r:side*(insert?19:25),s:insert?.94:.98,a:0,z:1};
+        if(editorial)return {x:frontX+(side<0?-size*.17:size*.10),y:frontY+(side<0?16:-7)*unit,r:side<0?-8:5.5,s:.98,a:1,z:side<0?2:1};
         return {x:frontX+(far?side*size*.64:(side<0?-size*.075:(expanded?gap:size*.12))),
             y:frontY-(far?12:(expanded?5:3))*unit,r:side<0?-13:(expanded?6.8:5.2),s:1,a:far?0:1,z:2};
     }
