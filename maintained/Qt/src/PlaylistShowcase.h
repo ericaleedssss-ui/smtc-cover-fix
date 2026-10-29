@@ -32,10 +32,12 @@ signals:
     void navigate(QString);
 private:
     MusicLibrary *m_music;NativeHud *m_hud;
-    QString m_key,m_status,m_pending,m_unsubscribe,m_heartQuery;
+    QString m_key,m_status,m_pending,m_unsubscribe,m_heartQuery,m_identityAvatar;
     QJsonObject m_item;QJsonArray m_songs,m_ids;
     quint64 m_account=0,m_token=0,m_revision=0;
-    bool m_previewLoading=false,m_durationFailed=false;
+    bool m_previewLoading=false,m_durationFailed=false,m_loadFailed=false;
+    void loadIdentity();
+    QHash<QString,QString> m_avatarCache;
     QJsonArray records()const;
     void prepareInitialRecords();
     QSet<int> m_requestedLanes;

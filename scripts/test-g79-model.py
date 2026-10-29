@@ -25,16 +25,18 @@ int MusicPlayer::enqueueMany(const QJsonArray &a){for(const auto &v:a)queue.appe
 QJsonArray MusicLibrary::directoryQueue()const{return {};}
 int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLibrary music(&host);NativeHud hud;
  auto a=MusicData::item("playlist","101","A","Creator"),b=MusicData::item("playlist","102","B","Creator"),c=MusicData::item("playlist","103","C","Creator");a["creatorID"]="7";a["cover"]="https://example.invalid/playlist-art";b["cover"]="https://example.invalid/b";c["cover"]="https://example.invalid/c";music.lists[2]={a,b,c};music.current=a;music.directory.reset();
- bool fail=false;int mutations=0;
+ bool fail=false;bool missingDuration=false;int mutations=0;
  music.api.fixture=[&](QString route,QJsonObject p)->MusicReply{
   if(route=="/playlist/subscribe"||route=="/album/sub"){mutations++;return {QJsonObject{{"code",200}}, {}};}
   if(fail)return {{},"failed"};
-  if(route=="/fixture/detail"){auto item=p["uid"].toObject();item["description"]="Real fixture description";item["trackCount"]=3;auto song=MusicData::item("song","1","First","Artist");song["duration"]=60000;return {QJsonArray{item,QJsonArray{song},QJsonArray{"1","2","3"}}, {}};}
+  if(route=="/user/detail")return {QJsonObject{{"profile",QJsonObject{{"avatarUrl","https://example.invalid/real-user-avatar"}}}}, {}};
+  if(route=="/artists")return {QJsonObject{{"artist",QJsonObject{{"img1v1Url","https://example.invalid/real-artist-avatar"}}}}, {}};
+  if(route=="/fixture/detail"){auto item=p["uid"].toObject();item["description"]="Real fixture description";item["trackCount"]=3;auto song=MusicData::item("song","1","First","Artist");song["duration"]=60000;if(item["kind"]=="album"){auto second=MusicData::item("song","2","Second","Artist");second["duration"]=120000;auto third=MusicData::item("song","3","Third","Artist");third["duration"]=missingDuration?0:180000;item["artists"]=QJsonArray{QJsonObject{{"id","5"},{"name","Artist"}}};return {QJsonArray{item,QJsonArray{song,second,third},QJsonArray{}}, {}};}return {QJsonArray{item,QJsonArray{song},QJsonArray{"1","2","3"}}, {}};}
   if(route=="/fixture/songs"){auto s=MusicData::item("song","2","Second","Artist");s["duration"]=120000;auto t=MusicData::item("song","3","Third","Artist");t["duration"]=180000;return {QJsonArray{s,t}, {}};}
   assert(false);return{};
  };
  PlaylistShowcase model(&music,&hud);model.operate("play");model.operate("play");QTest::qWait(30);
- assert(model.info()["cover"]==a["cover"].toString());assert(music.player.plays==1&&music.player.queue.size()==3&&music.player.queue[1].toObject()["deferred"].toBool());assert(music.current["kind"]=="playlist"&&!music.directory);
+ assert(model.info()["identityAvatar"]=="https://example.invalid/real-user-avatar");assert(model.info()["cover"]==a["cover"].toString());assert(music.player.plays==1&&music.player.queue.size()==3&&music.player.queue[1].toObject()["deferred"].toBool());assert(music.current["kind"]=="playlist"&&!music.directory);
  assert(!model.info()["durationLabel"].toString().contains("1 小时"));model.preview(1);QTest::qWait(20);assert(model.songs().size()==3&&model.songs()[1].toMap()["title"]=="Second");assert(model.info()["durationLabel"].toString().contains("6 分钟"));
  model.playSong(2);assert(music.player.current["id"]=="3"&&music.player.index==2);model.operate("shuffle");assert(music.player.mode=="shuffle"&&music.player.queue.size()==3);model.operate("append");assert(music.player.queue.size()==6);
  assert(model.recordNeighbour(1)["key"]==b["key"].toString());assert(model.recordNeighbour(-1)["key"]==c["key"].toString());model.openCover(b["key"].toString());QTest::qWait(20);assert(music.current["key"]==b["key"]&&model.info()["key"]==b["key"].toString());
@@ -46,15 +48,19 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  model.openCover(collected["key"].toString());QTest::qWait(20);assert(music.selectedLane==3&&model.recordNeighbour(1)["key"]==album["key"].toString());
  model.openCover(album["key"].toString());QTest::qWait(20);assert(music.selectedLane==4&&model.info()["kind"]=="album"&&model.songs().size()==3);
  assert(model.recordNeighbour(1)["key"]==a["key"].toString()&&model.recordNeighbour(-1)["key"]==collected["key"].toString());
+ assert(model.info()["durationLabel"].toString()=="6 分钟"&&model.info()["identityAvatar"]=="https://example.invalid/real-artist-avatar");
+ model.operate("shuffle");assert(music.player.mode=="shuffle"&&music.player.queue.size()==3);
  QString action;QObject::connect(&model,&PlaylistShowcase::navigate,[&](QString value){action=value;});model.operate("details");assert(action=="music:directory");
+ model.operate("creator");assert(action=="music:artist:0");
  model.operate("play");assert(music.player.queue.first().toObject()["queueSource"].toObject()["kind"]=="album");
+ missingDuration=true;model.refresh();QTest::qWait(30);assert(model.info()["durationLabel"].toString()=="6 分钟");missingDuration=false;
  model.operate("subscribe");model.confirmUnsubscribe();QTest::qWait(20);assert(music.lists[4].isEmpty()&&music.api.requests.last().first=="/album/sub");assert(!model.recordNeighbour(-1).isEmpty());
  model.openCover(b["key"].toString());QTest::qWait(20);
  QSignalSpy changes(&model,&PlaylistShowcase::changed);++music.revision;music.player.changed();assert(changes.count()==0);
  model.operate("copy");assert(host.copied.contains("102"));
  // An old metadata response cannot replace a newly selected card, including after account changes.
  music.selectResult(0,2,false);music.selectResult(2,2,false);QTest::qWait(20);assert(model.info()["key"]==c["key"].toString());
- fail=true;model.refresh();QTest::qWait(20);assert(!model.busy()&&!model.status().isEmpty());
+ fail=true;model.refresh();QTest::qWait(20);assert(!model.busy()&&!model.status().isEmpty()&&model.info()["loadFailed"].toBool()&&!model.info()["loaded"].toBool());
  music.account++;music.uid="99";music.changed();QTest::qWait(20);assert(model.info()["key"]==c["key"].toString());
  qInfo("G79 actual adapter passed: container artwork and cross-lane owned/collected/album browsing, deferred full queue/provenance, shuffle/append/song preview, total-duration honesty, real selection, confirmed subscriptions, copy and stale-response isolation.");
 }

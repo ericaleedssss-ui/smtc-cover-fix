@@ -14,7 +14,7 @@ class Controller(QObject):
  changed=Signal()
  def __init__(self,art):super().__init__();self.art=art;self.at=0;self.actions=[];self.collected=False
  @Property('QVariantMap',notify=changed)
- def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['电子、摇滚、实验、意识、迷走','沿着夜色缓慢生长','午后的松弛感'][self.at],artist='QA / 显式离线数据',description='在电子的律动与摇滚的呐喊之间，收集那些游走于秩序与混沌的声音。\n这里是关于实验、意识与边界的歌单，适合在深夜、旅途中或独处时聆听。',creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 小时 26 分钟',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
+ def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['电子、摇滚、实验、意识、迷走','沿着夜色缓慢生长','午后的松弛感'][self.at],identityAvatar=self.art[0],identityCanOpen=True,loaded=True,artist='QA / 显式离线数据',description='在电子的律动与摇滚的呐喊之间，收集那些游走于秩序与混沌的声音。\n这里是关于实验、意识与边界的歌单，适合在深夜、旅途中或独处时聆听。\n' * 4,creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 小时 26 分钟',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
  @Property('QVariantList',notify=changed)
  def covers(self):return [self.recordNeighbour(-1),self.recordNeighbour(1)]
  @Property('QVariantList',notify=changed)
@@ -45,8 +45,9 @@ class Controller(QObject):
  def playSong(self,n):self.actions.append(('song',n))
 class Backend(QObject):
  changed=Signal()
+ dark=False
  @Property('QVariantMap',notify=changed)
- def state(self):return dict(dark=False,reduced=False,queueOpen=False,accountProviderName='收藏歌单')
+ def state(self):return dict(dark=self.dark,reduced=False,queueOpen=False,accountProviderName='收藏歌单')
  @Property('QVariantMap',notify=changed)
  def messages(self):return dict(state=dict(open=False))
 errors=[]
@@ -58,23 +59,24 @@ with tempfile.TemporaryDirectory() as tmp:
  d=Path(tmp);art=[]
  for i,color in enumerate(['#8b8e76','#4b5b50','#b6a58c']):
   image=QImage(640,640,QImage.Format_RGB32);image.fill(QColor(color));path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
- for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass']:
+ for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon']:
   origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
   # Runtime loading accepts some syntax rejected by the release cache compiler.
   compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
   subprocess.run([str(compiler),'--only-bytecode','-o',str(d/f'{name}.qmlc'),str(d/f'{name}.qml')],check=True)
  entries=[]
- for name in ['liquidGlass','magazineEdgeFade']:
+ for name in ['liquidGlass','magazineEdgeFade','archiveIcon']:
   origin=repo/'maintained/Qt/shaders'/f'{name}.frag'
   if not origin.exists():origin=src/'Qt/shaders'/f'{name}.frag'
   out=d/f'{name}.frag.qsb';subprocess.run(['/root/.local/bin/pyside6-qsb','--glsl','150,300es','--hlsl','50','--msl','12','-o',str(out),str(origin)],check=True)
   entries.append('<file alias="'+name+'.frag.qsb">'+str(out)+'</file>')
- qrc=d/'shaders.qrc';qrc.write_text('<RCC><qresource prefix="/shaders">'+''.join(entries)+'</qresource></RCC>');subprocess.run(['/root/.local/bin/pyside6-rcc','--binary','-o',str(d/'shaders.rcc'),str(qrc)],check=True);assert QResource.registerResource(str(d/'shaders.rcc'))
+ icons=''.join('<file alias="archive-'+name+'.png">'+str(repo/'maintained/Assets/icons'/('archive-'+name+'.png'))+'</file>' for name in ['play','shuffle','more'])
+ qrc=d/'shaders.qrc';qrc.write_text('<RCC><qresource prefix="/shaders">'+''.join(entries)+'</qresource><qresource prefix="/icons">'+icons+'</qresource></RCC>');subprocess.run(['/root/.local/bin/pyside6-rcc','--binary','-o',str(d/'shaders.rcc'),str(qrc)],check=True);assert QResource.registerResource(str(d/'shaders.rcc'))
  (d/'Harness.qml').write_text('''import QtQuick
 import QtQuick.Controls.Basic as Controls
 Controls.ApplicationWindow {id:root;visible:true;width:1600;height:900;property real u:height/1080
-Item {id:base;anchors.fill:parent;Rectangle {id:bg;z:-2;anchors.fill:parent;color:"#d9d4c8";Repeater {model:18;Rectangle {x:index*120-900;y:-300;width:55;height:1800;rotation:28;color:"#e9e4d8"}}}}
-ArchiveReading {id:reading;background:bg;materialLayer:base;controller:fixture;collection:true;unit:root.u;x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u}
+Item {id:base;anchors.fill:parent;Rectangle {id:bg;z:-2;anchors.fill:parent;color:rhine.state.dark?"#30362c":"#d9d4c8";Repeater {model:18;Rectangle {x:index*120-900;y:-300;width:55;height:1800;rotation:28;color:rhine.state.dark?"#3e4637":"#e9e4d8"}}}}
+ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:base;controller:fixture;collection:true;unit:root.u;x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u}
 }''')
  c=Controller(art);b=Backend();engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('fixture',c);engine.rootContext().setContextProperty('rhine',b);engine.rootContext().setContextProperty('rhineFontFamily',font);engine.load(QUrl.fromLocalFile(str(d/'Harness.qml')));assert engine.rootObjects(),errors;w=engine.rootObjects()[0];w.requestActivate();QTest.qWait(300)
  def find(name):
@@ -104,6 +106,11 @@ ArchiveReading {id:reading;background:bg;materialLayer:base;controller:fixture;c
  reading.setProperty('frosted',False);QTest.qWait(60);assert find('textFrostedPanel') is None and find('showcasePlay') is not None
  reading.setProperty('frosted',True);QTest.qWait(60);material=find('textFrostedPanel');assert material is not None
 
+ images=[o for o in w.findChildren(QObject,'archiveActionImage') if o.property('source').toString()]
+ assert len(images)==3 and all(o.property('ready') for o in images)
+ hint=find('showcaseTabHint');assert hint.x()>reading.width()*.7
+ b.dark=True;b.changed.emit();QTest.qWait(100);w.grabWindow().save(str(repo.parent/'g82-archive-dark.png'));b.dark=False;b.changed.emit();QTest.qWait(60)
+ click(find('showcaseTitle'));assert c.actions[-1]==('details',)
  click(find('showcaseMore'));click(find('showcaseAppend'));assert c.actions[-1]==('append',)
  click(find('showcaseMore'));click(find('showcaseCopy'));assert c.actions[-1]==('copy',)
  click(find('showcaseMore'));click(find('showcaseDetails'));assert c.actions[-1]==('details',)
@@ -118,7 +125,10 @@ ArchiveReading {id:reading;background:bg;materialLayer:base;controller:fixture;c
   event=QWheelEvent(local,globalPoint,QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False);QCoreApplication.sendEvent(w,event);QTest.qWait(300)
  listing=find('showcaseSongPreview');oldY=listing.property('contentY');wheel(listing);assert listing.property('contentY')>oldY and c.at==0
  oldY=listing.property('contentY');wheel(find('showcaseRecordStack'));assert listing.property('contentY')>oldY and c.at==0
- QTest.keyClick(w,Qt.Key_Tab);QTest.qWait(30);wheel(listing);QTest.qWait(600);assert c.at==1,c.actions
+ QTest.keyClick(w,Qt.Key_Tab);QTest.qWait(30);description=find('showcaseDescription');oldY=description.property('contentY');wheel(description);assert description.property('contentY')>oldY and c.at==0;
+ for _ in range(8):wheel(description)
+ assert c.at==0
+ wheel(find('showcaseRecordStack'));QTest.qWait(600);assert c.at==1,c.actions
  QTest.keyClick(w,Qt.Key_Left);QTest.qWait(800);assert c.at==0,c.actions
  QTest.keyClick(w,Qt.Key_Right);QTest.qWait(800);assert c.at==1,c.actions
  QTest.keyClick(w,Qt.Key_Left);QTest.qWait(800);assert c.at==0,c.actions
