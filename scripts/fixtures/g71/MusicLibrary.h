@@ -48,6 +48,8 @@ public:
     std::optional<QJsonArray> likedIDs;std::shared_ptr<MusicDirectory> directory;
     std::array<bool,5> hasMore{};int collectionLoads=0,lastCollectionLane=-1;bool personalLoading=false;
     bool directoryInfo=true,directoryLoading=false,writeLoading=false;QString provider="netease",uid="42",status;
+    bool archiveNowPlaying=false;QJsonObject archiveReturnItem;
+    void choose(QJsonObject item,bool,bool){current=item;changed();}
     QJsonObject current;QJsonArray tracks;quint64 account=1;int pageRequests=0;
     explicit MusicLibrary(Host *h):host(h),discover(std::make_unique<MusicDiscover>()){player.m_api=&api;}
     quint64 accountGeneration()const{return account;}

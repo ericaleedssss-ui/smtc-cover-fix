@@ -39,7 +39,10 @@ Item {
     }
     MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{var p=mapToItem(null,e.x,e.y);rhine.wheelInput(p.x/page.unit,p.y/page.unit,e.pixelDelta.y,e.angleDelta.y);e.accepted=true;}}
     Label {x:26*unit;y:25*unit;width:page.textWidth;text:"NOW PLAYING / 正在播放";font.pixelSize:11*unit;color:page.muted}
-    Label {objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:56*unit;text:info.title||"正在播放";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2}
+    Label {objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:56*unit;text:info.title||"正在播放";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
+        color:titleHit.containsMouse?page.muted:page.ink
+        MouseArea {id:titleHit;objectName:"nowPlayingTitleHit";anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:page.controller.operate("details")}
+    }
     Label {x:26*unit;y:118*unit;width:page.textWidth;text:info.album||"";font.pixelSize:12*unit;color:page.muted}
     ListView {
         id:lyrics;objectName:"nowPlayingLyrics";x:24*unit;y:146*unit;width:page.textWidth+4*unit;height:161*unit
@@ -95,19 +98,51 @@ Item {
         id:record;objectName:"nowRecord";x:parent.width-width-22*unit;y:65*unit;width:page.discSize;height:width
         property real phase:0
         NumberAnimation on phase {from:0;to:1;duration:6500;loops:Animation.Infinite;running:!rhine.state.reduced;paused:!page.motion}
-        Rectangle {x:width*.06;y:parent.height*.65;width:parent.width*.89;height:parent.height*.30;radius:height/2;color:rhine.state.dark?"#12000000":"#12404b33"}
-        Item {id:plane;anchors.fill:parent
-            transform:[Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:48},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:-12}]
-            Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:180}}
-                Repeater {model:3;delegate:Rectangle {required property int index;property real p:(record.phase+index/3)%1;anchors.fill:parent;radius:width/2;color:"transparent";border.width:page.unit;border.color:rhine.state.dark?"#d9e5cc":"#fffef5";scale:1.02+p*.40;opacity:.24*(1-p)*(1-p)}}
+        // The perspective belongs to the stationary platter. Only its inset print spins.
+        Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent
+            transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+            ShaderEffect {
+                objectName:"nowRecordShadow";x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
+                property variant artwork:shadowArt
+                property real phase:0
+                property real shadowOnly:1
+                property real darkMode:rhine.state.dark?1:0
+                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
-            Rectangle {anchors.fill:parent;anchors.topMargin:5*page.unit;anchors.bottomMargin:-5*page.unit;radius:width/2;color:rhine.state.dark?"#4d5546":"#a5a58e"}
-            Rectangle {anchors.fill:parent;radius:width/2;color:rhine.state.dark?"#394333":"#d5d6c4";border.width:2*page.unit;border.color:"#b0fffdf3"}
-            Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:4*page.unit
-                RotationAnimation on rotation {from:0;to:360;duration:40000;loops:Animation.Infinite;running:!rhine.state.reduced;paused:!page.motion}
-                Image {objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true}
+            Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
+                ShaderEffect {
+                    x:-parent.width*.32;y:x;width:parent.width*1.64;height:width
+                    property variant artwork:shadowArt
+                    property real phase:record.phase
+                    property real shadowOnly:0
+                    property real darkMode:rhine.state.dark?1:0
+                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                }
             }
-            Rectangle {anchors.centerIn:parent;width:7*page.unit;height:width;radius:width/2;color:rhine.state.dark?"#a0b093":"#e6e6db";border.color:"#70ffffff";border.width:page.unit}
+            // Thin fixed ivory lip and contact edge, with no offset opaque cylinder.
+            Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;color:rhine.state.dark?"#666759":"#bfb09b"}
+            Rectangle {objectName:"nowRecordPlatter";anchors.fill:parent;radius:width/2
+                gradient:Gradient {GradientStop {position:0;color:rhine.state.dark?"#d0cbb6":"#fff9ed"} GradientStop {position:.6;color:rhine.state.dark?"#777a68":"#eae1d0"} GradientStop {position:1;color:rhine.state.dark?"#a7a48e":"#d5c5ae"}}
+                border.width:page.unit;border.color:"#c0fffdf5"
+            }
+            Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:4*page.unit;transformOrigin:Item.Center
+                property real spinAngle:0
+                NumberAnimation on spinAngle {from:0;to:360;duration:40000;loops:Animation.Infinite;running:!rhine.state.reduced;paused:!page.motion}
+                Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
+                    visible:GraphicsInfo.api===GraphicsInfo.Software
+                    rotation:visible?recordPrint.spinAngle:0
+                }
+                ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software
+                    property variant artwork:printArt
+                    property real phase:recordPrint.spinAngle/360
+                    property real shadowOnly:2
+                    property real darkMode:0
+                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                }
+            }
+            // Highlight remains on the fixed rim, never follows the cover's rotation.
+            Rectangle {anchors.fill:parent;radius:width/2;color:"transparent";border.width:1.4*page.unit;border.color:"#a0fffdf3"}
         }
     }
     Label {objectName:"nowDetails";anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}

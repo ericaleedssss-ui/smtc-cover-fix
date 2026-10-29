@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory() as tmp:
   compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
   subprocess.run([str(compiler),'--only-bytecode','-o',str(d/f'{name}.qmlc'),str(d/f'{name}.qml')],check=True)
  entries=[]
- for name in ['liquidGlass','magazineEdgeFade','archiveIcon','softEdgeFade']:
+ for name in ['liquidGlass','magazineEdgeFade','archiveIcon','softEdgeFade','recordAtmosphere']:
   origin=repo/'maintained/Qt/shaders'/f'{name}.frag'
   if not origin.exists():origin=src/'Qt/shaders'/f'{name}.frag'
   out=d/f'{name}.frag.qsb';subprocess.run(['/root/.local/bin/pyside6-qsb','--glsl','150,300es','--hlsl','50','--msl','12','-o',str(out),str(origin)],check=True)
@@ -125,17 +125,30 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   assert page.height()==440*height/1080 and abs(page.width()-reading.width())<1
   w.grabWindow().save(str(repo.parent/f'g86-now-playing-{width}x{height}.png'))
  w.setWidth(1600);w.setHeight(900);QTest.qWait(80)
- spin=find('nowRecordPrint');angle=spin.rotation();QTest.qWait(180);assert spin.rotation()>angle+.3
- c.playing=False;c.playbackChanged.emit();QTest.qWait(200);angle=spin.rotation();QTest.qWait(150);assert abs(spin.rotation()-angle)<.01 and find('nowRecordRings').opacity()==0
- c.playing=True;c.playbackChanged.emit();QTest.qWait(120);assert spin.rotation()>angle+.1
- page=find('nowPlayingPanel');page.setVisible(False);angle=spin.rotation();QTest.qWait(120);assert abs(spin.rotation()-angle)<.01;page.setVisible(True)
+ spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
+ assert base and platter and edge and find('nowRecordShadow')
+ assert base.findChild(QObject,'nowRecordTilt').property('angle')==32
+ assert edge.y()==3*page.property('unit') and base.rotation()==0 and platter.rotation()==0
+ angle=spin.property('spinAngle');QTest.qWait(180);assert spin.property('spinAngle')>angle+.3
+ assert spin.rotation()==0 and base.rotation()==0 and platter.rotation()==0 and edge.rotation()==0
+ c.playing=False;c.playbackChanged.emit();QTest.qWait(200);angle=spin.property('spinAngle');QTest.qWait(150);assert abs(spin.property('spinAngle')-angle)<.01 and find('nowRecordRings').opacity()==0
+ # Four orientations must change the printed artwork, never the fixed rim/plane.
+ points=[QPointF(0,0),QPointF(base.width(),0),QPointF(0,base.height()),QPointF(base.width(),base.height())]
+ fixed=[base.mapToScene(p) for p in points]
+ for turn in [0,90,180,270]:
+  spin.setProperty('spinAngle',turn);QTest.qWait(35)
+  assert [base.mapToScene(p) for p in points]==fixed and spin.rotation()==0
+  w.grabWindow().save(str(repo.parent/f'g87-fixed-disc-{turn}.png'))
+ c.playing=True;c.playbackChanged.emit();QTest.qWait(120);assert spin.property('spinAngle')>angle+.1
+ page=find('nowPlayingPanel');page.setVisible(False);angle=spin.property('spinAngle');QTest.qWait(120);assert abs(spin.property('spinAngle')-angle)<.01;page.setVisible(True)
  click(find('nowComments'));assert c.actions[-1]==('comments',)
  click(find('nowLike'));assert c.actions[-1]==('like',)
  click(find('nowShare'));assert c.actions[-1]==('share',)
  click(find('nowMore'));click(find('nowCollect'));assert c.actions[-1]==('collect',)
  click(find('nowDetails'));assert c.actions[-1]==('details',)
+ click(find('nowPlayingTitleHit'));assert c.actions[-1]==('details',)
  listing=find('nowPlayingLyrics');old=listing.property('contentY');pos=listing.mapToScene(listing.boundingRect().center());event=QWheelEvent(pos,QPointF(w.mapToGlobal(pos.toPoint())),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False);QCoreApplication.sendEvent(w,event);QTest.qWait(80);assert listing.property('contentY')>old and not page.property('following') and not a.actions
- before=listing.property('contentY');c.currentLine=2;c.playbackChanged.emit();QTest.qWait(70);assert listing.property('contentY')==before
+ QTest.qWait(300);before=listing.property('contentY');c.currentLine=2;c.playbackChanged.emit();QTest.qWait(70);assert listing.property('contentY')==before
  click(find('nowLyricsFollow'));click(find('nowLyric_2'));assert c.actions[-1]==('seek',2,'netease:1')
  c.at=1;c.currentLine=0;c.changed.emit();c.linesChanged.emit();c.playbackChanged.emit();QTest.qWait(120);assert find('nowPlayingTitle').property('text')=='另一首歌曲' and page.property('following')
  b.dark=True;b.changed.emit();QTest.qWait(80);w.grabWindow().save(str(repo.parent/'g86-now-playing-dark.png'))

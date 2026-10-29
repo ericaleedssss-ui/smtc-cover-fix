@@ -11,7 +11,6 @@ with tempfile.TemporaryDirectory() as tmp:
  signals:void changed();};
  class MusicPlayer:public QObject {''')
  s=s.replace('MusicApi *m_api=nullptr;', 'LyricsController lyrics;QJsonObject state;bool loading=false,failed=false;QString coverImage;MusicApi *m_api=nullptr;')
- s=s.replace('quint64 account=1;', 'bool archiveNowPlaying=false;quint64 account=1;')
  (d/'MusicLibrary.h').write_text(s)
  (d/'PlaylistMagazine.h').write_text('''#pragma once
 #include "MusicLibrary.h"
@@ -21,6 +20,7 @@ signals:void changed();};''')
  for name in ['NowPlaying.h','NowPlaying.cpp']:shutil.copyfile(root/'maintained/Qt/src'/name,d/name)
  (d/'checks.cpp').write_text(r'''
 #include "NowPlaying.h"
+#include "MusicData.h"
 #include <QCoreApplication>
 #include <QTest>
 #include <QSignalSpy>
@@ -43,7 +43,7 @@ int main(int argc,char **argv){QCoreApplication app(argc,argv);Host host;MusicLi
  library.player.state["playing"]=false;library.player.changed();assert(!model.playback()["playing"].toBool());
  // A new identity immediately drops old lyrics and any delayed old image work.
  auto second=song;second["id"]="2";second["key"]="netease:song:2";second["title"]="Second";second["cover"]="https://example.org/second";library.player.current=second;library.player.changed();assert(model.lines().isEmpty());model.seekLine(1,"netease:1");assert(host.mediaPosition==1950);QTest::qWait(60);assert(model.info()["title"]=="Second"&&!model.info()["coverPixels"].toString().isEmpty());
- library.archiveNowPlaying=true;model.operate("browse");assert(!library.archiveNowPlaying);
+ library.archiveNowPlaying=true;library.archiveReturnItem=MusicData::item("playlist","77","Source",{},"netease");model.operate("browse");assert(!library.archiveNowPlaying&&library.current["id"]=="77");
  qInfo("G86 production now-playing adapter passed: cached circular pixels, artist/album metadata, shared heart/share/comments/collect actions, pause state, timed seeking and stale lyric/identity isolation.");}
 ''')
  flags=['-I'+str(d),'-I'+str(root.parent/'upstream/Qt/src'),'-I'+str(inc)]+['-I'+str(inc/x) for x in ['QtCore','QtGui','QtNetwork','QtTest']];mocs=[]

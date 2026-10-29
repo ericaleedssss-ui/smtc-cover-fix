@@ -238,7 +238,7 @@ void PlaylistMagazine::rowAction(QString op,QString k){
         emit navigate("music:row-"+QString(artist?"artist":"album")+":"+QString::number(i)+(artist?":"+QString::number(person):QString()));return;
     }
     if(op=="like"){m_music->like(song);return;}
-    if(op=="play"){if(song["unavailable"].toBool()){report("这首歌曲当前不可播放");return;}m_music->player.play(MusicData::withQueueSource(song,m_folder->item),m_music->directoryQueue());return;}
+    if(op=="play"){if(song["unavailable"].toBool()){report("这首歌曲当前不可播放");return;}m_music->archiveNowPlaying=true;m_music->archiveReturnItem=m_folder->item;m_music->player.play(MusicData::withQueueSource(song,m_folder->item),m_music->directoryQueue());m_music->changed();return;}
 }
 void PlaylistMagazine::selectAll(bool on){m_selected.clear();if(on)for(int n:m_rows)m_selected.insert(key(m_songs.at(n).toObject()));if(rowCount())emit dataChanged(index(0),index(rowCount()-1),{Chosen});emit changed();}
 QJsonArray PlaylistMagazine::selectedSongs()const{QJsonArray out;if(m_folder)for(const auto &v:m_folder->songs){auto s=v.toObject();if(m_selected.contains(key(s)))out.append(MusicData::withQueueSource(s,m_folder->item));}return out;}

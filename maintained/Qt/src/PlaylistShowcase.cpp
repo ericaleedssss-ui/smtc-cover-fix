@@ -131,7 +131,7 @@ void PlaylistShowcase::confirmUnsubscribe(){if(m_unsubscribe!=m_key||!subscribed
 void PlaylistShowcase::execute(QString op){
     const auto tracks=queue();if(tracks.isEmpty()){m_status="没有可播放的歌曲";emit changed();return;}
     if(op=="append"){const auto n=m_music->player.enqueueMany(tracks);m_status=QString("已添加 %1 首歌曲").arg(n);}
-    else{const int at=op=="shuffle"?QRandomGenerator::global()->bounded(int(tracks.size())):0;m_music->player.mode=op=="shuffle"?"shuffle":"all";m_music->player.play(tracks[at].toObject(),tracks,at);if(m_music->player.mode!=(op=="shuffle"?"shuffle":"all")){m_music->player.mode=op=="shuffle"?"shuffle":"all";m_music->player.changed();}m_status=op=="shuffle"?"已开始随机播放":"已开始播放";}
+    else{const int at=op=="shuffle"?QRandomGenerator::global()->bounded(int(tracks.size())):0;m_music->player.mode=op=="shuffle"?"shuffle":"all";m_music->archiveNowPlaying=true;m_music->archiveReturnItem=m_item;m_music->player.play(tracks[at].toObject(),tracks,at);m_music->changed();if(m_music->player.mode!=(op=="shuffle"?"shuffle":"all")){m_music->player.mode=op=="shuffle"?"shuffle":"all";m_music->player.changed();}m_status=op=="shuffle"?"已开始随机播放":"已开始播放";}
     emit changed();
 }
 
@@ -151,7 +151,7 @@ void PlaylistShowcase::preview(int at){
         if(!self->m_durationFailed)QTimer::singleShot(600,self,[self,token]{if(self&&self->m_token==token)self->completeDuration();});
     },[self,token,account]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account;});
 }
-void PlaylistShowcase::playSong(int at){const auto tracks=queue();if(at>=0&&at<tracks.size())m_music->player.play(tracks[at].toObject(),tracks,at);}
+void PlaylistShowcase::playSong(int at){const auto tracks=queue();if(at>=0&&at<tracks.size()){m_music->archiveNowPlaying=true;m_music->archiveReturnItem=m_item;m_music->player.play(tracks[at].toObject(),tracks,at);m_music->changed();}}
 void PlaylistShowcase::subscribe(bool enabled){
     if(!info()["canSubscribe"].toBool()||m_music->writeLoading)return;
     const auto item=m_item;const auto k=m_key;const int lane=item["kind"]=="album"?4:3;QPointer<PlaylistShowcase> self(this);
