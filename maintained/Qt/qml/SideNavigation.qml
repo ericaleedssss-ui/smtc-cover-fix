@@ -96,7 +96,7 @@ Item {
         id: rail
         objectName: "sideNavigationRail"
         x: 18 * navigation.unit
-        y: (navigation.height - 100 * navigation.unit - height) / 2
+        y: navigation.drawerY + (navigation.drawerHeight-height)/2
         width: navigation.railWidth
         height: 164 * navigation.typeUnit
         visible: navigation.home
@@ -257,6 +257,7 @@ Item {
                     readonly property int count: (rhine.state.navigationCreated || []).length
                     NavRow {
                         width: parent.width - 33 * navigation.unit
+                        objectName: "createdPlaylistHeading"
                         label: "创建的歌单  " + parent.count
                         icon: "music"
                         chevron: true
@@ -299,6 +300,8 @@ Item {
                 }
                 DividerLine {}
                 NavRow {
+                    objectName: "collectedPlaylistHeading"
+                    width: list.width - 33 * navigation.unit
                     label: "收藏的歌单  " + (rhine.state.navigationCollected || []).length
                     icon: "star"
                     chevron: true
@@ -439,6 +442,7 @@ Item {
             color: row.heading ? navigation.muted : navigation.ink
         }
         VectorIcon {
+            objectName: "sectionChevron"
             visible: row.chevron
             anchors.right: parent.right
             anchors.rightMargin: 8 * navigation.unit

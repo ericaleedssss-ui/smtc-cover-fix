@@ -1,0 +1,8 @@
+                    // G78 compares the actual popup surface with the queue's canonical bounds.
+                    const auto drawerRect=hud.queueBounds(hud.width);
+                    const double drawerScale=window->height()/1080.;
+                    auto *drawerTint=findVisual(window->contentItem(),"drawerFrostTint");
+                    const auto drawerPoint=drawerTint?drawerTint->mapToScene(QPointF{}):QPointF{};
+                    check(drawerTint&&std::abs(drawerPoint.x()-drawerRect.x()*drawerScale)<2&&std::abs(drawerPoint.y()-drawerRect.y()*drawerScale)<2&&std::abs(drawerTint->width()-drawerRect.width()*drawerScale)<2&&std::abs(drawerTint->height()-drawerRect.height()*drawerScale)<2,"G78 messages use the exact queue frame after conversation navigation");
+                    auto *blockedSearch=findVisual(window->contentItem(),"globalSearch");
+                    check(blockedSearch&&!blockedSearch->isEnabled()&&findVisual(window->contentItem(),"messageClose")->isEnabled(),"G78 background input is disabled while conversation controls remain enabled");

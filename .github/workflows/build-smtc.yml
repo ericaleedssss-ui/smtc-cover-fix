@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rhine:
-    name: Rhine G77 real message center and frosted drawer QA
+    name: Rhine G78 unified drawers and exclusive pointer input QA
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -177,7 +177,7 @@ jobs:
       shell: python
       run: "import os, pathlib, shutil\nout = pathlib.Path('smtc-download')\nout.mkdir()\nshutil.copyfile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'rhine-maintained-source.json', out / 'MAINTAINED-SOURCE.json')\nsource = pathlib.Path('output/RhineMusicDatabase-v1.2.0-Windows-x64.zip')\n\
         assert source.is_file(), 'Expected portable application archive was not generated'\nshutil.copyfile(source, out /\
-        \ 'Rhine-G77-Message-Center-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G77 real NetEase messages, conversation history, confirmed text sending, account-scoped drafts, unread counts and readable frosted drawer; G76 shared initial heart state and stable cover resources; ordered collection sessions, compact search and account UI, user-provided heart artwork; independent queue overlays; G53 base, page\
+        \ 'Rhine-G78-Unified-Drawers-Windows-x64.zip')\n(out / 'BUILD-INFO.txt').write_text(\n    'G78 unified queue-sized frosted drawers, exclusive pointer input, aligned navigation and emoji composition; G77 real NetEase messages and confirmed text sending; G76 shared initial heart state and stable cover resources; ordered collection sessions, compact search and account UI, user-provided heart artwork; independent queue overlays; G53 base, page\
         \ history, reading sizes and glass player bar; based on Rhine v1.2.0\\n'\n    'Source: https://github.com/MikeQu223/Rhine-Music-Database/tree/b8b8ad5ed661fa32404731f1b09f7c37d34bf070\\\
         n'\n    'The application is modified with an SMTC thumbnail patch.\\n'\n    'CI build and offline tests must pass\
         \ before this artifact is uploaded.\\n'\n    'Interactive Windows playback and overlay behavior still need user verification.\\\
@@ -185,7 +185,7 @@ jobs:
     - name: Downloadable Rhine test build
       uses: actions/upload-artifact@v4
       with:
-        name: Rhine-G77-Message-Center-Windows-x64
+        name: Rhine-G78-Unified-Drawers-Windows-x64
         path: smtc-download/
         if-no-files-found: error
         retention-days: 7

@@ -105,10 +105,10 @@ Item {
         }
     }
 
-    LiquidGlass {
+    DrawerFrost {
         anchors.fill: parent; background: queue.background
         sampleX: queue.sampleX; sampleY: queue.sampleY
-        uiScale: queue.unit; radius: 27 * queue.unit; dark: queue.hud.dark === true
+        unit: queue.unit; dark: queue.hud.dark === true
     }
     // This component is a root-level input surface, above the page input
     // layer. Decorative materials never own a MouseArea.

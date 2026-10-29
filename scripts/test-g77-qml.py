@@ -43,6 +43,8 @@ class Controller(QAbstractListModel):
  def more(self):pass
  @Slot()
  def older(self):pass
+ @Slot(int)
+ def openResource(self,index):pass
  @Slot()
  def allRead(self):self.read+=1
 errors=[]
@@ -52,7 +54,7 @@ def handler(kind,ctx,text):
 from PySide6.QtCore import qInstallMessageHandler
 qInstallMessageHandler(handler)
 with tempfile.TemporaryDirectory() as tmp:
- d=Path(tmp);shutil.copyfile(repo/'maintained/Qt/qml/MessageDrawer.qml',d/'MessageDrawer.qml')
+ d=Path(tmp);shutil.copyfile(repo/'maintained/Qt/qml/MessageDrawer.qml',d/'MessageDrawer.qml');shutil.copyfile(repo/'maintained/Qt/qml/DrawerFrost.qml',d/'DrawerFrost.qml')
  (d/'Harness.qml').write_text('''import QtQuick
 import QtQuick.Controls.Basic
 ApplicationWindow {id:root;visible:true;width:1200;height:900
@@ -75,12 +77,17 @@ MessageDrawer {id:panel;controller:messageController;sceneBackground:bg;unit:.95
   assert o is not None
   p=o.mapToScene(o.boundingRect().center());QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(int(p.x()),int(p.y())));QTest.qWait(60)
  assert c.opened and find('messageList') is not None
- assert find('messageDrawer').property('x')>700
+
+ for _ in range(80):
+  if find('messageDrawer').property('opened'):break
+  QTest.qWait(25)
+ assert find('messageDrawer').property('x')>700, [(k,find('messageDrawer').property(k)) for k in ['x','destination','width','opened','visible']]
  window.grabWindow().save(str(repo.parent/'g77-message-preview.png'))
  for t in [1,2,3,0]:c.selectTab(t);QTest.qWait(10)
  c.activate(0);QTest.qWait(100);assert find('messageComposer').property('visible')
  editor=find('messageEditor');editor.forceActiveFocus();[QTest.keyClick(window,ord(ch.upper()),Qt.NoModifier) for ch in 'hello draft'];QTest.qWait(30);assert c.d=='HELLO DRAFT',c.d
  window.grabWindow().save(str(repo.parent/'g77-conversation-preview.png'))
+ click(find('messageEmoji'));QTest.qWait(50);click(find('messageEmojiChoice_0'));assert '😊' in c.d
  click(find('messageSend'));assert c.sent==1 and not c.d
  c.setDraft('saved draft');c.leaveConversation();c.startConversation('1','');QTest.qWait(40);assert editor.property('text')=='saved draft'
  click(find('messageBack'));assert not c.peer
