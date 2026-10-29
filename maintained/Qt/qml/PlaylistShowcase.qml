@@ -43,7 +43,7 @@ Item {
     }
     LiquidGlass {anchors.fill:parent;background:page.background;sampleX:page.x;sampleY:page.y;uiScale:page.unit;radius:28*page.unit;dark:rhine.state.dark}
     // Own only this panel's input; navigation and the player remain outside it.
-    MouseArea {anchors.fill:parent;onClicked:{};onWheel:e=>{if(page.showSongs)page.scrollSongs(e);else page.wheelRecord(e);e.accepted=true;}}
+    MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{if(page.showSongs)page.scrollSongs(e);else page.wheelRecord(e);e.accepted=true;}}
     Label {x:44*unit;y:44*unit;width:page.textWidth;text:"MUSIC DATABASE / "+(info.sourceLabel||"收藏歌单");font.pixelSize:13*unit;color:page.muted}
     Label {objectName:"showcaseTitle";x:44*unit;y:99*unit;width:page.textWidth;height:100*unit;text:info.title||"歌单";font.pixelSize:36*unit;font.weight:Font.DemiBold;wrapMode:Text.Wrap;maximumLineCount:2}
     Rectangle {x:44*unit;y:220*unit;width:page.textWidth;height:unit;color:page.muted;opacity:.5}

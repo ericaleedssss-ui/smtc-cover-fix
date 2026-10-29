@@ -3,7 +3,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen');os.environ.setdefault('QT_QUICK_BACKEND','software')
 from pathlib import Path
 import tempfile,shutil,subprocess
-from PySide6.QtCore import QObject,Signal,Property,Slot,QUrl,Qt,QPointF,QPoint,QCoreApplication,QResource
+from PySide6.QtCore import QLibraryInfo,QObject,Signal,Property,Slot,QUrl,Qt,QPointF,QPoint,QCoreApplication,QResource
 from PySide6.QtGui import QGuiApplication,QImage,QColor,QFontDatabase,QWheelEvent
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
@@ -60,6 +60,9 @@ with tempfile.TemporaryDirectory() as tmp:
   image=QImage(640,640,QImage.Format_RGB32);image.fill(QColor(color));path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
  for name in ['PlaylistShowcase','RecordStack','LiquidGlass']:
   origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
+  # Runtime loading accepts some syntax rejected by the release cache compiler.
+  compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
+  subprocess.run([str(compiler),'--only-bytecode','-o',str(d/f'{name}.qmlc'),str(d/f'{name}.qml')],check=True)
  entries=[]
  for name in ['liquidGlass','magazineEdgeFade']:
   origin=repo/'maintained/Qt/shaders'/f'{name}.frag'
