@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as tmp:
 import QtQuick.Controls.Basic as Controls
 Controls.ApplicationWindow {id:root;visible:true;width:1600;height:900;property real u:height/1080
 Rectangle {id:bg;anchors.fill:parent;color:"#d9d4c8";Repeater {model:18;Rectangle {x:index*120-900;y:-300;width:55;height:1800;rotation:28;color:"#e9e4d8"}}}
-PlaylistShowcase {id:page;controller:fixture;background:bg;x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u;unit:root.u}
+Loader {x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u;sourceComponent:PlaylistShowcase {controller:fixture;background:bg;unit:root.u}}
 }''')
  c=Controller(art);b=Backend();engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('fixture',c);engine.rootContext().setContextProperty('rhine',b);engine.rootContext().setContextProperty('rhineFontFamily',font);engine.load(QUrl.fromLocalFile(str(d/'Harness.qml')));assert engine.rootObjects(),errors;w=engine.rootObjects()[0];w.requestActivate();QTest.qWait(300)
  def find(name):
@@ -86,7 +86,7 @@ PlaylistShowcase {id:page;controller:fixture;background:bg;x:root.width*.5052083
   return descend(w.contentItem())
  def click(o):assert o is not None;QTest.mouseClick(w,Qt.LeftButton,Qt.NoModifier,o.mapToScene(o.boundingRect().center()).toPoint());QTest.qWait(60)
  for width,height in [(1600,900),(960,540),(960,720),(1920,1080)]:
-  w.setWidth(width);w.setHeight(height);QTest.qWait(100);page=find('playlistShowcase');stack=find('showcaseRecordStack');assert stack.x()>page.width()*.6;assert page.x()>width*.45 and page.width()<width*.55 and page.y()>=height*.36 and page.height()<height*.42
+  w.setWidth(width);w.setHeight(height);QTest.qWait(100);page=find('playlistShowcase');stack=find('showcaseRecordStack');assert stack.x()>page.width()*.6;assert page.x()==0 and page.y()==0;position=page.mapToScene(QPointF(0,0));assert position.x()>width*.45 and page.width()<width*.55 and position.y()>=height*.36 and page.height()<height*.42
   title=find('showcaseTitle');assert title.x()+title.width()<stack.x()+stack.width()*.1
   for name in ['showcasePlay','showcaseShuffle','showcaseCollect','showcaseMore']:
    button=find(name);assert button.mapToItem(page,button.boundingRect().bottomRight()).x()<stack.x()

@@ -6,6 +6,8 @@
         auto *archivePage=findVisual(window->contentItem(),"playlistShowcase");
         auto *archiveStack=findVisual(window->contentItem(),"showcaseRecordStack");
         check(archivePage&&archiveStack&&archiveStack->x()>archivePage->width()*.6,"G79 archive cover stack is on the right of the information panel");
-        check(archivePage&&archivePage->x()>window->width()*.45&&archivePage->width()<window->width()*.55&&archivePage->y()>window->height()*.36&&archivePage->height()<window->height()*.42,"G80 archive panel stays in the original right reading region and leaves room above for future modules");
+        const auto archivePosition=archivePage?archivePage->mapToScene(QPointF(0,0)):QPointF();
+        qInfo()<<"G80 archive window bounds"<<archivePosition<<(archivePage?archivePage->size():QSizeF())<<"window"<<window->size();
+        check(archivePage&&archivePosition.x()>window->width()*.45&&archivePage->width()<window->width()*.55&&archivePosition.y()>window->height()*.36&&archivePage->height()<window->height()*.42,"G80 archive panel stays in the original right reading region and leaves room above for future modules");
         if(showcase){showcase->operate("copy");check(QGuiApplication::clipboard()->text().contains("6001"),"G79 showcase more/share action copies the selected playlist's real link");}
     }
