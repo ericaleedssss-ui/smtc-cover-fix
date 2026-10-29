@@ -27,3 +27,9 @@ Full Windows compile/deploy, native integrated portrait check, packaging and phy
 ## Windows source-generation encoding correction
 
 Run 40924004830 stopped before compilation in `enable-g91.py`: implicit Path.read_text used the Windows cp1252 default on UTF-8 C++ containing Chinese text. Both input and output now specify UTF-8 explicitly. No UI/animation/API logic changes. The source-generation step is verified with the G91 script's implicit default deliberately simulated as cp1252; final Windows compilation and rendering remain pending.
+
+## Native portrait fixture envelope correction
+
+Run 40924512917 completed Windows compilation/deployment and the album description/scroll checks. The portrait assertion failed because the new Host-level fixture returned `{code,data}` instead of the real IPC envelope `{body:{code,data}}`. Production MusicApi correctly rejected it as invalid metadata; the lower-level domain fixture had not exercised that wrapper.
+
+The Windows fixture now supplies the real envelope. Added `scripts/test-g91-api-envelope.py`, which compiles the actual generated MusicApi.cpp/h and feeds precisely the portrait response expression generated into UiChecks.cpp, replacing only the IPC transport. Actual checks passed: the old malformed envelope is rejected; the corrected response survives parsing and returns the expected `data.artist.avatar`. Full source generation/identity and base-patch validation passed. UI/API/animation product code is unchanged in this correction. Full Windows integrated rerun remains pending.

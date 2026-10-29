@@ -2,7 +2,7 @@
 from pathlib import Path
 p=Path('Qt/tests/UiChecks.cpp');s=p.read_text(encoding='utf-8')
 old='''        if (route.endsWith("/detail")) {'''
-new='''        if (route == "/artist/detail")return QJsonObject{{"code",200},{"data",QJsonObject{{"artist",QJsonObject{{"avatar",artworkURL}}}}}};
+new='''        if (route == "/artist/detail")return QJsonObject{{"body",QJsonObject{{"code",200},{"data",QJsonObject{{"artist",QJsonObject{{"avatar",artworkURL}}}}}}}};
         if (route.endsWith("/detail")) {'''
 assert s.count(old)==1;s=s.replace(old,new)
 old='''            item["trackCount"] = 10;'''
