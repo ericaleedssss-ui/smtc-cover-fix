@@ -88,8 +88,11 @@ class PlaybackFixture(Controller):
 with tempfile.TemporaryDirectory() as tmp:
  d=Path(tmp);art=[]
  for i,color in enumerate(['#8b8e76','#4b5b50','#b6a58c']):
-  image=QImage(640,640,QImage.Format_ARGB32_Premultiplied);image.fill(Qt.transparent);painter=QPainter(image);painter.setRenderHint(QPainter.Antialiasing);painter.setPen(Qt.NoPen);painter.setBrush(QColor(color));painter.drawEllipse(2,2,636,636);painter.setBrush(QColor('#a9b399'));painter.drawEllipse(90,130,260,260);painter.end();path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
- for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon','ArtistMarquee','ArchiveNavigator','NowPlayingPanel']:
+  image=QImage(640,640,QImage.Format_ARGB32_Premultiplied);image.fill(Qt.transparent);painter=QPainter(image);painter.setRenderHint(QPainter.Antialiasing);painter.setPen(Qt.NoPen);painter.setBrush(QColor(color));painter.drawEllipse(2,2,636,636);
+  for ring,colour in enumerate(['#9baeb0','#a89b9d','#b58f94','#cd9b86','#eee5cb']):
+   inset=65+ring*47;painter.setBrush(QColor(colour));painter.drawEllipse(inset,inset,640-inset*2,640-inset*2)
+  painter.setBrush(QColor('#657666'));painter.drawEllipse(150,150,32,32);painter.end();path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
+ for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon','ArtistMarquee','ArchiveNavigator','NowPlayingPanel','NowPlayingShortcut']:
   origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
   # Runtime loading accepts some syntax rejected by the release cache compiler.
   compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
@@ -108,6 +111,7 @@ with tempfile.TemporaryDirectory() as tmp:
 import QtQuick.Controls.Basic as Controls
 Controls.ApplicationWindow {id:root;visible:true;width:1600;height:900;property real u:height/1080
 Item {id:base;anchors.fill:parent;Rectangle {id:bg;z:-2;anchors.fill:parent;color:rhine.state.dark?"#30362c":"#d9d4c8";Repeater {model:18;Rectangle {x:index*120-900;y:-300;width:55;height:1800;rotation:28;color:rhine.state.dark?"#3e4637":"#e9e4d8"}}}}
+NowPlayingShortcut {unit:root.u;x:root.width-98*root.u;y:root.height-69*root.u;width:36*root.u;height:width;available:true;playing:fixture.playback.playing;dark:rhine.state.dark;onOpenRequested:rhine.action("player:now-playing")}
 ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:base;controller:archive;playbackController:fixture;playing:true;collection:true;unit:root.u;x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u}
 }""")
  c=PlaybackFixture(art);a=Controller(art);b=Backend();engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('fixture',c);engine.rootContext().setContextProperty('archive',a);engine.rootContext().setContextProperty('rhine',b);engine.rootContext().setContextProperty('rhineFontFamily',font);engine.load(QUrl.fromLocalFile(str(d/'Harness.qml')));assert engine.rootObjects(),errors;w=engine.rootObjects()[0];w.requestActivate();QTest.qWait(250)
@@ -125,10 +129,14 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  reading.setProperty('frosted',False);QTest.qWait(50);assert not find('textFrostedPanel')
  reading.setProperty('frosted',True);QTest.qWait(50);glass=find('textFrostedPanel');assert glass
  for width,height in [(1600,900),(960,540),(960,720),(1920,1080)]:
-  w.setWidth(width);w.setHeight(height);QTest.qWait(80);page=find('nowPlayingPanel');disc=find('nowRecord');lyric=find('nowPlayingLyrics');assert disc.x()>page.width()*.6 and lyric.x()+lyric.width()<disc.x()+5*height/1080
+  w.setWidth(width);w.setHeight(height);QTest.qWait(80);page=find('nowPlayingPanel');disc=find('nowRecord');lyric=find('nowPlayingLyrics');field=find('nowDiscField');assert field.property('clip') and disc.width()>page.width()*.45 and field.x()+field.width()<=page.width()+1 and lyric.x()+lyric.width()<field.x()+field.width()*.25
   assert page.height()==440*height/1080 and abs(page.width()-reading.width())<1
   w.grabWindow().save(str(repo.parent/f'g86-now-playing-{width}x{height}.png'))
  w.setWidth(1600);w.setHeight(900);QTest.qWait(80)
+ shortcut=find('globalNowPlaying');click(shortcut);assert b.actions[-1]=='player:now-playing'
+ count=len(b.actions);shortcut.setProperty('blocked',True);click(shortcut);assert len(b.actions)==count
+ shortcut.setProperty('blocked',False);shortcut.setProperty('available',False);click(shortcut);assert len(b.actions)==count
+ shortcut.setProperty('available',True)
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==32

@@ -1,0 +1,17 @@
+void NativeHud::openNowPlaying() {
+    auto &music=*m_music;
+    if(music.player.current.isEmpty())return;
+    // Keep the established FM presentation and transport untouched.
+    if(music.player.roamActive){openPlayingSong(true);return;}
+    const auto origin=MusicData::queueSource(music.player.current["queueSource"].toObject());
+    if(music.directory)music.leaveDirectory(false);
+    if(frame["viewer"].toBool())m_scene.viewerKey("Escape");
+    if(!modal.isEmpty())closeModal(false);
+    modal.clear();closing=false;m_modalBack.clear();
+    closeComments();lyricsMode=false;queueOpen=false;
+    focusAction.clear();hoveredLink.clear();
+    music.archiveReturnItem=origin;music.archivePlayingDirectory.reset();
+    music.archiveNowPlaying=true;
+    m_scene.mode("archive");frame["mode"]="archive";music.frame["mode"]="archive";
+    music.changed();m_host->invalidate();
+}

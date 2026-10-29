@@ -10,13 +10,27 @@ layout(std140, binding = 0) uniform Params {
 };
 layout(binding = 1) uniform sampler2D artwork;
 void main() {
+    if(shadowOnly>3.5){
+        vec2 q=qt_TexCoord0-.5;float r=length(q);
+        float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.20;
+        float arc=exp(-pow((r-.474)/.012,2.0))*.24*smoothstep(-.3,.4,-q.x-q.y);
+        float a=(band+arc)*(1.0-smoothstep(.43,.50,r));
+        vec3 light=mix(vec3(1.0,.98,.91),vec3(.86,.91,.82),darkMode);
+        fragColor=vec4(light*a,a)*qt_Opacity;return;
+    }
+    if(shadowOnly>2.5){
+        vec2 uv=qt_TexCoord0;
+        float mask=smoothstep(.0,.25,uv.x)*(1.0-smoothstep(.94,1.0,uv.x));
+        mask*=smoothstep(0.0,.07,uv.y)*(1.0-smoothstep(.90,1.0,uv.y));
+        fragColor=texture(artwork,uv)*mask*qt_Opacity;return;
+    }
     if(shadowOnly>1.5){
         // Rotate texture coordinates inside an immobile circular surface.
         // Neither the platter's quad nor its perspective transform rotates.
         vec2 q=qt_TexCoord0-.5;
         float angle=-phase*6.28318530718;
         vec2 uv=mat2(cos(angle),sin(angle),-sin(angle),cos(angle))*q+.5;
-        float mask=1.0-smoothstep(.496,.5,length(q));
+        float mask=1.0-smoothstep(.455,.50,length(q));
         fragColor=texture(artwork,uv)*mask*qt_Opacity;return;
     }
     // Same fixed plane as the platter, with padded bounds for feathered light.
@@ -36,16 +50,15 @@ void main() {
         vec3 colour=mix(vec3(.35,.29,.22),tint,.45);
         fragColor=vec4(colour*alpha,alpha)*qt_Opacity;
     } else {
-        float light=exp(-pow((r-.55)/.105,2.0))*.10;
-        for(int i=0;i<3;++i){
-            float t=fract(phase+float(i)/3.0);
-            float radius=.49+t*.29;
+        // Wide translucent bands overlap into a soft field, not outline rings.
+        float light=exp(-pow((r-.54)/.15,2.0))*.10;
+        for(int i=0;i<4;++i){
+            float t=fract(phase+float(i)/4.0);
+            float radius=.43+t*.36;
             float envelope=sin(t*3.14159265)*(1.0-t);
-            // Soft luminous ribbon accompanied by a finer highlight.
-            light+=envelope*(.17*exp(-pow((r-radius)/.021,2.0))
-                             +.33*exp(-pow((r-radius)/.0035,2.0)));
+            light+=envelope*.42*exp(-pow((r-radius)/.065,2.0));
         }
-        float alpha=clamp(light*edge,0.0,.48);
+        float alpha=(1.0-exp(-light))*edge;
         fragColor=vec4(ivory*alpha,alpha)*qt_Opacity;
     }
 }

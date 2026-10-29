@@ -1,0 +1,34 @@
+    {
+        // Exercise the actual footer QML button, including from a separate modal.
+        const auto savedPlaying=music.player.current;
+        const auto savedQueue=music.player.queue;
+        const auto savedIndex=music.player.index;
+        const auto savedMode=music.player.mode;
+        auto currentSong=MusicData::withQueueSource(song,playlistChoice);
+        music.player.current=currentSong;music.player.queue={currentSong};music.player.index=0;
+        music.player.roamActive=false;music.player.changed();
+        hud.openModal("settings");refresh();
+        auto *entry=findVisual(window->contentItem(),"globalNowPlaying");
+        check(entry&&entry->isVisible()&&entry->isEnabled(),"G88 global now-playing entry remains available from settings");
+        if(entry){
+            const auto point=entry->mapToScene(QPointF(entry->width()/2,entry->height()/2));
+            for(const auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){
+                QMouseEvent mouse(type,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,type==QEvent::MouseButtonPress?Qt::LeftButton:Qt::NoButton,Qt::NoModifier);
+                QCoreApplication::sendEvent(window,&mouse);
+            }
+            refresh();
+        }
+        check(hud.modal.isEmpty()&&hud.frame["mode"]=="archive"&&!music.directory&&findVisual(window->contentItem(),"nowPlayingPanel"),"G88 footer click opens the current song in the existing home glass");
+        check(music.player.current==currentSong&&music.player.queue==QJsonArray{currentSong}&&music.player.index==0,"G88 global entry never restarts playback or replaces its queue");
+        auto *desktop=findVisual(window->contentItem(),"nativeHit_desktop:toggle");
+        const auto volumeBounds=backend.state().value("volume").toMap();const auto stageUnit=window->height()/1080.;
+        check(desktop&&entry&&(volumeBounds.value("x").toDouble()+volumeBounds.value("width").toDouble())*stageUnit<desktop->mapToScene(QPointF()).x()&&desktop->mapToScene(QPointF(desktop->width(),0)).x()<entry->mapToScene(QPointF()).x(),"G88 volume, desktop lyrics and global now-playing have separate aligned hit regions");
+        auto *field=findVisual(window->contentItem(),"nowDiscField");auto *page=findVisual(window->contentItem(),"nowPlayingPanel");auto *disc=findVisual(window->contentItem(),"nowRecord");
+        check(field&&field->clip()&&page&&disc&&disc->width()>page->width()*.45,"G88 immersive disc is enlarged inside its bounded fading field");
+        hud.openModal("player");refresh();entry=findVisual(window->contentItem(),"globalNowPlaying");
+        check(entry&&!entry->isEnabled(),"G88 queue modal blocks the now-playing shortcut with all other background controls");
+        backend.action("queue-close");refresh();
+        window->grabWindow().save(output+"/preview-g88-immersive-now-playing.png");
+        music.player.current=savedPlaying;music.player.queue=savedQueue;music.player.index=savedIndex;music.player.mode=savedMode;
+        music.player.changed();
+    }
