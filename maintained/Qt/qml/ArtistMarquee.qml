@@ -9,6 +9,7 @@ Item {
     property real shift:0
     readonly property real distance:Math.max(0,names.width-width)
     signal personClicked(string id)
+    implicitWidth:names.width
     clip:true
     Item {
         id:surface;anchors.fill:parent
@@ -23,8 +24,9 @@ Item {
                     height:view.height;verticalAlignment:Text.AlignVCenter
                     text:(index?" / ":"")+(modelData.name||"");textFormat:Text.PlainText
                     font.family:rhineFontFamily;font.pixelSize:13*view.unit
-                    color:rhine.state.dark?"#eceee3":"#30372e"
-                    MouseArea {anchors.fill:parent;enabled:!!parent.modelData.id;cursorShape:Qt.PointingHandCursor;onClicked:view.personClicked(parent.modelData.id)}
+                    color:personHit.containsMouse?(rhine.state.dark?"#cedbbf":"#647b52"):(rhine.state.dark?"#eceee3":"#30372e")
+                    Behavior on color {ColorAnimation {duration:120}}
+                    MouseArea {id:personHit;hoverEnabled:true;anchors.fill:parent;enabled:!!parent.modelData.id;cursorShape:Qt.PointingHandCursor;onClicked:view.personClicked(parent.modelData.id)}
                 }
             }
         }

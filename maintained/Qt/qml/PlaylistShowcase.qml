@@ -61,7 +61,7 @@ Item {
                 Item {
                     width:20*page.unit;height:24*page.unit
                     ArchiveActionIcon {anchors.centerIn:parent;width:(button.primary?18:22)*page.unit;height:width;source:button.artwork;tint:button.foreground;visible:!button.heart}
-                    RhineIcon {anchors.centerIn:parent;width:19*page.unit;height:width;name:"heart";color:button.foreground;visible:button.heart}
+                    Image {objectName:"showcaseCollectArtwork";anchors.centerIn:parent;width:23*page.unit;height:width;source:button.heart?(info.subscribed?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";fillMode:Image.PreserveAspectFit;visible:button.heart;cache:true}
                 }
                 Label {visible:button.text!=="";text:button.text;color:button.foreground;height:24*page.unit;verticalAlignment:Text.AlignVCenter;font.pixelSize:14*page.unit}
             }
@@ -74,9 +74,11 @@ Item {
     Label {x:26*unit;y:26*unit;width:page.textWidth;text:"MUSIC DATABASE / "+(info.sourceLabel||"收藏歌单");font.pixelSize:12*unit;color:page.muted}
     Label {
         objectName:"showcaseTitle";x:26*unit;y:59*unit;width:page.textWidth;height:68*unit
+        color:titleHit.containsMouse?(rhine.state.dark?"#cedbbf":"#647b52"):page.ink
+        Behavior on color {ColorAnimation {duration:120}}
         text:info.title||(info.kind==="album"?"专辑":"歌单");font.pixelSize:28*unit;font.weight:Font.Bold
         wrapMode:Text.Wrap;maximumLineCount:2
-        MouseArea {anchors.fill:parent;enabled:!!info.key;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}
+        MouseArea {id:titleHit;hoverEnabled:true;anchors.fill:parent;enabled:!!info.key;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}
     }
     Rectangle {x:26*unit;y:137*unit;width:page.textWidth;height:unit;color:page.muted;opacity:.5}
     Rectangle {x:26*unit;y:134*unit;width:6*unit;height:6*unit;color:page.ink}
@@ -98,30 +100,46 @@ Item {
         }
         WheelHandler {target:null;onWheel:e=>{page.scrollSongs(e);e.accepted=true;}}
         onContentYChanged:{var row=indexAt(1,contentY+height*.5);if(row>=0)controller.preview(row);}
-        delegate:Rectangle {required property var modelData;required property int index;width:songList.width;height:32*page.unit;opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(1,Math.max(0,(y-songList.contentY+height/2)/(14*page.unit)),Math.max(0,(songList.height-y+songList.contentY-height/2)/(12*page.unit))):1;radius:5*page.unit;color:page.songIndex===index?"#286f845e":"transparent"
+        delegate:Rectangle {required property var modelData;required property int index;width:songList.width;height:32*page.unit;opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(1,Math.max(0,(y-songList.contentY+height/2)/(14*page.unit)),Math.max(0,(songList.height-y+songList.contentY-height/2)/(12*page.unit))):1;radius:5*page.unit;color:page.songIndex===index?"#286f845e":songHit.containsMouse?"#126f845e":"transparent"
+            Behavior on color {ColorAnimation {duration:100}}
             Label {x:9*page.unit;width:parent.width-18*page.unit;anchors.verticalCenter:parent.verticalCenter;text:(index+1)+"  "+modelData.title+(modelData.artist?" · "+modelData.artist:"");font.pixelSize:16*page.unit}
-            MouseArea {anchors.fill:parent;onClicked:{page.songIndex=index;page.controller.preview(index);}onDoubleClicked:page.controller.playSong(index)}
+            MouseArea {id:songHit;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;anchors.fill:parent;onClicked:{page.songIndex=index;page.controller.preview(index);}onDoubleClicked:page.controller.playSong(index)}
         }
         Label {visible:songList.count===0;anchors.centerIn:parent;text:info.loading?"读取曲目中…":info.loadFailed?"曲目读取失败，请在更多中重试":info.loaded?"暂无曲目":"等待曲目信息…";color:page.muted}
     }
     Row {
-        visible:!page.showSongs;x:26*unit;y:269*unit;spacing:12*unit;height:32*unit
+        id:metadataRow;objectName:"showcaseMetadata";visible:!page.showSongs;x:26*unit;y:269*unit;width:page.textWidth;spacing:8*unit;height:32*unit
         Item {
-            id:identityInfo;width:Math.min(210*unit,page.textWidth*.38);height:32*unit
-            Rectangle {width:30*unit;height:width;radius:width/2;color:rhine.state.dark?"#59614f":"#cdd2c5"
+            id:identityInfo;objectName:"showcaseIdentity";width:40*unit+Math.min(identityNames.implicitWidth,Math.max(48*unit,(metadataRow.width-trackCountInfo.implicitWidth-dateInfo.implicitWidth-40*unit-6*metadataRow.spacing-3*unit)*.48));height:32*unit
+            Rectangle {width:30*unit;height:width;radius:width/2;color:avatarHit.containsMouse?"#90a080":(rhine.state.dark?"#59614f":"#cdd2c5")
                 RhineIcon {anchors.centerIn:parent;width:18*unit;height:width;name:"user";color:page.muted}
                 Image {id:identityAvatar;onStatusChanged:if(status===Image.Error&&page.controller.retryIdentityAvatar)page.controller.retryIdentityAvatar();objectName:"showcaseIdentityAvatar";anchors.fill:parent;source:info.identityAvatar||"";asynchronous:true;cache:true;sourceSize:Qt.size(96,96);fillMode:Image.PreserveAspectCrop;visible:status===Image.Ready
                     layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
                     layer.effect:MultiEffect {maskEnabled:true;maskSource:identityMask}
                 }
                 Rectangle {id:identityMask;anchors.fill:parent;radius:width/2;visible:false;layer.enabled:true}
+                Rectangle {anchors.fill:parent;radius:width/2;color:avatarHit.containsMouse?"#246f845e":"transparent";Behavior on color {ColorAnimation {duration:120}}}
+                MouseArea {id:avatarHit;anchors.fill:parent;enabled:!!info.identityCanOpen;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("creator")}
             }
-            Label {x:39*unit;width:28*unit;height:32*unit;verticalAlignment:Text.AlignVCenter;text:info.kind==="album"?"艺人":"创建者";font.pixelSize:12*unit;color:page.muted}
-            ArtistMarquee {x:73*unit;width:Math.max(0,parent.width-x);height:32*unit;unit:page.unit;people:info.identities||[];fallback:info.artist||"未知";onPersonClicked:id=>controller.openIdentity(id)}
+            ArtistMarquee {id:identityNames;x:40*unit;width:Math.max(0,parent.width-x);height:32*unit;unit:page.unit;people:info.identities||[];fallback:info.artist||"未知";onPersonClicked:id=>controller.openIdentity(id)}
 
         }
-        Label {id:trackCountInfo;height:32*unit;verticalAlignment:Text.AlignVCenter;text:"│  "+(info.total||0)+" 首歌曲";font.pixelSize:13*unit}
-        Label {width:Math.max(0,page.textWidth-identityInfo.width-trackCountInfo.width-24*unit);height:32*unit;verticalAlignment:Text.AlignVCenter;text:"│  "+(info.durationLabel||"");font.pixelSize:13*unit;color:page.muted}
+        Rectangle {width:unit;height:13*unit;y:9*unit;color:page.muted;opacity:.4}
+        Label {id:tagInfo;objectName:"showcaseTags";height:32*unit;verticalAlignment:Text.AlignVCenter;font.pixelSize:13*unit;color:page.muted
+            text:(info.tags||[]).length?info.tags.join(" / "):"暂无标签"
+            width:Math.min(implicitWidth,Math.max(24*unit,metadataRow.width-identityInfo.width-trackCountInfo.implicitWidth-dateInfo.implicitWidth-6*metadataRow.spacing-3*unit))
+            HoverHandler {id:tagHover}
+            Controls.ToolTip.visible:tagHover.hovered&&tagInfo.truncated
+            Controls.ToolTip.text:tagInfo.text
+        }
+        Rectangle {width:unit;height:13*unit;y:9*unit;color:page.muted;opacity:.4}
+        Label {id:trackCountInfo;objectName:"showcaseTrackCount";height:32*unit;verticalAlignment:Text.AlignVCenter;text:(info.total||0)+" 首歌曲";font.pixelSize:13*unit}
+        Rectangle {width:unit;height:13*unit;y:9*unit;color:page.muted;opacity:.4}
+        Label {id:dateInfo;objectName:"showcaseDate";height:32*unit;verticalAlignment:Text.AlignVCenter;text:info.createdDate||info.date||"日期暂无";font.pixelSize:13*unit;color:page.muted
+            HoverHandler {id:dateHover}
+            Controls.ToolTip.visible:dateHover.hovered
+            Controls.ToolTip.text:info.kind==="album"?"发行日期":"创建日期"
+        }
     }
     Row {x:26*unit;y:332*unit;spacing:9*unit
         Button {objectName:"showcasePlay";text:"播放全部";artwork:"qrc:/icons/archive-play.png";primary:true;width:Math.min(144*unit,(page.textWidth-69*unit)*.36);enabled:!controller.busy;onClicked:controller.operate("play")}

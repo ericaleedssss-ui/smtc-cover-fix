@@ -16,3 +16,9 @@ test('identity artwork keeps real creator and artist URLs, never album cover',()
  const album=parse({id:103,name:'Album',picUrl:'https://example.org/cover.png',artists:[{id:5,name:'Artist'}]},'album');assert.equal(album.artists[0].avatar,'');assert.notEqual(album.artists[0].avatar,album.cover);
  const playlist=parse({id:104,name:'Playlist',creator:{userId:6,nickname:'Creator',avatarUrl:'https://example.org/user.png'}},'playlist');assert.equal(playlist.creatorAvatar,'https://example.org/user.png');
 });
+
+test('archive metadata keeps actual tags and creation/publication dates separate',()=>{
+ const playlist=parse({id:105,name:'Tagged',tags:['摇滚','实验'],createTime:new Date(2025,5,12,12).getTime()},'playlist');
+ assert.deepEqual(playlist.tags,['摇滚','实验']);assert.equal(playlist.createdDate,'2025-06-12');assert.ok(!playlist.date);
+ const album=parse({id:106,name:'Released',publishTime:new Date(2024,3,9,12).getTime()},'album');assert.equal(album.date,'2024-04-09');assert.ok(!album.createdDate);
+});
