@@ -11,7 +11,7 @@ Item {
     readonly property var playback:controller.playback
     readonly property color ink:rhine.state.dark?"#eceee3":"#30372e"
     readonly property color muted:rhine.state.dark?"#b1b9a5":"#77806e"
-    readonly property real discSize:Math.min(490*unit,width*.60)
+    readonly property real discSize:Math.min(450*unit,width*.51-10*unit)
     readonly property real textWidth:width*.50-42*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
     function syncMotion(){
@@ -25,7 +25,7 @@ Item {
     Component.onCompleted:syncMotion()
     property bool following:true
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
-    function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Center);}
+    function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Beginning);}
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
     onInfoChanged:if(info.session!==session){session=info.session||"";following=true;lyrics.contentY=0;}
     property string session:""
@@ -55,14 +55,16 @@ Item {
     }
     MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{var p=mapToItem(null,e.x,e.y);rhine.wheelInput(p.x/page.unit,p.y/page.unit,e.pixelDelta.y,e.angleDelta.y);e.accepted=true;}}
     Label {x:26*unit;y:25*unit;width:page.textWidth;text:"NOW PLAYING / 正在播放";font.pixelSize:11*unit;color:page.muted}
-    Label {objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:56*unit;text:info.title||"正在播放";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
+    Label {id:songTitle;objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:implicitHeight;text:info.title||"正在播放";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
         color:titleHit.containsMouse?page.muted:page.ink
         MouseArea {id:titleHit;objectName:"nowPlayingTitleHit";anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:page.controller.operate("details")}
     }
-    Label {x:26*unit;y:118*unit;width:page.textWidth;text:info.album||"";font.pixelSize:12*unit;color:page.muted}
+    Label {objectName:"nowAlbum";x:26*unit;y:songTitle.y+songTitle.height+7*unit;width:page.textWidth;text:info.album||"";font.pixelSize:12*unit;color:albumHit.containsMouse?page.ink:page.muted
+        MouseArea {id:albumHit;objectName:"nowAlbumHit";anchors.fill:parent;enabled:!!page.info.albumID&&String(page.info.albumID)!=="0";hoverEnabled:true;cursorShape:enabled?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:page.controller.operate("album")}
+    }
     ListView {
         id:lyrics;objectName:"nowPlayingLyrics";x:24*unit;y:146*unit;width:page.textWidth+4*unit;height:161*unit
-        model:page.controller.lines;clip:true;boundsBehavior:Flickable.StopAtBounds;spacing:4*unit
+        model:page.controller.lines;clip:true;boundsBehavior:Flickable.StopAtBounds;spacing:5*unit
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:ShaderEffect {property variant source;property size panelSize:Qt.size(lyrics.width,lyrics.height);property real topInset:0;property real fadePx:10*page.unit;property real fadeTop:1;property real bottomFadePx:10*page.unit;fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"}
         WheelHandler {target:null;onWheel:e=>{page.following=false;var dy=e.pixelDelta.y||e.angleDelta.y/120*55*page.unit;lyrics.contentY=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),lyrics.contentY-dy));e.accepted=true;}}
@@ -74,13 +76,13 @@ Item {
             required property int index
             objectName:"nowLyric_"+index
             property bool current:index===page.playback.index
-            width:lyrics.width;height:Math.max(39*page.unit,words.implicitHeight+10*page.unit)
+            width:lyrics.width;height:Math.max(78*page.unit,words.implicitHeight+18*page.unit)
             opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(1,Math.max(0,(y-lyrics.contentY+height/2)/(10*page.unit)),Math.max(0,(lyrics.height-y+lyrics.contentY-height/2)/(10*page.unit))):1
             Rectangle {anchors.fill:parent;radius:5*page.unit;color:hit.containsMouse?"#186f845e":"transparent";Behavior on color {ColorAnimation {duration:120}}}
             Label {x:2*page.unit;anchors.verticalCenter:parent.verticalCenter;width:34*page.unit;text:page.stamp(line.modelData.startMs||0);font.pixelSize:9*page.unit;color:page.muted;visible:hit.containsMouse&&page.playback.timed}
-            Column {id:words;x:39*page.unit;y:5*page.unit;width:parent.width-x-5*page.unit;spacing:4*page.unit
-                Label {width:parent.width;text:line.modelData.text||"";wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:17*page.unit;font.weight:line.current?Font.DemiBold:Font.Normal;color:line.current||hit.containsMouse?page.ink:page.muted;opacity:line.current||hit.containsMouse?1:.6}
-                Label {width:parent.width;text:line.modelData.translation||"";visible:!!text;wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:11*page.unit;color:page.muted}
+            Column {id:words;x:33*page.unit;y:9*page.unit;width:parent.width-x-5*page.unit;spacing:4*page.unit
+                Label {width:parent.width;text:line.modelData.text||"";wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:22*page.unit;font.weight:line.current?Font.Medium:Font.Normal;maximumLineCount:2;color:line.current||hit.containsMouse?page.ink:page.muted;opacity:line.current||hit.containsMouse?.94:.82}
+                Label {width:parent.width;text:line.modelData.translation||"";visible:!!text;wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:12*page.unit;color:page.muted;maximumLineCount:2}
             }
             MouseArea {id:hit;anchors.fill:parent;hoverEnabled:true;cursorShape:page.playback.timed&&page.playback.seekable?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{page.controller.seekLine(line.index,page.info.session);page.following=true;}}
         }
@@ -91,7 +93,6 @@ Item {
         Action {objectName:"nowComments";symbol:"comment";width:92*page.unit;text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
         Action {objectName:"nowLike";width:82*page.unit;enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
         Action {objectName:"nowShare";symbol:"share";width:82*page.unit;text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
-        Action {objectName:"nowMore";symbol:"more";width:34*page.unit;Accessible.name:"更多";onClicked:more.popup()}
     }
     Label {x:26*unit;y:369*unit;width:page.textWidth;text:controller.status||"";font.pixelSize:10*unit;color:page.muted}
     Row {id:metadata;x:26*unit;y:392*unit;width:page.textWidth;spacing:8*unit;height:26*unit
@@ -106,35 +107,13 @@ Item {
         Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
     }
     Item {
-        id:discField;objectName:"nowDiscField";x:page.width*.45;y:0;width:page.width-x;height:page.height;clip:true;z:-1
-        layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
-        layer.samplerName:"artwork"
-        layer.effect:ShaderEffect {
-            property variant artwork
-            property real phase:0
-            property real shadowOnly:3
-            property real darkMode:0
-            fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-        }
-    Item {
-        id:record;objectName:"nowRecord";x:parent.width-width+38*page.unit;y:(parent.height-height)/2-6*page.unit;width:page.discSize;height:width
-        property real phase:0
-        NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
-        // The perspective belongs to the stationary platter. Only its inset print spins.
-        Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent
-            transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            ShaderEffect {
-                objectName:"nowRecordShadow";opacity:.35;x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
-                property variant artwork:shadowArt
-                property real phase:0
-                property real shadowOnly:1
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
-            }
-            Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
-                ShaderEffect {
-                    x:-parent.width*.32;y:x;width:parent.width*1.64;height:width
+        id:discField;objectName:"nowDiscField";x:page.width*.28;y:0;width:page.width-x;height:page.height;clip:true;z:-1
+        Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.samplerName:"artwork"
+            layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:3;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+            Item {id:haloPlane;x:record.x;y:record.y;width:record.width;height:record.height
+                transform:[Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.32;y:x;width:parent.width*1.64;height:width
                     property variant artwork:shadowArt
                     property real phase:record.phase
                     property real shadowOnly:0
@@ -142,14 +121,31 @@ Item {
                     fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
                 }
             }
+        }
+    Item {
+        id:record;objectName:"nowRecord";x:parent.width-width-6*page.unit;y:(parent.height-height)/2-6*page.unit;width:page.discSize;height:width
+        property real phase:0
+        NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
+        // The perspective belongs to the stationary platter. Only its inset print spins.
+        Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent
+            transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+            ShaderEffect {
+                objectName:"nowRecordShadow";opacity:.18;x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
+                property variant artwork:shadowArt
+                property real phase:0
+                property real shadowOnly:1
+                property real darkMode:rhine.state.dark?1:0
+                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+            }
             // Thin fixed ivory lip and contact edge, with no offset opaque cylinder.
-            Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;opacity:.12;color:rhine.state.dark?"#666759":"#bfb09b"}
-            Rectangle {objectName:"nowRecordPlatter";anchors.fill:parent;radius:width/2;opacity:.10
+            Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;opacity:.24;color:rhine.state.dark?"#666759":"#bfb09b"}
+            Rectangle {objectName:"nowRecordPlatter";anchors.fill:parent;radius:width/2;opacity:.26
                 gradient:Gradient {GradientStop {position:0;color:rhine.state.dark?"#d0cbb6":"#fff9ed"} GradientStop {position:.6;color:rhine.state.dark?"#777a68":"#eae1d0"} GradientStop {position:1;color:rhine.state.dark?"#a7a48e":"#d5c5ae"}}
                 border.width:page.unit;border.color:"#c0fffdf5"
             }
             Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:4*page.unit;transformOrigin:Item.Center
-                opacity:rhine.state.dark?.72:.64
+                opacity:rhine.state.dark?.76:.68
                 property real spinAngle:0
                 NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
                 Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
@@ -174,8 +170,16 @@ Item {
         }
     }
     }
-    Label {objectName:"nowDetails";anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
-    Controls.Menu {id:more;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
+    Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
+        Controls.Button {objectName:"nowMore";text:"更多";width:30*page.unit;height:18*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true
+            contentItem:Label {text:"更多";font.pixelSize:10*page.unit;color:parent.hovered?page.ink:page.muted;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
+            background:Item {}
+            HoverHandler {cursorShape:Qt.PointingHandCursor}
+            onClicked:{var p=mapToItem(page,0,0);more.x=Math.max(0,Math.min(page.width-more.implicitWidth,p.x));more.y=Math.max(0,p.y-more.implicitHeight-6*page.unit);more.open();}
+        }
+        Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
+    }
+    Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
         Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}
         Controls.MenuItem {text:"查看歌曲详情";onTriggered:controller.operate("details")}
         Controls.MenuItem {text:"重新读取歌词";onTriggered:controller.operate("retry-lyrics")}

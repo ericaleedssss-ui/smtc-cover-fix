@@ -76,7 +76,7 @@ class PlaybackFixture(Controller):
  currentLine=1
  @Property('QVariantMap',notify=Controller.changed)
  def info(self):
-  return dict(session='netease:'+str(self.at+1),id=str(self.at+1),title=['现在正在播放的真实歌曲','另一首歌曲','第三首'][self.at],album='专辑名称',artist='Artist one / Second artist',artists=[dict(id='7',name='Artist one'),dict(id='8',name='Second artist')],coverPixels=self.art[self.at],artistAvatar=self.art[0],date='2024-03-02',tags=['Jazz','Soul'],canLike=True,likeKnown=True,likeBusy=False,liked=False)
+  return dict(session='netease:'+str(self.at+1),id=str(self.at+1),title=['现在正在播放的真实歌曲','另一首歌曲','第三首'][self.at],album='专辑名称',albumID='8',artist='Artist one / Second artist',artists=[dict(id='7',name='Artist one'),dict(id='8',name='Second artist')],coverPixels=self.art[self.at],artistAvatar=self.art[0],date='2024-03-02',tags=['Jazz','Soul'],canLike=True,likeKnown=True,likeBusy=False,liked=False)
  @Property('QVariantMap',notify=playbackChanged)
  def playback(self):return dict(playing=self.playing,seekable=True,index=self.currentLine,timed=True,lyricStatus='ready')
  @Property('QVariantList',notify=linesChanged)
@@ -129,7 +129,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  reading.setProperty('frosted',False);QTest.qWait(50);assert not find('textFrostedPanel')
  reading.setProperty('frosted',True);QTest.qWait(50);glass=find('textFrostedPanel');assert glass
  for width,height in [(1600,900),(960,540),(960,720),(1920,1080)]:
-  w.setWidth(width);w.setHeight(height);QTest.qWait(80);page=find('nowPlayingPanel');disc=find('nowRecord');lyric=find('nowPlayingLyrics');field=find('nowDiscField');assert field.property('clip') and disc.width()>page.width()*.45 and field.x()+field.width()<=page.width()+1 and lyric.x()+lyric.width()<field.x()+field.width()*.25
+  w.setWidth(width);w.setHeight(height);QTest.qWait(80);page=find('nowPlayingPanel');disc=find('nowRecord');lyric=find('nowPlayingLyrics');field=find('nowDiscField');assert field.property('clip') and disc.width()>page.width()*.45 and field.x()+field.width()<=page.width()+1 and lyric.x()+lyric.width()<disc.mapToItem(page,QPointF()).x()
   assert page.height()==440*height/1080 and abs(page.width()-reading.width())<1
   w.grabWindow().save(str(repo.parent/f'g86-now-playing-{width}x{height}.png'))
  w.setWidth(1600);w.setHeight(900);QTest.qWait(80)
@@ -144,6 +144,22 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  angle=spin.property('spinAngle');QTest.qWait(180);assert spin.property('spinAngle')>angle+.3
  assert spin.rotation()==0 and base.rotation()==0 and platter.rotation()==0 and edge.rotation()==0
  c.playing=False;c.playbackChanged.emit();QTest.qWait(200);angle=spin.property('spinAngle');QTest.qWait(150);assert abs(spin.property('spinAngle')-angle)<.01 and find('nowRecordRings').opacity()==0
+ if os.environ.get('QT_QUICK_BACKEND')=='rhi':
+  rings=find('nowRecordRings');record=find('nowRecord');rings.setOpacity(1)
+  record.setProperty('phase',.03);QTest.qWait(80);first=w.grabWindow();first.save(str(repo.parent/'g89-ripples-a.png'))
+  record.setProperty('phase',.18);QTest.qWait(80);second=w.grabWindow();second.save(str(repo.parent/'g89-ripples-b.png'))
+  field=find('nowDiscField');origin=field.mapToScene(QPointF());maximum=0;total=0
+  for py in range(int(origin.y()),int(origin.y()+field.height()),3):
+   for px in range(int(origin.x()),int(origin.x()+field.width()),3):
+    aa=first.pixelColor(px,py);bb=second.pixelColor(px,py);delta=max(abs(aa.red()-bb.red()),abs(aa.green()-bb.green()),abs(aa.blue()-bb.blue()));maximum=max(maximum,delta);total+=delta
+  assert maximum>=8 and total>1500,('ripple not visibly moving',maximum,total)
+  listing=find('nowPlayingLyrics');origin=listing.mapToScene(QPointF());leftMaximum=0
+  for py in range(int(origin.y()),int(origin.y()+listing.height()),3):
+   for px in range(int(origin.x()),int(origin.x()+listing.width()),3):
+    aa=first.pixelColor(px,py);bb=second.pixelColor(px,py);leftMaximum=max(leftMaximum,abs(aa.red()-bb.red()),abs(aa.green()-bb.green()),abs(aa.blue()-bb.blue()))
+  assert leftMaximum<=18,('ripple overwhelms lyrics',leftMaximum)
+  print('G89 actual ripple pixel motion:',maximum,total,'lyric-area maximum change:',leftMaximum)
+  rings.setOpacity(0)
  # Four orientations must change the printed artwork, never the fixed rim/plane.
  points=[QPointF(0,0),QPointF(base.width(),0),QPointF(0,base.height()),QPointF(base.width(),base.height())]
  fixed=[base.mapToScene(p) for p in points]
@@ -159,6 +175,10 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  click(find('nowMore'));click(find('nowCollect'));assert c.actions[-1]==('collect',)
  click(find('nowDetails'));assert c.actions[-1]==('details',)
  click(find('nowPlayingTitleHit'));assert c.actions[-1]==('details',)
+ album=find('nowAlbum');title=find('nowPlayingTitle');assert 0<album.y()-title.y()-title.height()<=8*page.property('unit')
+ click(find('nowAlbumHit'));assert c.actions[-1]==('album',)
+ assert find('nowMore').width()<=32*page.property('unit') and find('nowMore').y()==0
+ assert find('nowLyric_2').height()>=78*page.property('unit')
  listing=find('nowPlayingLyrics');old=listing.property('contentY');pos=listing.mapToScene(listing.boundingRect().center());event=QWheelEvent(pos,QPointF(w.mapToGlobal(pos.toPoint())),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False);QCoreApplication.sendEvent(w,event);QTest.qWait(80);assert listing.property('contentY')>old and not page.property('following') and not a.actions
  QTest.qWait(300);before=listing.property('contentY');c.currentLine=2;c.playbackChanged.emit();QTest.qWait(70);assert listing.property('contentY')==before
  click(find('nowLyricsFollow'));click(find('nowLyric_2'));assert c.actions[-1]==('seek',2,'netease:1')

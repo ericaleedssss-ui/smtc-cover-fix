@@ -101,6 +101,7 @@ void NowPlaying::operate(QString operation){
         }else if(!m_music->directory){m_music->changed();emit navigate("back");return;}
         m_music->changed();return;
     }
+    if(operation=="album"){if(!m_track["albumID"].toString().isEmpty()&&m_track["albumID"]!="0")emit navigate("player:song-album");return;}
     if(operation=="details"){emit navigate("player:song-detail");return;}
     if(operation=="retry-lyrics"){emit navigate("player:lyrics-retry");return;}
     if(operation=="comments"){emit navigate("player:comments");return;}
