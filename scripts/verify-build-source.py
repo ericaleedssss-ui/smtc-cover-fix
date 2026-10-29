@@ -11,6 +11,8 @@ parser.add_argument('--source', type=Path, required=True)
 parser.add_argument('--stamp', type=Path, required=True)
 args = parser.parse_args()
 maintained = Path(__file__).resolve().parents[1]
+import runpy
+runpy.run_path(str(maintained/'scripts/verify-workflow-patches.py'))
 expected = os.environ['GITHUB_SHA']
 actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=maintained, text=True).strip()
 if actual != expected:
