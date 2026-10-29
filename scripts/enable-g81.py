@@ -39,3 +39,21 @@ s=s.replace('if(showcaseLoader.active&&showcaseLoader.item.showSongs){showcaseLo
 assert 'showcaseLoader.' not in s
 p.write_text(s,encoding='utf-8')
 print('G81: one persistent archive reading unit, exact original glass, content-only collection view installed.')
+# The reading region now owns content independently of the frosting preference.
+# Keep the old native regression in sync; the real QML self-test separately
+# requires sampling to stop and release the effect when frosting is disabled.
+edit('Qt/tests/NativeHudChecks.cpp',
+     '// 毛玻璃只覆盖阅读区，不改变歌曲或交互；关闭后不保留采样区域。',
+     '// 阅读区承载内容；磨砂开关只控制采样，不移除内容布局。')
+edit('Qt/tests/NativeHudChecks.cpp',
+     'check(panel.value("x").toDouble() > 900 && panel.value("y").toDouble() == 437,\n                      "reading area bounds");',
+     '''check(panel.value("x").toDouble() > 900 && panel.value("width").toDouble() < 960 &&
+                          panel.value("y").toDouble() == 400 && panel.value("height").toDouble() == 440,
+                      "shared reading area bounds");''')
+edit('Qt/tests/NativeHudChecks.cpp',
+     'check(hud.state().value("readingPanel").isNull(), "off clears sampling area");',
+     '''check(!hud.state().value("textFrosted").toBool(), "off disables frosting");
+                check(hud.state().value("readingPanel").toObject() == panel,
+                      "off preserves the shared reading content region");
+                check(music->current.value("key") == song(1).value("key") && hasAction(hud.hits, "open"),
+                      "off preserves the selected song and its details action");''')
