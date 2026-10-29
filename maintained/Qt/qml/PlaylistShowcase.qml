@@ -19,9 +19,12 @@ Item {
     function dismissTopOverlay(){if(cancelCollect.visible){cancelCollect.close();return true;}if(more.visible){more.close();return true;}return false;}
     function scrollContent(view,e){var dy=e.pixelDelta.y||e.angleDelta.y/120*72*unit;var origin=view.originY||0;view.contentY=Math.max(origin,Math.min(origin+Math.max(0,view.contentHeight-view.height),view.contentY-dy));}
     function scrollSongs(e){scrollContent(songList,e);}
-    function wheelRecord(e){var dy=e.pixelDelta.y||e.angleDelta.y;if(dy)moveRecord(dy<0?1:-1);}
+    property real wheelCarry:0
+    property int pendingMoves:0
+    function wheelRecord(e){var dy=e.pixelDelta.y?e.pixelDelta.y/60:e.angleDelta.y/120;wheelCarry+=dy;while(Math.abs(wheelCarry)>=1){var step=wheelCarry<0?1:-1;wheelCarry+=step;moveRecord(step);}}
+    function drainMoves(){if(!pendingMoves||recordStack.busy)return;var step=pendingMoves>0?1:-1;var target=controller.recordNeighbour(step);if(target.key){if(recordStack.choose(Object.assign({},target,{side:step}))!==false)pendingMoves-=step;}else {controller.prepareRecords();pendingMoves=0;}}
     function moveSong(step){showSongs=true;songIndex=Math.max(0,Math.min(controller.songs.length-1,songIndex+step));controller.preview(songIndex);songList.positionViewAtIndex(songIndex,ListView.Contain);}
-    function moveRecord(step){var target=controller.recordNeighbour(step);if(target.key)recordStack.choose(Object.assign({},target,{side:step}));else controller.prepareRecords();}
+    function moveRecord(step){pendingMoves=Math.max(-4,Math.min(4,pendingMoves+step));drainMoves();}
     readonly property bool keysEnabled:visible&&enabled&&!more.visible&&!cancelCollect.visible&&!rhine.state.queueOpen&&!rhine.messages.state.open&&!Controls.Overlay.overlay.visible
     function playSelection(){if(showSongs&&songIndex>=0)controller.playSong(songIndex);else controller.operate("play");}
     Shortcut {sequences:["Return","Enter"];enabled:page.keysEnabled;autoRepeat:false;onActivated:page.playSelection()}
@@ -65,7 +68,7 @@ Item {
     }
     // Content only: the shared ArchiveReading owns the original glass.
     // Own only this panel's input; navigation and the player remain outside it.
-    MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{if(page.showSongs)page.scrollSongs(e);else page.wheelRecord(e);e.accepted=true;}}
+    MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{page.wheelRecord(e);e.accepted=true;}}
     Label {x:26*unit;y:26*unit;width:page.textWidth;text:"MUSIC DATABASE / "+(info.sourceLabel||"收藏歌单");font.pixelSize:12*unit;color:page.muted}
     Label {
         objectName:"showcaseTitle";x:26*unit;y:59*unit;width:page.textWidth;height:68*unit
@@ -105,14 +108,15 @@ Item {
             id:identityInfo;width:Math.min(210*unit,page.textWidth*.38);height:32*unit
             Rectangle {width:30*unit;height:width;radius:width/2;color:rhine.state.dark?"#59614f":"#cdd2c5"
                 RhineIcon {anchors.centerIn:parent;width:18*unit;height:width;name:"user";color:page.muted}
-                Image {id:identityAvatar;objectName:"showcaseIdentityAvatar";anchors.fill:parent;source:info.identityAvatar||"";asynchronous:true;cache:true;sourceSize:Qt.size(96,96);fillMode:Image.PreserveAspectCrop;visible:status===Image.Ready
+                Image {id:identityAvatar;onStatusChanged:if(status===Image.Error&&page.controller.retryIdentityAvatar)page.controller.retryIdentityAvatar();objectName:"showcaseIdentityAvatar";anchors.fill:parent;source:info.identityAvatar||"";asynchronous:true;cache:true;sourceSize:Qt.size(96,96);fillMode:Image.PreserveAspectCrop;visible:status===Image.Ready
                     layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
                     layer.effect:MultiEffect {maskEnabled:true;maskSource:identityMask}
                 }
                 Rectangle {id:identityMask;anchors.fill:parent;radius:width/2;visible:false;layer.enabled:true}
             }
-            Label {x:39*unit;width:parent.width-x;height:32*unit;verticalAlignment:Text.AlignVCenter;text:(info.kind==="album"?"艺人  ":"创建者  ")+(info.artist||"未知");font.pixelSize:13*unit}
-            MouseArea {anchors.fill:parent;enabled:info.identityCanOpen===true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("creator")}
+            Label {x:39*unit;width:28*unit;height:32*unit;verticalAlignment:Text.AlignVCenter;text:info.kind==="album"?"艺人":"创建者";font.pixelSize:12*unit;color:page.muted}
+            ArtistMarquee {x:73*unit;width:Math.max(0,parent.width-x);height:32*unit;unit:page.unit;people:info.identities||[];fallback:info.artist||"未知";onPersonClicked:id=>controller.openIdentity(id)}
+
         }
         Label {id:trackCountInfo;height:32*unit;verticalAlignment:Text.AlignVCenter;text:"│  "+(info.total||0)+" 首歌曲";font.pixelSize:13*unit}
         Label {width:Math.max(0,page.textWidth-identityInfo.width-trackCountInfo.width-24*unit);height:32*unit;verticalAlignment:Text.AlignVCenter;text:"│  "+(info.durationLabel||"");font.pixelSize:13*unit;color:page.muted}
@@ -124,7 +128,8 @@ Item {
         Button {objectName:"showcaseMore";artwork:"qrc:/icons/archive-more.png";width:42*unit;onClicked:more.popup();Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"更多"}
     }
     Label {x:26*unit;y:382*unit;width:page.textWidth;text:controller.status||"";color:page.muted;font.pixelSize:10*unit}
-    RecordStack {id:recordStack;objectName:"showcaseRecordStack";x:page.width-width-24*unit;y:66*unit;width:page.coverWidth;height:232*unit;unit:page.unit;controller:page.controller;background:page.background;reduced:rhine.state.reduced;editorial:true}
+    RecordStack {id:recordStack;objectName:"showcaseRecordStack";x:page.width-width-24*unit;y:66*unit;width:page.coverWidth;height:232*unit;unit:page.unit;controller:page.controller;background:page.background;reduced:rhine.state.reduced;editorial:true;groupTransitions:true}
+    Connections {target:recordStack;function onBusyChanged(){if(!recordStack.busy)Qt.callLater(page.drainMoves);}}
     Label {anchors.right:parent.right;anchors.rightMargin:38*unit;y:322*unit;text:(info.recordPosition||1)+" / "+(info.recordCount||1)+"    ←  →";font.pixelSize:10*unit;color:page.muted}
     Rectangle {x:20*unit;y:400*unit;width:parent.width-40*unit;height:unit;color:page.muted;opacity:.2}
     Row {

@@ -23,7 +23,7 @@ void PlaylistShowcase::sync(){
     const auto account=m_music->accountGeneration();const auto current=m_music->current;
     if(m_account!=account||m_key!=key(current)||m_directory!=bool(m_music->directory)){
         m_directory=bool(m_music->directory);
-        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_identityAvatar.clear();m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
+        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
         if(container(current)&&!m_music->directory)load();
         emit changed();return;
     }
@@ -53,8 +53,12 @@ bool PlaylistShowcase::subscribed()const{
     return m_item["subscribed"].toBool();
 }
 QVariantMap PlaylistShowcase::info()const{
-    auto i=m_item.toVariantMap();i["sourceLabel"]=m_music->libraryName();i["loading"]=m_loading;i["subscribed"]=subscribed();i["editable"]=m_music->canEditPlaylist(m_item);
+    auto i=m_item.toVariantMap();i["sourceLabel"]=m_music->libraryName();i["recordLane"]=m_music->selectedLane;i["loading"]=m_loading;i["subscribed"]=subscribed();i["editable"]=m_music->canEditPlaylist(m_item);
     i["canSubscribe"]=m_music->provider=="netease"&&!m_music->uid.isEmpty()&&!m_item["virtual"].toBool()&&!m_music->canEditPlaylist(m_item);
+    QVariantList people;
+    if(m_item["kind"]=="album"){for(const auto &v:m_item["artists"].toArray()){const auto artist=v.toObject();if(!artist["id"].toString().isEmpty())people.append(QVariantMap{{"id",artist["id"].toString()},{"name",artist["name"].toString()}});}}
+    else if(!m_item["creatorID"].toString().isEmpty())people.append(QVariantMap{{"id",m_item["creatorID"].toString()},{"name",m_item["artist"].toString()}});
+    i["identities"]=people;
     i["loadFailed"]=m_loadFailed;i["loaded"]=m_loaded;i["identityAvatar"]=m_identityAvatar;
     i["identityCanOpen"]=m_item["kind"]=="album"?!m_item["artists"].toArray().isEmpty():!m_item["creatorID"].toString().isEmpty();
     i["total"]=std::max(m_item["trackCount"].toInt(),int(m_ids.size()));
@@ -165,18 +169,31 @@ void PlaylistShowcase::completeDuration(){
     for(int n=0;n<m_ids.size();++n){const int at=MusicData::indexOfId(m_songs,textID(m_ids[n]));if(at<0||m_songs[at].toObject()["duration"].toInteger()<=0){preview(n);return;}}
 }
 
-void PlaylistShowcase::loadIdentity(){
+void PlaylistShowcase::openIdentity(QString id){
+    if(id.isEmpty())return;
+    if(m_item["kind"]=="album"){
+        const auto artists=m_item["artists"].toArray();for(int n=0;n<artists.size();++n)if(artists[n].toObject()["id"]==id){m_music->current["artists"]=artists;emit navigate("music:artist:"+QString::number(n));return;}
+    }else if(id==m_item["creatorID"].toString())emit navigate("profile:open:"+id);
+}
+void PlaylistShowcase::retryIdentityAvatar(){
+    if(m_avatarRetried)return;m_avatarRetried=true;m_identityAvatar.clear();loadIdentity(false);emit changed();
+}
+void PlaylistShowcase::loadIdentity(bool fallback){
     const bool album=m_item["kind"]=="album";const auto artist=m_item["artists"].toArray().isEmpty()?QJsonObject{}:m_item["artists"].toArray().first().toObject();
     const auto id=album?artist["id"].toString():m_item["creatorID"].toString();
     const auto cacheKey=m_music->provider+":"+(album?"artist:":"user:")+id;
     const auto direct=album?artist["avatar"].toString():m_item["creatorAvatar"].toString();
-    if(!direct.isEmpty()){m_identityAvatar=direct;m_avatarCache[cacheKey]=direct;return;}
-    if(m_avatarCache.contains(cacheKey)){m_identityAvatar=m_avatarCache[cacheKey];return;}
+    if(!fallback&&!m_avatarRetried&&!direct.isEmpty()){QUrl address(direct);if(address.scheme()=="http")address.setScheme("https");m_identityAvatar=address.toString();m_avatarCache[cacheKey]=m_identityAvatar;return;}
+    if(!fallback&&!m_avatarRetried&&m_avatarCache.contains(cacheKey)){m_identityAvatar=m_avatarCache[cacheKey];return;}
     if(id.isEmpty()||m_music->provider!="netease")return;
     const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
-    m_music->api.request(album?"/artists":"/user/detail",{{album?"id":"uid",id}},[self,album,cacheKey](MusicReply r){
-        if(!self||!r.ok())return;const auto body=r.value.toObject();const auto person=body[album?"artist":"profile"].toObject();
-        const auto url=album?person["img1v1Url"].toString(person["picUrl"].toString()):person["avatarUrl"].toString();
-        if(url.isEmpty())return;self->m_identityAvatar=url;self->m_avatarCache[cacheKey]=url;emit self->changed();
+    const QString route=album?(fallback?"/artists":"/artist/detail"):"/user/detail";
+    m_music->api.request(route,{{album?"id":"uid",id}},[self,album,fallback,cacheKey](MusicReply r){
+        if(!self)return;const auto body=r.value.toObject();const auto person=album?(fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject()):body["profile"].toObject();
+        QString url;
+        for(const auto &name:album?QStringList{"avatar","img1v1Url","picUrl","cover"}:QStringList{"avatarUrl"})if(!person[name].toString().isEmpty()){url=person[name].toString();break;}
+        if(!r.ok()||url.isEmpty()){if(album&&!fallback)self->loadIdentity(true);return;}
+        QUrl address(url);if(address.scheme()=="http")address.setScheme("https");
+        self->m_identityAvatar=address.toString();self->m_avatarCache[cacheKey]=self->m_identityAvatar;emit self->changed();
     },[self,token,account]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account;});
 }

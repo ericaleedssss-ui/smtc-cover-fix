@@ -8,8 +8,51 @@ Item {
     property real unit:1
     property bool reduced:false
     property bool editorial:false
-    readonly property var front:controller.info
-    readonly property var rear:controller.covers
+    property bool groupTransitions:false
+    readonly property var incomingFront:controller.info
+    readonly property var incomingRear:controller.covers
+    property var presentation:({front:{},rear:[]})
+    readonly property var front:groupTransitions?presentation.front:incomingFront
+    readonly property var rear:groupTransitions?presentation.rear:incomingRear
+    property var groupTarget:({})
+    property var groupRear:[]
+    property int groupStage:0
+    property int groupDirection:1
+    property bool groupCommitting:false
+    property real groupShift:0
+    property real groupScale:1
+    property real groupOpacity:1
+    readonly property bool busy:turning||!!awaitingKey||!!queuedKey||switchCooldown||groupStage>0
+    transform:Translate {x:stack.groupShift}
+    scale:groupScale
+    opacity:groupOpacity
+    function updatePresentation(){
+        if(!groupTransitions)return;
+        if(groupStage>1)return;
+        if(!front.key||incomingFront.key===front.key||awaitingKey===incomingFront.key||(turning&&chosen.key===incomingFront.key)){
+            presentation={front:incomingFront,rear:incomingRear};return;
+        }
+        groupTarget=incomingFront;groupRear=incomingRear;
+        if(groupStage===0){
+            groupDirection=Number(incomingFront.recordLane||0)>=Number(front.recordLane||0)?1:-1;
+            turn.stop();commitTurn.stop();pendingKey="";queuedKey="";closeFan.stop();hoveredKey="";expanded=false;
+            groupStage=1;
+        }
+        Qt.callLater(tryGroup);
+    }
+    function tryGroup(){
+        if(groupStage!==1||(!groupTarget.cover&&groupTarget.loading))return;
+        for(var i=0;i<groupPreload.count;++i){var img=groupPreload.itemAt(i);if(img&&img.source.toString()&&(img.status===Image.Loading||img.status===Image.Null))return;}
+        groupStage=2;groupOut.start();
+    }
+    function commitGroup(){
+        groupCommitting=true;turning=false;awaitingKey="";switchCooldown=false;
+        for(var i=0;i<cards.count;++i){var card=cards.itemAt(i);card.snapping=true;card.record=({});}
+        presentation={front:groupTarget,rear:groupRear};syncCards();
+        groupShift=groupDirection*18*unit;groupStage=3;groupIn.start();
+    }
+    onIncomingFrontChanged:updatePresentation()
+    onIncomingRearChanged:updatePresentation()
     property var paintedFront:({})
     property string awaitingKey:""
     property string queuedKey:""
@@ -61,7 +104,7 @@ Item {
         });
     }
     function syncCards(){
-        if(turning||queuedKey||(awaitingKey&&String(front.key||"")!==awaitingKey))return;
+        if((groupStage>0&&!groupCommitting)||turning||queuedKey||(awaitingKey&&String(front.key||"")!==awaitingKey))return;
         awaitingKey="";
         var desired=[];
         if(front&&front.key)desired.push({record:front,slot:0});
@@ -73,9 +116,9 @@ Item {
         for(i=0;i<desired.length;++i){var d=desired[i];var existing=cardFor(d.record.key);
             if(existing){assignRecord(existing,d.record);existing.slot=d.slot;continue;}
             var added=freeCard();if(!added)continue;
-            added.snapping=true;added.entering=d.slot!==0;added.slot=d.slot===0?0:d.slot*2;assignRecord(added,d.record);
+            added.snapping=true;added.entering=!groupCommitting&&d.slot!==0;added.slot=groupCommitting?d.slot:(d.slot===0?0:d.slot*2);assignRecord(added,d.record);
             // Late metadata uses the same entry path instead of appearing at rest.
-            if(d.slot!==0)settleCard(added,d.slot);else releaseSnap(added);
+            if(d.slot!==0&&!groupCommitting)settleCard(added,d.slot);else releaseSnap(added);
         }
         paintedFront=front;
     }
@@ -84,24 +127,24 @@ Item {
     function hold(key){if(turning||switchCooldown||queuedKey)return;hoveredKey=key;expanded=true;closeFan.stop();}
     function release(key){if(turning||switchCooldown||queuedKey)return;if(hoveredKey===key)hoveredKey="";closeFan.restart();}
     function choose(value){
-        if(turning||switchCooldown||awaitingKey||!value||!value.key||value.key===front.key)return;
-        if(queuedKey&&queuedKey!==value.key)return;
+        if(groupStage>0||turning||switchCooldown||awaitingKey||!value||!value.key||value.key===front.key)return false;
+        if(queuedKey&&queuedKey!==value.key)return false;
         direction=value.side===-1?-1:1;
-        if(reduced){switchCooldown=true;controller.openCover(value.key);cooldown.restart();return;}
+        if(reduced){switchCooldown=true;controller.openCover(value.key);cooldown.restart();return true;}
         chosen=value;startingKey=String(front.key||"");
         var entering=controller.recordNeighbour(2*direction);
         if(entering&&entering.key&&!cardFor(entering.key)){
             var extra=freeCard();if(extra){extra.snapping=true;extra.entering=true;extra.slot=2*direction;assignRecord(extra,entering);}
         }
         for(var n=0;n<cards.count;++n){var imageCard=cards.itemAt(n);
-            if(imageCard&&imageCard.record.key&&imageCard.imageLoading){queuedKey=value.key;queuedFromKey=String(front.key||"");closeFan.stop();return;}
+            if(imageCard&&imageCard.record.key&&imageCard.imageLoading){queuedKey=value.key;queuedFromKey=String(front.key||"");closeFan.stop();return true;}
         }
         queuedKey="";queuedFromKey="";
         for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(!c||!c.record.key)continue;
             c.startX=c.x;c.startY=c.y;c.startRotation=c.rotation;c.startScale=c.scale;c.startOpacity=c.opacity;
             c.targetSlot=c.slot-direction;
         }
-        closeFan.stop();hoveredKey="";progress=0;turning=true;for(i=0;i<cards.count;++i)cards.itemAt(i).snapping=false;turn.restart();
+        closeFan.stop();hoveredKey="";progress=0;turning=true;for(i=0;i<cards.count;++i)cards.itemAt(i).snapping=false;turn.restart();return true;
     }
     onFrontChanged:{
         var key=String(front.key||"");
@@ -112,7 +155,7 @@ Item {
         syncCards();
     }
     onRearChanged:syncCards()
-    Component.onCompleted:{syncCards();recordPrefetch.restart();}
+    Component.onCompleted:{if(groupTransitions)presentation={front:incomingFront,rear:incomingRear};syncCards();recordPrefetch.restart();}
     // Decode the next entering images ahead of time; these never paint a cover.
     Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.controller.recordNeighbour(2).cover||"";}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
     Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.controller.recordNeighbour(-2).cover||"";}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
@@ -170,7 +213,7 @@ Item {
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
             layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:card.slot===0?.2:0;shadowVerticalOffset:6;shadowColor:"#48533e"}
             Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
-            Image {id:coverImage;objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.coverSource;onStatusChanged:if(status===Image.Ready||status===Image.Error)stack.resumeQueuedTurn();sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true}
+            Image {id:coverImage;objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.coverSource;onStatusChanged:if(status===Image.Ready||status===Image.Error)stack.resumeQueuedTurn();sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:!stack.groupCommitting;retainWhileLoading:true}
             MouseArea {
                 objectName:"recordHit_"+card.record.key
                 x:card.slot<0?0:parent.width-width;y:0
@@ -190,7 +233,7 @@ Item {
         x:stack.frontX+Math.max(0,(stack.size-width)/2)
         y:stack.frontY+stack.size+9*stack.unit
         spacing:8*stack.unit;z:25
-        visible:stack.expanded&&!stack.turning&&stack.previewRecords.length>1
+        visible:stack.expanded&&!stack.busy&&stack.previewRecords.length>1
         Repeater {
             model:stack.previewRecords
             delegate:Rectangle {
@@ -227,6 +270,25 @@ Item {
             Text {objectName:"recordTargetTitle";width:parent.width;text:stack.hoveredRecord.title||"";wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;color:rhine.state.dark?"#e6ebdf":"#36402f";font.family:rhineFontFamily;font.pixelSize:13*Math.max(.9,stack.unit)}
             Text {width:parent.width;text:(stack.hoveredRecord.kind==="album"?"专辑":"歌单")+(stack.hoveredRecord.artist?" · "+stack.hoveredRecord.artist:"");elide:Text.ElideRight;color:rhine.state.dark?"#acb79e":"#7b866d";font.family:rhineFontFamily;font.pixelSize:11*Math.max(.9,stack.unit)}
         }
+    }
+    Repeater {
+        id:groupPreload
+        model:stack.groupStage>0?[stack.groupTarget].concat(stack.groupRear):[]
+        delegate:Image {required property var modelData;visible:false;source:modelData.cover||"";sourceSize:Qt.size(512,512);cache:true;asynchronous:true;onStatusChanged:Qt.callLater(stack.tryGroup)}
+    }
+    ParallelAnimation {
+        id:groupOut
+        NumberAnimation {target:stack;property:"groupShift";to:-stack.groupDirection*18*stack.unit;duration:stack.reduced?0:110;easing.type:Easing.InCubic}
+        NumberAnimation {target:stack;property:"groupScale";to:.97;duration:stack.reduced?0:110}
+        NumberAnimation {target:stack;property:"groupOpacity";to:0;duration:stack.reduced?0:110}
+        onFinished:stack.commitGroup()
+    }
+    ParallelAnimation {
+        id:groupIn
+        NumberAnimation {target:stack;property:"groupShift";to:0;duration:stack.reduced?0:180;easing.type:Easing.OutCubic}
+        NumberAnimation {target:stack;property:"groupScale";to:1;duration:stack.reduced?0:180;easing.type:Easing.OutCubic}
+        NumberAnimation {target:stack;property:"groupOpacity";to:1;duration:stack.reduced?0:180}
+        onFinished:{stack.groupCommitting=false;stack.groupStage=0;stack.updatePresentation();}
     }
     SequentialAnimation {
         id:turn

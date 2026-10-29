@@ -12,9 +12,10 @@ repo=Path(__file__).resolve().parents[1];src=repo.parent/'upstream';app=QGuiAppl
 fid=QFontDatabase.addApplicationFont(str(src/'Assets/fonts/RhineMiSans-regular.otf'));font=QFontDatabase.applicationFontFamilies(fid)[0]
 class Controller(QObject):
  changed=Signal()
+ lane=2
  def __init__(self,art):super().__init__();self.art=art;self.at=0;self.actions=[];self.collected=False
  @Property('QVariantMap',notify=changed)
- def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['电子、摇滚、实验、意识、迷走','沿着夜色缓慢生长','午后的松弛感'][self.at],identityAvatar=self.art[0],identityCanOpen=True,loaded=True,artist='QA / 显式离线数据',description='在电子的律动与摇滚的呐喊之间，收集那些游走于秩序与混沌的声音。\n这里是关于实验、意识与边界的歌单，适合在深夜、旅途中或独处时聆听。\n' * 4,creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 小时 26 分钟',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
+ def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['电子、摇滚、实验、意识、迷走','沿着夜色缓慢生长','午后的松弛感'][self.at],recordLane=self.lane,identities=[dict(id='7',name='Artist one / 很长的艺人名字'),dict(id='8',name='Second artist')],identityAvatar=self.art[0],identityCanOpen=True,loaded=True,artist='QA / 显式离线数据',description='在电子的律动与摇滚的呐喊之间，收集那些游走于秩序与混沌的声音。\n这里是关于实验、意识与边界的歌单，适合在深夜、旅途中或独处时聆听。\n' * 4,creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 小时 26 分钟',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
  @Property('QVariantList',notify=changed)
  def covers(self):return [self.recordNeighbour(-1),self.recordNeighbour(1)]
  @Property('QVariantList',notify=changed)
@@ -41,6 +42,10 @@ class Controller(QObject):
  def refresh(self):self.actions.append(('refresh',))
  @Slot(int)
  def preview(self,n):self.actions.append(('preview',n))
+ @Slot(str)
+ def openIdentity(self,id):self.actions.append(('artist',id))
+ @Slot()
+ def retryIdentityAvatar(self):self.actions.append(('avatar_retry',))
  @Slot(int)
  def playSong(self,n):self.actions.append(('song',n))
 class Backend(QObject):
@@ -59,13 +64,13 @@ with tempfile.TemporaryDirectory() as tmp:
  d=Path(tmp);art=[]
  for i,color in enumerate(['#8b8e76','#4b5b50','#b6a58c']):
   image=QImage(640,640,QImage.Format_RGB32);image.fill(QColor(color));path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
- for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon']:
+ for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon','ArtistMarquee']:
   origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
   # Runtime loading accepts some syntax rejected by the release cache compiler.
   compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
   subprocess.run([str(compiler),'--only-bytecode','-o',str(d/f'{name}.qmlc'),str(d/f'{name}.qml')],check=True)
  entries=[]
- for name in ['liquidGlass','magazineEdgeFade','archiveIcon']:
+ for name in ['liquidGlass','magazineEdgeFade','archiveIcon','softEdgeFade']:
   origin=repo/'maintained/Qt/shaders'/f'{name}.frag'
   if not origin.exists():origin=src/'Qt/shaders'/f'{name}.frag'
   out=d/f'{name}.frag.qsb';subprocess.run(['/root/.local/bin/pyside6-qsb','--glsl','150,300es','--hlsl','50','--msl','12','-o',str(out),str(origin)],check=True)
@@ -110,6 +115,9 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert len(images)==3 and all(o.property('ready') for o in images)
  hint=find('showcaseTabHint');assert hint.x()>reading.width()*.7
  b.dark=True;b.changed.emit();QTest.qWait(100);w.grabWindow().save(str(repo.parent/'g82-archive-dark.png'));b.dark=False;b.changed.emit();QTest.qWait(60)
+ marquee=find('archiveArtistMarquee');assert marquee.property('distance')>0
+ marquee.setProperty('shift',-marquee.property('distance'));click(find('archiveArtist_8'));assert c.actions[-1]==('artist','8')
+ marquee.setProperty('shift',0)
  click(find('showcaseTitle'));assert c.actions[-1]==('details',)
  click(find('showcaseMore'));click(find('showcaseAppend'));assert c.actions[-1]==('append',)
  click(find('showcaseMore'));click(find('showcaseCopy'));assert c.actions[-1]==('copy',)
@@ -124,14 +132,35 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   local=item.mapToScene(item.boundingRect().center());globalPoint=QPointF(w.mapToGlobal(local.toPoint()))
   event=QWheelEvent(local,globalPoint,QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False);QCoreApplication.sendEvent(w,event);QTest.qWait(300)
  listing=find('showcaseSongPreview');oldY=listing.property('contentY');wheel(listing);assert listing.property('contentY')>oldY and c.at==0
- oldY=listing.property('contentY');wheel(find('showcaseRecordStack'));assert listing.property('contentY')>oldY and c.at==0
- QTest.keyClick(w,Qt.Key_Tab);QTest.qWait(30);description=find('showcaseDescription');oldY=description.property('contentY');wheel(description);assert description.property('contentY')>oldY and c.at==0;
+ for _ in range(8):wheel(listing)
+ assert c.at==0
+ wheel(find('showcaseRecordStack'));QTest.qWait(600);assert c.at==1
+ QTest.keyClick(w,Qt.Key_Left);QTest.qWait(800);assert c.at==0
+ description=find('showcaseDescription');oldY=description.property('contentY');wheel(description);assert description.property('contentY')>oldY and c.at==0;
  for _ in range(8):wheel(description)
  assert c.at==0
  wheel(find('showcaseRecordStack'));QTest.qWait(600);assert c.at==1,c.actions
  QTest.keyClick(w,Qt.Key_Left);QTest.qWait(800);assert c.at==0,c.actions
  QTest.keyClick(w,Qt.Key_Right);QTest.qWait(800);assert c.at==1,c.actions
  QTest.keyClick(w,Qt.Key_Left);QTest.qWait(800);assert c.at==0,c.actions
+ # A real cold image must leave the old group visible until decode finishes.
+ import threading,time,http.server
+ payload=(d/'cover1.png').read_bytes()
+ class Handler(http.server.BaseHTTPRequestHandler):
+  def do_GET(self):
+   time.sleep(.25);self.send_response(200);self.send_header('Content-Type','image/png');self.end_headers();self.wfile.write(payload)
+  def log_message(self,*args):pass
+ server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);threading.Thread(target=server.serve_forever,daemon=True).start()
+ old=find('playlistMainCover').property('source');c.art[1]=f'http://127.0.0.1:{server.server_port}/cold.png';c.lane=3;c.at=1;c.changed.emit();QTest.qWait(60)
+ stack=find('showcaseRecordStack');assert stack.property('groupStage')==1 and find('playlistMainCover').property('source')==old
+ deadline=time.monotonic()+4
+ while stack.property('groupStage') and time.monotonic()<deadline:QTest.qWait(40)
+ assert stack.property('groupStage')==0 and stack.property('groupOpacity')==1,(stack.property('groupStage'),stack.property('groupOpacity'),errors)
+ c.lane=2;c.at=0;c.changed.emit();QTest.qWait(550);assert stack.property('groupStage')==0 and stack.property('groupShift')==0
+ server.shutdown();server.server_close()
+ # A burst queues predictable adjacent turns instead of dropping all input.
+ for _ in range(3):QTest.keyClick(w,Qt.Key_Right)
+ QTest.qWait(2400);assert c.at==0 and find('playlistShowcase').property('pendingMoves')==0
  # Same-key metadata updates cannot replace the cached record source.
  image=find('playlistMainCover');source=image.property('source');c.changed.emit();QTest.qWait(80);assert image.property('source')==source
  assert find('textFrostedPanel') is material

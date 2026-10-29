@@ -30,8 +30,9 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
   if(route=="/playlist/subscribe"||route=="/album/sub"){mutations++;return {QJsonObject{{"code",200}}, {}};}
   if(fail)return {{},"failed"};
   if(route=="/user/detail")return {QJsonObject{{"profile",QJsonObject{{"avatarUrl","https://example.invalid/real-user-avatar"}}}}, {}};
+  if(route=="/artist/detail")return {QJsonObject{{"data",QJsonObject{{"artist",QJsonObject{{"avatar","https://example.invalid/real-artist-avatar"}}}}}}, {}};
   if(route=="/artists")return {QJsonObject{{"artist",QJsonObject{{"img1v1Url","https://example.invalid/real-artist-avatar"}}}}, {}};
-  if(route=="/fixture/detail"){auto item=p["uid"].toObject();item["description"]="Real fixture description";item["trackCount"]=3;auto song=MusicData::item("song","1","First","Artist");song["duration"]=60000;if(item["kind"]=="album"){auto second=MusicData::item("song","2","Second","Artist");second["duration"]=120000;auto third=MusicData::item("song","3","Third","Artist");third["duration"]=missingDuration?0:180000;item["artists"]=QJsonArray{QJsonObject{{"id","5"},{"name","Artist"}}};return {QJsonArray{item,QJsonArray{song,second,third},QJsonArray{}}, {}};}return {QJsonArray{item,QJsonArray{song},QJsonArray{"1","2","3"}}, {}};}
+  if(route=="/fixture/detail"){auto item=p["uid"].toObject();item["description"]="Real fixture description";item["trackCount"]=3;auto song=MusicData::item("song","1","First","Artist");song["duration"]=60000;if(item["kind"]=="album"){auto second=MusicData::item("song","2","Second","Artist");second["duration"]=120000;auto third=MusicData::item("song","3","Third","Artist");third["duration"]=missingDuration?0:180000;item["artists"]=QJsonArray{QJsonObject{{"id","5"},{"name","Artist"}},QJsonObject{{"id","6"},{"name","Second Artist"}}};return {QJsonArray{item,QJsonArray{song,second,third},QJsonArray{}}, {}};}return {QJsonArray{item,QJsonArray{song},QJsonArray{"1","2","3"}}, {}};}
   if(route=="/fixture/songs"){auto s=MusicData::item("song","2","Second","Artist");s["duration"]=120000;auto t=MusicData::item("song","3","Third","Artist");t["duration"]=180000;return {QJsonArray{s,t}, {}};}
   assert(false);return{};
  };
@@ -51,7 +52,7 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  assert(model.info()["durationLabel"].toString()=="6 分钟"&&model.info()["identityAvatar"]=="https://example.invalid/real-artist-avatar");
  model.operate("shuffle");assert(music.player.mode=="shuffle"&&music.player.queue.size()==3);
  QString action;QObject::connect(&model,&PlaylistShowcase::navigate,[&](QString value){action=value;});model.operate("details");assert(action=="music:directory");
- model.operate("creator");assert(action=="music:artist:0");
+ model.operate("creator");assert(action=="music:artist:0");model.openIdentity("6");assert(action=="music:artist:1");model.openIdentity("wrong");assert(action=="music:artist:1");model.retryIdentityAvatar();QTest::qWait(20);assert(model.info()["identityAvatar"]=="https://example.invalid/real-artist-avatar");
  model.operate("play");assert(music.player.queue.first().toObject()["queueSource"].toObject()["kind"]=="album");
  missingDuration=true;model.refresh();QTest::qWait(30);assert(model.info()["durationLabel"].toString()=="6 分钟");missingDuration=false;
  model.operate("subscribe");model.confirmUnsubscribe();QTest::qWait(20);assert(music.lists[4].isEmpty()&&music.api.requests.last().first=="/album/sub");assert(!model.recordNeighbour(-1).isEmpty());
