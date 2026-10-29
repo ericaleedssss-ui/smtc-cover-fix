@@ -38,7 +38,9 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  };
  PlaylistShowcase model(&music,&hud);model.operate("play");model.operate("play");QTest::qWait(30);
  assert(model.info()["identityAvatar"].toString().startsWith("data:image/png;base64,"));assert(model.info()["cover"]==a["cover"].toString());assert(music.player.plays==1&&music.player.queue.size()==3&&music.player.queue[1].toObject()["deferred"].toBool());assert(music.current["kind"]=="playlist"&&!music.directory);
- assert(!model.info()["durationLabel"].toString().contains("1 小时"));model.preview(1);QTest::qWait(20);assert(model.songs().size()==3&&model.songs()[1].toMap()["title"]=="Second");assert(model.info()["durationLabel"].toString().contains("6 分钟"));
+ for(const auto &request:music.api.requests)assert(request.first!="/fixture/songs");
+ const auto idleRequests=music.api.requests.size();QTest::qWait(700);assert(music.api.requests.size()==idleRequests);
+ assert(!model.info().contains("durationLabel"));model.preview(1);QTest::qWait(20);assert(model.songs().size()==3&&model.songs()[1].toMap()["title"]=="Second");assert(!model.info().contains("durationLabel"));
  model.playSong(2);assert(music.player.current["id"]=="3"&&music.player.index==2);model.operate("shuffle");assert(music.player.mode=="shuffle"&&music.player.queue.size()==3);model.operate("append");assert(music.player.queue.size()==6);
  assert(model.recordNeighbour(1)["key"]==b["key"].toString());assert(model.recordNeighbour(-1)["key"]==c["key"].toString());model.openCover(b["key"].toString());QTest::qWait(20);assert(music.current["key"]==b["key"]&&model.info()["key"]==b["key"].toString());
  model.operate("subscribe");QTest::qWait(20);assert(model.info()["subscribed"].toBool()&&mutations==1);model.operate("subscribe");assert(mutations==1);model.confirmUnsubscribe();QTest::qWait(20);assert(!model.info()["subscribed"].toBool()&&mutations==2);
@@ -49,12 +51,12 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  model.openCover(collected["key"].toString());QTest::qWait(20);assert(music.selectedLane==3&&model.recordNeighbour(1)["key"]==album["key"].toString());
  model.openCover(album["key"].toString());QTest::qWait(20);assert(music.selectedLane==4&&model.info()["kind"]=="album"&&model.songs().size()==3);
  assert(model.recordNeighbour(1)["key"]==a["key"].toString()&&model.recordNeighbour(-1)["key"]==collected["key"].toString());
- assert(model.info()["durationLabel"].toString()=="6 分钟"&&model.info()["identityAvatar"].toString().startsWith("data:image/png;base64,"));
+ assert(!model.info().contains("durationLabel")&&model.info()["identityAvatar"].toString().startsWith("data:image/png;base64,"));
  model.operate("shuffle");assert(music.player.mode=="shuffle"&&music.player.queue.size()==3);
  QString action;QObject::connect(&model,&PlaylistShowcase::navigate,[&](QString value){action=value;});model.operate("details");assert(action=="music:directory");
  model.operate("creator");assert(action=="music:artist:0");model.openIdentity("6");assert(action=="music:artist:1");model.openIdentity("wrong");assert(action=="music:artist:1");brokenAvatar=true;model.retryIdentityAvatar();QTest::qWait(30);assert(host.imageRequests.contains("https://example.invalid/broken")&&host.imageRequests.contains("https://example.invalid/real-artist-avatar"));assert(model.info()["identityAvatar"].toString().startsWith("data:image/png;base64,"));
  model.operate("play");assert(music.player.queue.first().toObject()["queueSource"].toObject()["kind"]=="album");
- missingDuration=true;model.refresh();QTest::qWait(30);assert(model.info()["durationLabel"].toString()=="6 分钟");missingDuration=false;
+ missingDuration=true;model.refresh();QTest::qWait(30);assert(!model.info().contains("durationLabel"));missingDuration=false;
  model.operate("subscribe");model.confirmUnsubscribe();QTest::qWait(20);assert(music.lists[4].isEmpty()&&music.api.requests.last().first=="/album/sub");assert(!model.recordNeighbour(-1).isEmpty());
  model.openCover(b["key"].toString());QTest::qWait(20);
  QSignalSpy changes(&model,&PlaylistShowcase::changed);++music.revision;music.player.changed();assert(changes.count()==0);
@@ -63,7 +65,7 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  music.selectResult(0,2,false);music.selectResult(2,2,false);QTest::qWait(20);assert(model.info()["key"]==c["key"].toString());
  fail=true;model.refresh();QTest::qWait(20);assert(!model.busy()&&!model.status().isEmpty()&&model.info()["loadFailed"].toBool()&&!model.info()["loaded"].toBool());
  music.account++;music.uid="99";music.changed();QTest::qWait(20);assert(model.info()["key"]==c["key"].toString());
- qInfo("G79 actual adapter passed: container artwork and cross-lane owned/collected/album browsing, deferred full queue/provenance, shuffle/append/song preview, total-duration honesty, real selection, confirmed subscriptions, copy and stale-response isolation.");
+ qInfo("G79 actual adapter passed: container artwork and cross-lane owned/collected/album browsing, deferred full queue/provenance, shuffle/append/song preview, removed total-duration/background requests, real selection, confirmed subscriptions, copy and stale-response isolation.");
 }
 ''')
  flags=['-I'+str(d),'-I'+str(inc)]+['-I'+str(inc/n) for n in ['QtCore','QtNetwork','QtTest','QtGui']];mocs=[]

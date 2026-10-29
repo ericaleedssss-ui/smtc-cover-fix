@@ -35,7 +35,7 @@
         for(const QString &kind:QStringList{"song","album","empty","playlist"}){
             music.current=kind=="playlist"?savedArchiveSelection:kind=="empty"?QJsonObject{}:MusicData::item(kind,"81001","Shared glass identity test","Fixture");
             music.changed();refresh();
-            if(kind=="album")check(showcase&&showcase->songs().size()==10&&showcase->info()["durationLabel"].toString()=="30 分钟","G82 album songs without trackIds provide real archive rows and total duration");
+            if(kind=="album")check(showcase&&showcase->songs().size()==10&&!showcase->info().contains("durationLabel"),"G90 album songs provide real archive rows without restoring removed total duration");
             if(kind=="playlist"){
                 QElapsedTimer avatarWait;avatarWait.start();
                 while(showcase&&showcase->info()["identityAvatar"].toString().isEmpty()&&avatarWait.elapsed()<3000)settle(20);

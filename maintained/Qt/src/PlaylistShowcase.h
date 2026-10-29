@@ -37,7 +37,7 @@ private:
     QString m_key,m_status,m_pending,m_unsubscribe,m_heartQuery,m_identityAvatar;
     QJsonObject m_item;QJsonArray m_songs,m_ids;
     quint64 m_account=0,m_token=0,m_revision=0;
-    bool m_previewLoading=false,m_durationFailed=false,m_loadFailed=false;
+    bool m_previewLoading=false,m_loadFailed=false;
     void loadIdentity(bool fallback=false);
     void displayIdentity(QString url,QString cacheKey,bool canFallback);
     bool m_avatarRetried=false,m_identityPending=false;
@@ -46,7 +46,6 @@ private:
     void prepareInitialRecords();
     QSet<int> m_requestedLanes;
     quint64 m_prefetchAccount=0;
-    void completeDuration();
     void subscribe(bool);
     bool m_loading=false,m_loaded=false,m_directory=false;
     void sync();

@@ -31,7 +31,7 @@ class Controller(QAbstractListModel):
     def roleNames(self):return {257:b'track',258:b'sourceIndex',259:b'chosen',260:b'heart',261:b'heartKnown'}
     def data(self,index,role=Qt.DisplayRole):
         n=self.ids[index.row()]
-        if role==257:return dict(id=str(60000+n),identity='netease:'+str(60000+n),kind='song',provider='netease',title=['Maia','Go!','緩やかな日々','Dawn Chorus','shanty'][n%5],artist=['CANTOMA','Public Service Broadcasting','mouse on the keys','Flying Lotus','Slowdive'][n%5],album=['Out of Town','The Race for Space','an anxious object','Cosmogramma','everything is alive'][n%5],albumID='44',cover=self.images[n%4],durationLabel='04:12')
+        if role==257:return dict(id=str(60000+n),identity='netease:'+str(60000+n),kind='song',provider='netease',title=['Maia','Go!','緩やかな日々','Dawn Chorus','shanty'][n%5],artist=['CANTOMA','Public Service Broadcasting','mouse on the keys','Flying Lotus','Slowdive'][n%5],album=['Out of Town','The Race for Space','an anxious object','Cosmogramma','everything is alive'][n%5],albumID='44',cover=self.images[n%4],durationLabel='04:12',popularity=83 if n%3==0 else (0 if n%3==2 else None))
         if role==258:return n
         if role==259:return n in self.selection
         if role==260:return n%3==0
@@ -142,7 +142,7 @@ with tempfile.TemporaryDirectory() as tmp:
     # Clearly synthetic, deterministic TEST sleeves. Production only reads account collections.
     for i,colors in enumerate([('#14292a','#cf5e3c'),('#283653','#d7b783'),('#b9af9e','#536b54'),('#43475e','#b3a7ba')]):
         image=QImage(640,640,QImage.Format_RGB32);p=QPainter(image);g=QLinearGradient(0,0,640,640);g.setColorAt(0,QColor(colors[0]));g.setColorAt(1,QColor(colors[1]));p.fillRect(image.rect(),g);p.setPen(QColor('#cfc9b5'));p.setFont(QFont(font,26));p.drawText(40,70,'OFFLINE / COLLECTION '+str(i+1));p.setPen(QColor('#90cfc9b5'));p.drawEllipse(75+i*10,150,460,460);p.end();path=d/('sleeve'+str(i)+'.png');image.save(str(path));images.append(QUrl.fromLocalFile(str(path)).toString())
-    for name in ('RhineIcon','GlobalTools','RecordStack','PlaylistMagazine','SongContextMenu','LiquidGlass','PlaylistSearch','SongHeart'):
+    for name in ('ArtistMarquee','RhineIcon','GlobalTools','RecordStack','PlaylistMagazine','SongContextMenu','LiquidGlass','PlaylistSearch','SongHeart'):
         origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
     entries=[]
     for name in ('magazineEdgeFade','liquidGlass','softEdgeFade'):
@@ -412,6 +412,10 @@ Item {id:root;width:1400;height:900
     QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point);QTest.mouseClick(v,Qt.LeftButton,Qt.NoModifier,point);QTest.qWait(240)
     assert c.meta['key']==target and len([a for a in c.actions if a[0]=='open'])==before+1
     print('PASS G71 QML: reduced-motion double click selects exactly one immutable target')
+    c.search('');c.meta={**c.meta,'kind':'album','date':'2024-03-02','artists':[{'id':'5','name':'Actual album artist'}]};c.changed.emit()
+    listing.setProperty('contentY',listing.property('startY'));QTest.qWait(180)
+    assert find(root,'magazineHeat_0').property('known') and not find(root,'magazineHeat_1').property('known') and find(root,'magazineHeat_2').property('known')
+    print('PASS G90 album QML: shared magazine, actual heat including zero, unavailable heat remains unknown')
     v.grabWindow().save(str(repo.parent/'g71-magazine-dark-preview.png'))
     assert not [w for w in warnings if 'ReferenceError' in w or 'TypeError' in w or 'Cannot assign' in w or 'Binding loop' in w],warnings
     v.setSource(QUrl());QTest.qWait(50)

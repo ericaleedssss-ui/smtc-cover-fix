@@ -86,7 +86,7 @@ Item {
         Label {id:description;width:parent.width;text:info.description|| (info.loading?"正在读取歌单资料…":(info.kind==="album"?"这张专辑还没有简介。":"这张歌单还没有简介。"));color:page.muted;font.pixelSize:15*unit;wrapMode:Text.Wrap;elide:Text.ElideNone;lineHeight:1.6}
         WheelHandler {target:null;onWheel:e=>{page.scrollContent(descriptionView,e);e.accepted=true;}}
     }
-    ListView {id:songList;objectName:"showcaseSongPreview";x:26*unit;y:158*unit;width:page.textWidth;height:160*unit;visible:page.showSongs;clip:true;model:controller.songs;boundsBehavior:Flickable.StopAtBounds
+    ListView {id:songList;objectName:"showcaseSongPreview";x:26*unit;y:158*unit;width:page.textWidth;height:160*unit;visible:page.showSongs;clip:true;model:page.showSongs?controller.songs:[];boundsBehavior:Flickable.StopAtBounds
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:ShaderEffect {
             objectName:"showcaseSongFade"

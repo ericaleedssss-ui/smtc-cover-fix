@@ -38,6 +38,7 @@ checks = {
     'Qt/src/NativeHudController.cpp': ['queueOpen = !queueOpen;',
                                       'if (kind == "player") { queueOpen = true; return; }'],
     'Qt/src/NativeHudMusic.cpp': ['if (queueCollectionOpen) {'],
+    'Qt/src/NativeHudDetail.cpp': ['(item["kind"] == "playlist" || item["kind"] == "album")'],
     'Qt/tests/UiChecks.cpp': ['G71 one back exits', 'G71 shared account bar', 'G70 typing and deleting retain', 'G70 leaving FM restores', 'Following page actually scrolls before opening the queue', 'clickQueueButton();', 'G68 retention', 'G69 real right-click opens shared song menu',
                             'queue retains the same Following instance, scroll, filter, query and loaded data'],
 }

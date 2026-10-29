@@ -90,9 +90,16 @@ Item {
     }
     Label {objectName:"nowLyricsFollow";x:26*unit;y:307*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
     Row {x:26*unit;y:331*unit;spacing:7*unit;height:36*unit
-        Action {objectName:"nowComments";symbol:"comment";width:92*page.unit;text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
         Action {objectName:"nowLike";width:82*page.unit;enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
+        Action {objectName:"nowComments";symbol:"comment";width:92*page.unit;text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
         Action {objectName:"nowShare";symbol:"share";width:82*page.unit;text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
+        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
+            contentItem:Item {Row {anchors.centerIn:parent;spacing:3.5*page.unit;Repeater {model:3;Rectangle {width:2.6*page.unit;height:width;radius:width/2;color:page.ink}}}}
+            background:Rectangle {objectName:"nowMoreSurface";radius:height/2;color:parent.hovered?"#42fffdf4":"#22fffdf4";border.width:.7*page.unit;border.color:"#55fffdf3"}
+            HoverHandler {cursorShape:Qt.PointingHandCursor}
+            Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"更多操作";Controls.ToolTip.delay:500
+            onClicked:{var p=mapToItem(page,0,height);more.x=Math.max(0,Math.min(page.width-more.implicitWidth,p.x));more.y=Math.min(page.height-more.implicitHeight,Math.max(0,p.y+6*page.unit));more.open();}
+        }
     }
     Label {x:26*unit;y:369*unit;width:page.textWidth;text:controller.status||"";font.pixelSize:10*unit;color:page.muted}
     Row {id:metadata;x:26*unit;y:392*unit;width:page.textWidth;spacing:8*unit;height:26*unit
@@ -107,13 +114,13 @@ Item {
         Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
     }
     Item {
-        id:discField;objectName:"nowDiscField";x:page.width*.28;y:0;width:page.width-x;height:page.height;clip:true;z:-1
+        id:discField;objectName:"nowDiscField";x:page.width*.12;y:0;width:page.width-x;height:page.height;clip:true;z:-1
         Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
-            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.samplerName:"artwork"
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:3;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:haloPlane;x:record.x;y:record.y;width:record.width;height:record.height
                 transform:[Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.32;y:x;width:parent.width*1.64;height:width
+                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width
                     property variant artwork:shadowArt
                     property real phase:record.phase
                     property real shadowOnly:0
@@ -128,6 +135,8 @@ Item {
         NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
         // The perspective belongs to the stationary platter. Only its inset print spins.
         Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
+            layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             ShaderEffect {
                 objectName:"nowRecordShadow";opacity:.18;x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
@@ -145,7 +154,7 @@ Item {
                 border.width:page.unit;border.color:"#c0fffdf5"
             }
             Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:4*page.unit;transformOrigin:Item.Center
-                opacity:rhine.state.dark?.76:.68
+                opacity:rhine.state.dark?.70:.60
                 property real spinAngle:0
                 NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
                 Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
@@ -171,12 +180,6 @@ Item {
     }
     }
     Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
-        Controls.Button {objectName:"nowMore";text:"更多";width:30*page.unit;height:18*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true
-            contentItem:Label {text:"更多";font.pixelSize:10*page.unit;color:parent.hovered?page.ink:page.muted;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
-            background:Item {}
-            HoverHandler {cursorShape:Qt.PointingHandCursor}
-            onClicked:{var p=mapToItem(page,0,0);more.x=Math.max(0,Math.min(page.width-more.implicitWidth,p.x));more.y=Math.max(0,p.y-more.implicitHeight-6*page.unit);more.open();}
-        }
         Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
     }
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink

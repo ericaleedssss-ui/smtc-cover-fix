@@ -24,13 +24,13 @@ void PlaylistShowcase::sync(){
     const auto account=m_music->accountGeneration();const auto current=m_music->current;
     if(m_account!=account||m_key!=key(current)||m_directory!=bool(m_music->directory)){
         m_directory=bool(m_music->directory);
-        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_identityPending=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
+        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_identityPending=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
         if(container(current)&&!m_music->directory){loadIdentity();load();}
         emit changed();return;
     }
     if(m_revision!=m_music->revision){m_revision=m_music->revision;if(container(m_item))emit changed();}
 }
-void PlaylistShowcase::refresh(){if(!m_loading){++m_token;m_identityPending=false;m_loaded=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_pending.clear();m_music->host->invalidateMetadata();load();}}
+void PlaylistShowcase::refresh(){if(!m_loading){++m_token;m_identityPending=false;m_loaded=false;m_previewLoading=false;m_loadFailed=false;m_pending.clear();m_music->host->invalidateMetadata();load();}}
 void PlaylistShowcase::load(){
     if(m_loading||!container(m_item)||m_music->directory)return;
     m_loading=true;m_loadFailed=false;m_status.clear();emit changed();const auto token=m_token;const auto account=m_account;const auto k=m_key;QPointer<PlaylistShowcase> self(this);
@@ -45,7 +45,7 @@ void PlaylistShowcase::load(){
         if(self->m_ids.isEmpty()&&self->m_item["trackCount"].toInt()>0){self->m_loadFailed=true;self->m_status="曲目未读取完整，请重新读取资料";self->m_pending.clear();emit self->changed();return;}
         self->m_loaded=true;self->loadIdentity();
         self->m_music->details[self->m_key]=self->m_item;
-        const auto pending=self->m_pending;self->m_pending.clear();emit self->changed();if(!pending.isEmpty())self->execute(pending);self->completeDuration();
+        const auto pending=self->m_pending;self->m_pending.clear();emit self->changed();if(!pending.isEmpty())self->execute(pending);
     },[self,token,account,k]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account&&key(self->m_music->current)==k&&!self->m_music->directory;});
 }
 bool PlaylistShowcase::subscribed()const{
@@ -63,9 +63,6 @@ QVariantMap PlaylistShowcase::info()const{
     i["loadFailed"]=m_loadFailed;i["loaded"]=m_loaded;i["identityAvatar"]=m_identityAvatar;
     i["identityCanOpen"]=m_item["kind"]=="album"?!m_item["artists"].toArray().isEmpty():!m_item["creatorID"].toString().isEmpty();
     i["total"]=std::max(m_item["trackCount"].toInt(),int(m_ids.size()));
-    qint64 ms=0;bool complete=m_loaded&&!m_songs.isEmpty()&&m_songs.size()==m_ids.size();
-    for(const auto &v:m_songs){const auto duration=v.toObject()["duration"].toInteger();ms+=duration;complete&=duration>0;}
-    i["durationLabel"]=complete?(ms>=3600000?QString("%1 小时 %2 分钟").arg(ms/3600000).arg(ms/60000%60):QString("%1 分钟").arg(std::max<qint64>(1,ms/60000))):(m_loadFailed?QString("总时长读取失败"):(m_durationFailed?QString("总时长暂不可用"):(m_loaded&&m_ids.isEmpty()?QString("0 分钟"):QString("正在计算总时长…"))));
     const auto all=records();int pos=0;for(int n=0;n<all.size();++n)if(key(all[n].toObject())==m_key){pos=n;break;}
     bool more=false;for(int lane:{2,3,4})more|=m_music->hasMore[lane];
     i["recordsLoading"]=m_music->personalLoading;i["recordsMore"]=more;i["recordPosition"]=pos+1;i["recordCount"]=all.size();
@@ -145,10 +142,8 @@ void PlaylistShowcase::preview(int at){
         if(!self)return;self->m_previewLoading=false;
         if(r.ok()){
             for(const auto &value:r.value.toArray()){const auto song=value.toObject();const int at=MusicData::indexOfId(self->m_songs,song["id"].toString());if(at>=0)self->m_songs.replace(at,song);else self->m_songs.append(song);}
-            for(const auto &id:ids){const int at=MusicData::indexOfId(self->m_songs,textID(id));if(at<0||self->m_songs[at].toObject()["duration"].toInteger()<=0)self->m_durationFailed=true;}
-        }else{self->m_durationFailed=true;self->m_status="部分曲目信息读取失败，可重新读取资料";}
+        }else self->m_status="部分曲目信息读取失败，可重新读取资料";
         emit self->changed();
-        if(!self->m_durationFailed)QTimer::singleShot(600,self,[self,token]{if(self&&self->m_token==token)self->completeDuration();});
     },[self,token,account]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account;});
 }
 void PlaylistShowcase::playSong(int at){const auto tracks=queue();if(at>=0&&at<tracks.size()){m_music->archiveNowPlaying=true;m_music->archivePlayingDirectory=m_music->directory;m_music->archiveReturnItem=m_item;m_music->player.play(tracks[at].toObject(),tracks,at);m_music->changed();}}
@@ -163,11 +158,6 @@ void PlaylistShowcase::subscribe(bool enabled){
         else{self->m_music->subscriptions.remove(k);QJsonArray kept;for(const auto &v:self->m_music->lists[lane])if(key(v.toObject())!=k)kept.append(v);self->m_music->lists[lane]=kept;}
         self->m_music->totals[lane]=self->m_music->lists[lane].size();
     },[self,k,enabled](bool ok){if(self&&self->m_key==k){self->m_status=ok?(enabled?"已收藏":"已取消收藏"):"收藏失败，请重试";emit self->changed();}});
-}
-
-void PlaylistShowcase::completeDuration(){
-    if(!m_loaded||m_previewLoading||m_durationFailed||m_music->directory)return;
-    for(int n=0;n<m_ids.size();++n){const int at=MusicData::indexOfId(m_songs,textID(m_ids[n]));if(at<0||m_songs[at].toObject()["duration"].toInteger()<=0){preview(n);return;}}
 }
 
 void PlaylistShowcase::openIdentity(QString id){

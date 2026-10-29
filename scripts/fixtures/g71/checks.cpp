@@ -117,7 +117,7 @@ int main(int argc,char **argv){
     model.setSubscribed(subscriptionKey,false);events(30);require(!model.info()["subscribed"].toBool()&&music.lists[3].isEmpty()&&music.api.requests.last().second["t"].toInt()==2,"G74 confirmed unsubscribe clears server-confirmed membership");
     const auto writes=music.api.requests.size();model.setSubscribed("old-page-key",true);require(music.api.requests.size()==writes,"G74 stale confirmation cannot target the current page");
     subscription->item["subscribed"]=true;model.sync();require(model.info()["subscribed"].toBool(),"G74 detail subscription state survives an incompletely loaded personal shelf");
-    auto album=std::make_shared<MusicDirectory>();album->item=MusicData::item("album","7401","Album target");music.directory=album;model.sync();require(!model.active(),"G74 normal album details retain their native introduction reader");
+    auto album=std::make_shared<MusicDirectory>();album->item=MusicData::item("album","7401","Album target");music.directory=album;model.sync();require(model.active(),"G90 ordinary albums share the same magazine as record browsing");
     album->recordBrowse=true;model.sync();require(model.active(),"G74 album handoff keeps the persistent magazine active");
     model.setSubscribed(model.session(),true);events(30);require(music.api.requests.last().first=="/album/sub"&&music.lists[4].size()==1,"G74 album collection uses the album mutation endpoint");
     auto countsA=std::make_shared<MusicDirectory>();countsA->item=MusicData::item("playlist","7601","Count A");countsA->item["subscribedCount"]=9999;
