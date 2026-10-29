@@ -92,3 +92,15 @@ edit('Qt/src/NativeHudController.cpp','    auto &music = *m_music;\n    if (musi
 
 edit('Qt/src/MusicLibrary.cpp','        player.play(current, currentSongList());','        player.play(current, currentSongList());changed();')
 edit('Qt/src/MusicLibrary.cpp','    player.play(current);','    player.play(current);changed();')
+# Persistent reading material is dormant outside its page. Verify the actual
+# visibility/sampling boundary rather than equating safe dormancy with deletion.
+edit('Qt/tests/UiChecks.cpp','    check(!loader->property("active").toBool(), "settings retains its own surface");','''    {
+        auto *material=loader->property("item").value<QObject*>();
+        check(!loader->isVisible()&&material&&material->property("background").value<QObject*>()==nullptr,
+              "settings retains its own surface");
+    }''')
+edit('Qt/tests/UiChecks.cpp','    check(!loader->property("active").toBool(), "detail retains its existing background");','''    {
+        auto *material=loader->property("item").value<QObject*>();
+        check(!loader->isVisible()&&material&&material->property("background").value<QObject*>()==nullptr,
+              "detail retains its existing background");
+    }''')

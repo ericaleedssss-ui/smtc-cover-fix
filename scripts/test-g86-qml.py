@@ -120,8 +120,8 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   return walk(w.contentItem())
  def click(o):assert o is not None;QTest.mouseClick(w,Qt.LeftButton,Qt.NoModifier,o.mapToScene(o.boundingRect().center()).toPoint());QTest.qWait(60)
  reading=find('archiveReading');glass=find('textFrostedPanel');assert find('nowPlayingPanel') and glass
- reading.setVisible(False);QTest.qWait(50);assert find('textFrostedPanel') is glass
- reading.setVisible(True);QTest.qWait(50);assert find('textFrostedPanel') is glass
+ reading.setVisible(False);QTest.qWait(50);assert find('textFrostedPanel') is glass and not find('textFrostedLoader').isVisible() and glass.property('background') is None
+ reading.setVisible(True);QTest.qWait(50);assert find('textFrostedPanel') is glass and find('textFrostedLoader').isVisible() and glass.property('background') is not None
  reading.setProperty('frosted',False);QTest.qWait(50);assert not find('textFrostedPanel')
  reading.setProperty('frosted',True);QTest.qWait(50);glass=find('textFrostedPanel');assert glass
  for width,height in [(1600,900),(960,540),(960,720),(1920,1080)]:
