@@ -15,18 +15,25 @@ edit('Qt/src/Engine.h','    QObject *messages() const','    QObject *showcase() 
 edit('Qt/src/Engine.h','    MessageCenter *m_messages = nullptr;','    MessageCenter *m_messages = nullptr;\n    PlaylistShowcase *m_showcase=nullptr;')
 edit('Qt/src/Engine.cpp','    m_messages = new MessageCenter','    m_showcase = new PlaylistShowcase(&app->music,&app->hud,this);\n    connect(m_showcase,&PlaylistShowcase::navigate,this,&Engine::action);\n    m_messages = new MessageCenter')
 edit('Qt/src/Engine.cpp','    delete m_messages; m_messages=nullptr;','    delete m_showcase;m_showcase=nullptr;\n    delete m_messages; m_messages=nullptr;')
-edit('Qt/src/NativeHud.cpp','        readingPanel = QRectF(left, list ? 205 : 437,','        if(m_music->current["kind"]!="playlist"||m_music->directory)readingPanel = QRectF(left, list ? 205 : 437,')
+edit('Qt/src/NativeHud.cpp','        readingPanel = QRectF(left, list ? 205 : 437,','        if((m_music->current["kind"]!="playlist"&&m_music->current["kind"]!="album")||m_music->directory)readingPanel = QRectF(left, list ? 205 : 437,')
 # Suppress only the old playlist summary pixels/hits under the new shared archive panel.
-edit('Qt/src/NativeHud.cpp','        const auto x = width * 0.50520833;\n        if (music.directory)', '        if(item["kind"]!="playlist"||music.directory){\n        const auto x = width * 0.50520833;\n        if (music.directory)')
+edit('Qt/src/NativeHud.cpp','        const auto x = width * 0.50520833;\n        if (music.directory)', '        if((item["kind"]!="playlist"&&item["kind"]!="album")||music.directory){\n        const auto x = width * 0.50520833;\n        if (music.directory)')
 edit('Qt/src/NativeHud.cpp','        text(QStringLiteral("第 %1 / %2 项")','        }\n        text(QStringLiteral("第 %1 / %2 项")')
 edit('Qt/qml/Main.qml','    GlobalTools {id:globalTools;', '''    Loader {
         id:showcaseLoader;objectName:"playlistShowcaseLoader"
-        active:rhine.state.mode==="archive"&&rhine.state.currentKind==="playlist"&&!rhine.state.directoryOpen&&!rhine.state.modal&&!rhine.state.lyricsMode&&!rhine.state.viewer
-        x:120*root.stageScale;y:160*root.stageScale
-        width:root.width-168*root.stageScale;height:680*root.stageScale;z:84
+        active:rhine.state.mode==="archive"&&(rhine.state.currentKind==="playlist"||rhine.state.currentKind==="album")&&!rhine.state.directoryOpen&&!rhine.state.modal&&!rhine.state.lyricsMode&&!rhine.state.viewer
+        x:root.width*.50520833-28*root.stageScale;y:400*root.stageScale
+        width:root.width-x-31*root.stageScale;height:440*root.stageScale;z:84
         sourceComponent:PlaylistShowcase {controller:rhine.showcase;background:backgroundLayer;unit:root.stageScale}
     }
     GlobalTools {id:globalTools;''')
+# Reduce optical rim/colour separation only on this small archive card.
+# Other LiquidGlass users keep edgeStrength=1 and the existing shader output.
+edit('Qt/qml/LiquidGlass.qml','    property real radius:', '    property real edgeStrength: 1\n    property real radius:')
+edit('Qt/qml/LiquidGlass.qml','        property real darkMode:', '        property real edgeStrength: glass.edgeStrength\n        property real darkMode:')
+edit('Qt/shaders/liquidGlass.frag','    float darkMode;', '    float darkMode;\n    float edgeStrength;')
+edit('Qt/shaders/liquidGlass.frag','float opticalEdge=exp(-depth/4.5);','float opticalEdge=exp(-depth/4.5)*edgeStrength;')
+edit('Qt/shaders/liquidGlass.frag','float shadow=.12*exp(', 'float shadow=.12*mix(.3,1.0,edgeStrength)*exp(')
 # Footer keeps its count, hit target, comment entry and current-song source. Only artwork changes.
 p=Path('Qt/src/NativeHudPlayer.cpp');s=p.read_text(encoding='utf-8')
 s=s.replace('if (m_music->canMutate("/like")) {','if (!m_music->writeLoading && m_music->canMutate("/like")) {')

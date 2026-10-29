@@ -27,7 +27,7 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  auto a=MusicData::item("playlist","101","A","Creator"),b=MusicData::item("playlist","102","B","Creator"),c=MusicData::item("playlist","103","C","Creator");a["creatorID"]="7";a["cover"]="https://example.invalid/playlist-art";b["cover"]="https://example.invalid/b";c["cover"]="https://example.invalid/c";music.lists[2]={a,b,c};music.current=a;music.directory.reset();
  bool fail=false;int mutations=0;
  music.api.fixture=[&](QString route,QJsonObject p)->MusicReply{
-  if(route=="/playlist/subscribe"){mutations++;return {QJsonObject{{"code",200}}, {}};}
+  if(route=="/playlist/subscribe"||route=="/album/sub"){mutations++;return {QJsonObject{{"code",200}}, {}};}
   if(fail)return {{},"failed"};
   if(route=="/fixture/detail"){auto item=p["uid"].toObject();item["description"]="Real fixture description";item["trackCount"]=3;auto song=MusicData::item("song","1","First","Artist");song["duration"]=60000;return {QJsonArray{item,QJsonArray{song},QJsonArray{"1","2","3"}}, {}};}
   if(route=="/fixture/songs"){auto s=MusicData::item("song","2","Second","Artist");s["duration"]=120000;auto t=MusicData::item("song","3","Third","Artist");t["duration"]=180000;return {QJsonArray{s,t}, {}};}
@@ -39,13 +39,24 @@ int main(int argc,char**argv){QCoreApplication app(argc,argv);Host host;MusicLib
  model.playSong(2);assert(music.player.current["id"]=="3"&&music.player.index==2);model.operate("shuffle");assert(music.player.mode=="shuffle"&&music.player.queue.size()==3);model.operate("append");assert(music.player.queue.size()==6);
  assert(model.recordNeighbour(1)["key"]==b["key"].toString());assert(model.recordNeighbour(-1)["key"]==c["key"].toString());model.openCover(b["key"].toString());QTest::qWait(20);assert(music.current["key"]==b["key"]&&model.info()["key"]==b["key"].toString());
  model.operate("subscribe");QTest::qWait(20);assert(model.info()["subscribed"].toBool()&&mutations==1);model.operate("subscribe");assert(mutations==1);model.confirmUnsubscribe();QTest::qWait(20);assert(!model.info()["subscribed"].toBool()&&mutations==2);
+ // One continuous archive sequence crosses owned, subscribed and album lanes in both directions.
+ auto collected=MusicData::item("playlist","201","Collected","Other"),album=MusicData::item("album","301","Album","Artist");
+ music.lists[3]={collected};music.lists[4]={album};music.changed();
+ model.openCover(c["key"].toString());QTest::qWait(20);assert(model.recordNeighbour(1)["key"]==collected["key"].toString());
+ model.openCover(collected["key"].toString());QTest::qWait(20);assert(music.selectedLane==3&&model.recordNeighbour(1)["key"]==album["key"].toString());
+ model.openCover(album["key"].toString());QTest::qWait(20);assert(music.selectedLane==4&&model.info()["kind"]=="album"&&model.songs().size()==3);
+ assert(model.recordNeighbour(1)["key"]==a["key"].toString()&&model.recordNeighbour(-1)["key"]==collected["key"].toString());
+ QString action;QObject::connect(&model,&PlaylistShowcase::navigate,[&](QString value){action=value;});model.operate("details");assert(action=="music:directory");
+ model.operate("play");assert(music.player.queue.first().toObject()["queueSource"].toObject()["kind"]=="album");
+ model.operate("subscribe");model.confirmUnsubscribe();QTest::qWait(20);assert(music.lists[4].isEmpty()&&music.api.requests.last().first=="/album/sub");assert(!model.recordNeighbour(-1).isEmpty());
+ model.openCover(b["key"].toString());QTest::qWait(20);
  QSignalSpy changes(&model,&PlaylistShowcase::changed);++music.revision;music.player.changed();assert(changes.count()==0);
  model.operate("copy");assert(host.copied.contains("102"));
  // An old metadata response cannot replace a newly selected card, including after account changes.
  music.selectResult(0,2,false);music.selectResult(2,2,false);QTest::qWait(20);assert(model.info()["key"]==c["key"].toString());
  fail=true;model.refresh();QTest::qWait(20);assert(!model.busy()&&!model.status().isEmpty());
  music.account++;music.uid="99";music.changed();QTest::qWait(20);assert(model.info()["key"]==c["key"].toString());
- qInfo("G79 actual adapter passed: playlist-only artwork, deferred full queue/provenance, shuffle/append/song preview, total-duration honesty, real selection, confirmed subscriptions, copy and stale-response isolation.");
+ qInfo("G79 actual adapter passed: container artwork and cross-lane owned/collected/album browsing, deferred full queue/provenance, shuffle/append/song preview, total-duration honesty, real selection, confirmed subscriptions, copy and stale-response isolation.");
 }
 ''')
  flags=['-I'+str(d),'-I'+str(inc)]+['-I'+str(inc/n) for n in ['QtCore','QtNetwork','QtTest']];mocs=[]
