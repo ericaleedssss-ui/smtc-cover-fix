@@ -137,16 +137,24 @@ def click(view,item,button=Qt.LeftButton,point=None):
     assert item is not None
     if point is None:point=QPointF(item.width()/2,item.height()/2)
     point=item.mapToScene(point).toPoint();QTest.mouseMove(view,point);QTest.mouseClick(view,button,Qt.NoModifier,point);QTest.qWait(120)
-def checkAlbumDescription(v,root,c):
-    c.meta['description']='Actual full album description.\n'*100;c.changed.emit();QTest.qWait(100)
+def checkAlbumDescription(v,root,c,long=True):
+    # Match the Windows self-test's actual Chinese fixture rather than a separate
+    # English-only paragraph. A short description should fit without scrolling.
+    native='十首歌，十次心动。\n无数个清晨、无数个深夜、无数个黄昏，记录一路走来的声音。\n'
+    c.meta['description']=native*80 if long else '这是一段完整的简短专辑简介。'
+    c.changed.emit();QTest.qWait(100)
     click(v,find(root,'playlistDescriptionOpen'));QTest.qWait(230)
     reader=find(v.contentItem(),'playlistDescriptionReader');text=find(v.contentItem(),'playlistDescriptionText')
-    assert reader is not None and reader.isVisible() and text.property('text')==c.meta['description']
-    assert reader.property('contentHeight')>reader.height()
+    assert reader is not None and reader.isVisible() and text.property('text')==c.meta['description'],(v.width(),v.height(),reader.isVisible() if reader else None,find(root,'playlistDescriptionOpen').mapToScene(QPointF(0,0)),find(root,'magazineTrackList').property('contentY'))
+    assert (reader.property('contentHeight')>reader.height())==long,(reader.property('contentHeight'),reader.height(),long)
     point=reader.mapToScene(QPointF(reader.width()/2,reader.height()/2));before=reader.property('contentY')
+    listing=find(root,'magazineTrackList');listBefore=listing.property('contentY')
+    QTest.mouseMove(v,point.toPoint());QTest.qWait(80)
     event=QWheelEvent(point,v.mapToGlobal(point.toPoint()),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.NoScrollPhase,False)
     QGuiApplication.sendEvent(v,event);QTest.qWait(230)
-    assert reader.property('contentY')>before
+    assert listing.property('contentY')==listBefore,('description wheel leaked to tracks',listBefore,listing.property('contentY'))
+    after=reader.property('contentY')
+    assert (after>before) if long else after==before,(before,after,reader.property('contentHeight'),reader.height(),point,long)
     click(v,find(v.contentItem(),'playlistDescriptionClose'));QTest.qWait(230);assert not reader.isVisible()
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -184,7 +192,12 @@ Item {id:root;width:1400;height:900
     if '--album-description-only' in sys.argv:
         c.meta={**c.meta,'kind':'album','date':'2024-03-02','artists':[{'id':'5','name':'Actual album artist'}]}
         c.changed.emit();QTest.qWait(180)
-        checkAlbumDescription(v,root,c)
+        for width,height in ((1400,900),(960,540),(960,720),(1920,1080)):
+            v.resize(width,height);root.setWidth(width);root.setHeight(height);QTest.qWait(150)
+            listing=find(root,'magazineTrackList');listing.setProperty('contentY',listing.property('startY'));QTest.qWait(150)
+            checkAlbumDescription(v,root,c,long=False)
+            checkAlbumDescription(v,root,c,long=True)
+            print('PASS album short/long description and actual wheel:',width,height)
         assert not [w for w in warnings if 'ReferenceError' in w or 'TypeError' in w or 'Binding loop' in w],warnings
         print('PASS G90 focused production QML: album full description opens, actual wheel scrolls, close restores interaction')
         v.setSource(QUrl());QTest.qWait(50)

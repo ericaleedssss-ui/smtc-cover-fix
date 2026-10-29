@@ -43,6 +43,8 @@ edit('Qt/tests/UiChecks.cpp','''    scrollText();
             check(reader->property("contentHeight").toDouble()>reader->height(),"G90 long album description retains overflow content");
             const auto point=reader->mapToScene(QPointF(reader->width()/2,reader->height()/2));
             const auto before=reader->property("contentY").toDouble();
+            QMouseEvent move(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);
+            QCoreApplication::sendEvent(window,&move);settle(80);
             QWheelEvent wheel(point,window->mapToGlobal(point.toPoint()),QPoint(),QPoint(0,-120),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
             QCoreApplication::sendEvent(window,&wheel);settle(230);
             check(reader->property("contentY").toDouble()>before,"G90 album description scrolls with the actual mouse wheel");
@@ -51,3 +53,8 @@ edit('Qt/tests/UiChecks.cpp','''    scrollText();
         check(!reader||!reader->isVisible(),"G90 album description releases the comment interaction area");
     }
     backend.action("tab:comments");''')
+
+# The old 8-repeat description fits entirely in the larger magazine popup on
+# Windows. Overflow assertions need a deliberately long fixture, not a layout
+# assumption carried over from the smaller native text reader.
+edit('Qt/tests/UiChecks.cpp', '记录一路走来的声音。\\n").repeated(8);', '记录一路走来的声音。\\n").repeated(item["kind"] == "album" ? 80 : 8);')
