@@ -41,7 +41,7 @@ Item {
         contentItem:Label {text:parent.text;color:parent.primary?"#f7f7ed":page.ink;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:13*page.unit}
         background:Rectangle {radius:height/2;color:parent.primary?(parent.hovered?"#7e916c":"#70845e"):(parent.hovered?"#55ffffff":"#28ffffff");border.width:1;border.color:parent.primary?"transparent":"#bafffff5";opacity:parent.enabled?1:.45}
     }
-    LiquidGlass {anchors.fill:parent;background:page.background;sampleX:page.x;sampleY:page.y;uiScale:page.unit;edgeStrength:.15;radius:22*page.unit;dark:rhine.state.dark}
+    // Content only: the shared ArchiveReading owns the original glass.
     // Own only this panel's input; navigation and the player remain outside it.
     MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{if(page.showSongs)page.scrollSongs(e);else page.wheelRecord(e);e.accepted=true;}}
     Label {x:26*unit;y:26*unit;width:page.textWidth;text:"MUSIC DATABASE / "+(info.sourceLabel||"收藏歌单");font.pixelSize:10*unit;color:page.muted}

@@ -22,6 +22,13 @@ for name, expected_hash in protected_g70.items():
     if hashlib.sha256((source / name).read_bytes().replace(b'\r\n',b'\n')).hexdigest() != expected_hash:
         raise SystemExit(f"Protected G70 playback source changed: {name}")
 
+# G81 deliberately restores the original material rather than imitating it.
+original_glass = {'Qt/qml/LiquidGlass.qml': 'b6b8cef48917c4d409bc396a6be55e0cd6064be0363715d3d42d1ad8c4df6682',
+                  'Qt/shaders/liquidGlass.frag': '484ff6b30a0cd034735b34bd260f2fc55e1c746d79ae72105797ad5e05c3c861'}
+for name, expected_hash in original_glass.items():
+    if hashlib.sha256((source/name).read_bytes().replace(b'\r\n',b'\n')).hexdigest() != expected_hash:
+        raise SystemExit(f'Original archive glass material changed: {name}')
+
 checks = {
     'Qt/qml/Main.qml': ['active: rhine.state.queueOpen === true',
                         'active: rhine.state.modal === "discover"',
@@ -41,7 +48,7 @@ for name in ('PlayerQueueGlass.qml', 'SideNavigation.qml', 'DiscoverGlass.qml'):
     if (source / 'Qt/qml' / name).read_bytes() != (maintained / 'maintained/Qt/qml' / name).read_bytes():
         raise SystemExit(f'Maintained QML was not installed: {name}')
 
-for name in ('Qt/src/MessageCenter.cpp','Qt/src/MessageCenter.h','Qt/qml/MessageDrawer.qml','Qt/qml/DrawerFrost.qml','Qt/qml/DrawerInputGate.qml','Qt/qml/PlaylistShowcase.qml','Qt/src/PlaylistShowcase.cpp','Qt/src/PlaylistShowcase.h'):
+for name in ('Qt/src/MessageCenter.cpp','Qt/src/MessageCenter.h','Qt/qml/MessageDrawer.qml','Qt/qml/DrawerFrost.qml','Qt/qml/DrawerInputGate.qml','Qt/qml/PlaylistShowcase.qml','Qt/qml/ArchiveReading.qml','Qt/src/PlaylistShowcase.cpp','Qt/src/PlaylistShowcase.h'):
     if (source/name).read_bytes().replace(b'\r\n',b'\n') != (maintained/'maintained'/name).read_bytes().replace(b'\r\n',b'\n'):
         raise SystemExit(f'G77 message source not installed: {name}')
 for name,marker in [('Qt/src/Engine.cpp','m_messages = new MessageCenter'),('Qt/qml/GlobalTools.qml','controller:rhine.messages'),('MusicBridge/worker.cjs',"'/send/text': 'send_text'"),('Qt/tests/UiChecks.cpp','G77 text send is confirmed by Host')]:

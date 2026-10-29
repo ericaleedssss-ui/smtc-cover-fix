@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory() as tmp:
  d=Path(tmp);art=[]
  for i,color in enumerate(['#8b8e76','#4b5b50','#b6a58c']):
   image=QImage(640,640,QImage.Format_RGB32);image.fill(QColor(color));path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
- for name in ['PlaylistShowcase','RecordStack','LiquidGlass']:
+ for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass']:
   origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
   # Runtime loading accepts some syntax rejected by the release cache compiler.
   compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
@@ -73,8 +73,8 @@ with tempfile.TemporaryDirectory() as tmp:
  (d/'Harness.qml').write_text('''import QtQuick
 import QtQuick.Controls.Basic as Controls
 Controls.ApplicationWindow {id:root;visible:true;width:1600;height:900;property real u:height/1080
-Rectangle {id:bg;anchors.fill:parent;color:"#d9d4c8";Repeater {model:18;Rectangle {x:index*120-900;y:-300;width:55;height:1800;rotation:28;color:"#e9e4d8"}}}
-Loader {x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u;sourceComponent:PlaylistShowcase {controller:fixture;background:bg;unit:root.u}}
+Item {id:base;anchors.fill:parent;Rectangle {id:bg;z:-2;anchors.fill:parent;color:"#d9d4c8";Repeater {model:18;Rectangle {x:index*120-900;y:-300;width:55;height:1800;rotation:28;color:"#e9e4d8"}}}}
+ArchiveReading {id:reading;background:bg;materialLayer:base;controller:fixture;collection:true;unit:root.u;x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root.u;height:440*root.u}
 }''')
  c=Controller(art);b=Backend();engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('fixture',c);engine.rootContext().setContextProperty('rhine',b);engine.rootContext().setContextProperty('rhineFontFamily',font);engine.load(QUrl.fromLocalFile(str(d/'Harness.qml')));assert engine.rootObjects(),errors;w=engine.rootObjects()[0];w.requestActivate();QTest.qWait(300)
  def find(name):
@@ -92,6 +92,18 @@ Loader {x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root
    button=find(name);assert button.mapToItem(page,button.boundingRect().bottomRight()).x()<stack.x()
   w.grabWindow().save(str(repo.parent/f'g79-showcase-{width}x{height}.png'))
  w.setWidth(1600);w.setHeight(900);QTest.qWait(80)
+ # Only content changes. Both the host and original material must survive each switch.
+ reading=find('archiveReading');material=find('textFrostedPanel');assert material is not None
+ for mode in [False,True,False,True]:
+  reading.setProperty('collection',mode);QTest.qWait(100)
+  assert find('archiveReading') is reading and find('textFrostedPanel') is material
+  assert len(w.findChildren(QObject,'textFrostedPanel'))==1
+  assert bool(find('playlistShowcase'))==mode
+ assert abs(material.property('radius')-22*900/1080)<.001
+ # Turning frosting off releases sampling while leaving collection controls usable.
+ reading.setProperty('frosted',False);QTest.qWait(60);assert find('textFrostedPanel') is None and find('showcasePlay') is not None
+ reading.setProperty('frosted',True);QTest.qWait(60);material=find('textFrostedPanel');assert material is not None
+
  click(find('showcaseMore'));click(find('showcaseAppend'));assert c.actions[-1]==('append',)
  click(find('showcaseMore'));click(find('showcaseCopy'));assert c.actions[-1]==('copy',)
  click(find('showcaseMore'));click(find('showcaseDetails'));assert c.actions[-1]==('details',)
@@ -112,6 +124,7 @@ Loader {x:root.width*.50520833-28*root.u;y:400*root.u;width:root.width-x-31*root
  QTest.keyClick(w,Qt.Key_Left);QTest.qWait(800);assert c.at==0,c.actions
  # Same-key metadata updates cannot replace the cached record source.
  image=find('playlistMainCover');source=image.property('source');c.changed.emit();QTest.qWait(80);assert image.property('source')==source
+ assert find('textFrostedPanel') is material
  assert not errors,errors
- print('G79 real QML passed: four sizes, right-side cover balance, actual mouse/play and Space/F/Tab/arrows/Enter behavior, reverse turns and stable image source.')
+ print('G81 shared original glass identity across content switches and frosting preference passed; G79 real QML passed: four sizes, right-side cover balance, actual mouse/play and Space/F/Tab/arrows/Enter behavior, reverse turns and stable image source.')
  w.close();engine.deleteLater();QTest.qWait(50)
