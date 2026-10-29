@@ -1,6 +1,7 @@
 #include "PlaylistShowcase.h"
 #include "MusicData.h"
 #include <QJsonDocument>
+#include <QBuffer>
 #include <QPointer>
 #include <QRandomGenerator>
 #include <QUrl>
@@ -23,13 +24,13 @@ void PlaylistShowcase::sync(){
     const auto account=m_music->accountGeneration();const auto current=m_music->current;
     if(m_account!=account||m_key!=key(current)||m_directory!=bool(m_music->directory)){
         m_directory=bool(m_music->directory);
-        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
-        if(container(current)&&!m_music->directory)load();
+        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_identityPending=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
+        if(container(current)&&!m_music->directory){loadIdentity();load();}
         emit changed();return;
     }
     if(m_revision!=m_music->revision){m_revision=m_music->revision;if(container(m_item))emit changed();}
 }
-void PlaylistShowcase::refresh(){if(!m_loading){++m_token;m_loaded=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_pending.clear();m_music->host->invalidateMetadata();load();}}
+void PlaylistShowcase::refresh(){if(!m_loading){++m_token;m_identityPending=false;m_loaded=false;m_previewLoading=false;m_durationFailed=false;m_loadFailed=false;m_pending.clear();m_music->host->invalidateMetadata();load();}}
 void PlaylistShowcase::load(){
     if(m_loading||!container(m_item)||m_music->directory)return;
     m_loading=true;m_loadFailed=false;m_status.clear();emit changed();const auto token=m_token;const auto account=m_account;const auto k=m_key;QPointer<PlaylistShowcase> self(this);
@@ -37,7 +38,7 @@ void PlaylistShowcase::load(){
         if(!self)return;self->m_loading=false;
         const auto a=r.value.toArray();
         if(!r.ok()||a.size()<3||!a[1].isArray()||!a[2].isArray()||key(a[0].toObject())!=self->m_key){self->m_loadFailed=true;self->m_status="资料读取失败，请重试";self->m_pending.clear();emit self->changed();return;}
-        auto updated=a[0].toObject();if(updated["cover"].toString().isEmpty())updated["cover"]=self->m_item["cover"];self->m_item=updated;self->m_songs=a[1].toArray();self->m_ids=a[2].toArray();
+        auto updated=a[0].toObject();if(updated["cover"].toString().isEmpty())updated["cover"]=self->m_item["cover"];if(updated["artists"].toArray().isEmpty())updated["artists"]=self->m_item["artists"];self->m_item=updated;self->m_songs=a[1].toArray();self->m_ids=a[2].toArray();
         // /album returns songs, while playlist detail supplies trackIds. Some
         // providers omit the third tuple entry's IDs for albums entirely.
         if(self->m_item["kind"]=="album"&&self->m_ids.isEmpty())for(const auto &v:self->m_songs){const QJsonValue id=v.toObject()["id"];if(!textID(id).isEmpty()&&textID(id)!="0")self->m_ids.append(textID(id));}
@@ -179,21 +180,40 @@ void PlaylistShowcase::retryIdentityAvatar(){
     if(m_avatarRetried)return;m_avatarRetried=true;m_identityAvatar.clear();loadIdentity(false);emit changed();
 }
 void PlaylistShowcase::loadIdentity(bool fallback){
+    if(m_identityPending)return;
     const bool album=m_item["kind"]=="album";const auto artist=m_item["artists"].toArray().isEmpty()?QJsonObject{}:m_item["artists"].toArray().first().toObject();
     const auto id=album?artist["id"].toString():m_item["creatorID"].toString();
     const auto cacheKey=m_music->provider+":"+(album?"artist:":"user:")+id;
     const auto direct=album?artist["avatar"].toString():m_item["creatorAvatar"].toString();
-    if(!fallback&&!m_avatarRetried&&!direct.isEmpty()){QUrl address(direct);if(address.scheme()=="http")address.setScheme("https");m_identityAvatar=address.toString();m_avatarCache[cacheKey]=m_identityAvatar;return;}
+    if(!fallback&&!m_avatarRetried&&!direct.isEmpty()&&!album){displayIdentity(direct,cacheKey,false);return;}
     if(!fallback&&!m_avatarRetried&&m_avatarCache.contains(cacheKey)){m_identityAvatar=m_avatarCache[cacheKey];return;}
-    if(id.isEmpty()||m_music->provider!="netease")return;
+    if(id.isEmpty()||id=="0"||m_music->provider!="netease")return;
     const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
     const QString route=album?(fallback?"/artists":"/artist/detail"):"/user/detail";
+    m_identityPending=true;
     m_music->api.request(route,{{album?"id":"uid",id}},[self,album,fallback,cacheKey](MusicReply r){
-        if(!self)return;const auto body=r.value.toObject();const auto person=album?(fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject()):body["profile"].toObject();
+        if(!self)return;self->m_identityPending=false;const auto body=r.value.toObject();const auto person=album?(fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject()):body["profile"].toObject();
         QString url;
         for(const auto &name:album?QStringList{"avatar","img1v1Url","picUrl","cover"}:QStringList{"avatarUrl"})if(!person[name].toString().isEmpty()){url=person[name].toString();break;}
         if(!r.ok()||url.isEmpty()){if(album&&!fallback)self->loadIdentity(true);return;}
         QUrl address(url);if(address.scheme()=="http")address.setScheme("https");
-        self->m_identityAvatar=address.toString();self->m_avatarCache[cacheKey]=self->m_identityAvatar;emit self->changed();
+        self->displayIdentity(address.toString(),cacheKey,album&&!fallback);
     },[self,token,account]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account;});
+}
+
+// Share the native image cache/network policy and publish decoded small pixels.
+// QML no longer downloads a second, full-size remote image through another manager.
+void PlaylistShowcase::displayIdentity(QString url,QString cacheKey,bool canFallback){
+    m_identityPending=true;
+    const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
+    m_music->host->loadCover(url,[self,token,account,cacheKey,canFallback](QString imageKey){
+        if(!self||self->m_token!=token||self->m_music->accountGeneration()!=account)return;
+        self->m_identityPending=false;
+        const auto image=self->m_music->host->image(imageKey);
+        if(image.isNull()){if(canFallback)self->loadIdentity(true);return;}
+        QByteArray bytes;QBuffer buffer(&bytes);buffer.open(QIODevice::WriteOnly);
+        if(!image.save(&buffer,"PNG"))return;
+        self->m_identityAvatar="data:image/png;base64,"+QString::fromLatin1(bytes.toBase64());
+        self->m_avatarCache[cacheKey]=self->m_identityAvatar;emit self->changed();
+    },96);
 }

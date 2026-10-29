@@ -29,7 +29,8 @@ Item {
     function updatePresentation(){
         if(!groupTransitions)return;
         if(groupStage>1)return;
-        if(!front.key||incomingFront.key===front.key||awaitingKey===incomingFront.key||(turning&&chosen.key===incomingFront.key)){
+        if(!incomingFront.key)return;
+        if(!front.key||(incomingFront.recordLane===front.recordLane&&(incomingFront.key===front.key||awaitingKey===incomingFront.key||(turning&&chosen.key===incomingFront.key)))){
             presentation={front:incomingFront,rear:incomingRear};return;
         }
         groupTarget=incomingFront;groupRear=incomingRear;
@@ -42,14 +43,14 @@ Item {
     }
     function tryGroup(){
         if(groupStage!==1||(!groupTarget.cover&&groupTarget.loading))return;
-        for(var i=0;i<groupPreload.count;++i){var img=groupPreload.itemAt(i);if(img&&img.source.toString()&&(img.status===Image.Loading||img.status===Image.Null))return;}
+        for(var i=0;i<Math.min(1,groupPreload.count);++i){var img=groupPreload.itemAt(i);if(img&&img.source.toString()&&(img.status===Image.Loading||img.status===Image.Null))return;}
         groupStage=2;groupOut.start();
     }
     function commitGroup(){
         groupCommitting=true;turning=false;awaitingKey="";switchCooldown=false;
-        for(var i=0;i<cards.count;++i){var card=cards.itemAt(i);card.snapping=true;card.record=({});}
+        for(var i=0;i<cards.count;++i){var card=cards.itemAt(i);card.snapping=true;}
         presentation={front:groupTarget,rear:groupRear};syncCards();
-        groupShift=groupDirection*18*unit;groupStage=3;groupIn.start();
+        groupShift=groupDirection*64*unit;groupStage=3;groupIn.start();
     }
     onIncomingFrontChanged:updatePresentation()
     onIncomingRearChanged:updatePresentation()
@@ -92,8 +93,16 @@ Item {
     }
     function cardFor(key){for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(c&&c.record.key===key)return c;}return null;}
     function freeCard(){for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(c&&!c.record.key)return c;}return null;}
+    function imageSource(record){
+        var url=String(record.cover||"");
+        if(groupTransitions&&/^https?:\/\/[^/]*music\.126\.net\//.test(url)){
+            url=url.replace(/^http:/,"https:");
+            return /[?&]param=/.test(url)?url.replace(/([?&])param=[^&]*/,"$1param=512y512"):url+(url.indexOf("?")>=0?"&":"?")+"param=512y512";
+        }
+        return url;
+    }
     function assignRecord(card,record){
-        if(card.record.key!==record.key||!card.coverSource)card.coverSource=record.cover||"";
+        if(card.record.key!==record.key||!card.coverSource)card.coverSource=imageSource(record);
         card.record=record;
     }
     function resumeQueuedTurn(){
@@ -137,7 +146,7 @@ Item {
             var extra=freeCard();if(extra){extra.snapping=true;extra.entering=true;extra.slot=2*direction;assignRecord(extra,entering);}
         }
         for(var n=0;n<cards.count;++n){var imageCard=cards.itemAt(n);
-            if(imageCard&&imageCard.record.key&&imageCard.imageLoading){queuedKey=value.key;queuedFromKey=String(front.key||"");closeFan.stop();return true;}
+            if(imageCard&&imageCard.record.key&&imageCard.imageLoading&&(!groupTransitions||imageCard.record.key===value.key)){queuedKey=value.key;queuedFromKey=String(front.key||"");closeFan.stop();return true;}
         }
         queuedKey="";queuedFromKey="";
         for(var i=0;i<cards.count;++i){var c=cards.itemAt(i);if(!c||!c.record.key)continue;
@@ -157,8 +166,8 @@ Item {
     onRearChanged:syncCards()
     Component.onCompleted:{if(groupTransitions)presentation={front:incomingFront,rear:incomingRear};syncCards();recordPrefetch.restart();}
     // Decode the next entering images ahead of time; these never paint a cover.
-    Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.controller.recordNeighbour(2).cover||"";}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
-    Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.controller.recordNeighbour(-2).cover||"";}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
+    Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.imageSource(stack.controller.recordNeighbour(2));}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
+    Image {visible:false;source:{var current=stack.front;var neighbours=stack.rear;return stack.imageSource(stack.controller.recordNeighbour(-2));}sourceSize.width:512;sourceSize.height:512;asynchronous:true}
     Timer {id:cooldown;interval:180;onTriggered:stack.switchCooldown=false}
     Timer {id:recordPrefetch;interval:280;repeat:false;onTriggered:if(!stack.turning)stack.controller.prepareRecords()}
     Timer {id:commitTurn;interval:16;repeat:false;onTriggered:{var key=stack.pendingKey;stack.pendingKey="";if(key)stack.controller.openCover(key);}}
@@ -213,7 +222,7 @@ Item {
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
             layer.effect:MultiEffect {shadowEnabled:true;shadowBlur:.6;shadowOpacity:card.slot===0?.2:0;shadowVerticalOffset:6;shadowColor:"#48533e"}
             Rectangle {anchors.fill:parent;anchors.margins:-2;radius:3;color:"#ebe9df"}
-            Image {id:coverImage;objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.coverSource;onStatusChanged:if(status===Image.Ready||status===Image.Error)stack.resumeQueuedTurn();sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:!stack.groupCommitting;retainWhileLoading:true}
+            Image {id:coverImage;objectName:card.slot===0?"playlistMainCover":"recordImage_"+card.record.key;anchors.fill:parent;source:card.coverSource;onStatusChanged:if(status===Image.Ready||status===Image.Error)stack.resumeQueuedTurn();sourceSize.width:512;sourceSize.height:512;fillMode:Image.PreserveAspectCrop;asynchronous:true;retainWhileLoading:true}
             MouseArea {
                 objectName:"recordHit_"+card.record.key
                 x:card.slot<0?0:parent.width-width;y:0
@@ -274,20 +283,20 @@ Item {
     Repeater {
         id:groupPreload
         model:stack.groupStage>0?[stack.groupTarget].concat(stack.groupRear):[]
-        delegate:Image {required property var modelData;visible:false;source:modelData.cover||"";sourceSize:Qt.size(512,512);cache:true;asynchronous:true;onStatusChanged:Qt.callLater(stack.tryGroup)}
+        delegate:Image {required property var modelData;visible:false;source:stack.imageSource(modelData);sourceSize:Qt.size(512,512);cache:true;asynchronous:true;onStatusChanged:Qt.callLater(stack.tryGroup)}
     }
     ParallelAnimation {
         id:groupOut
-        NumberAnimation {target:stack;property:"groupShift";to:-stack.groupDirection*18*stack.unit;duration:stack.reduced?0:110;easing.type:Easing.InCubic}
-        NumberAnimation {target:stack;property:"groupScale";to:.97;duration:stack.reduced?0:110}
-        NumberAnimation {target:stack;property:"groupOpacity";to:0;duration:stack.reduced?0:110}
+        NumberAnimation {target:stack;property:"groupShift";to:-stack.groupDirection*64*stack.unit;duration:stack.reduced?0:170;easing.type:Easing.InCubic}
+        NumberAnimation {target:stack;property:"groupScale";to:.90;duration:stack.reduced?0:170}
+        NumberAnimation {target:stack;property:"groupOpacity";to:0;duration:stack.reduced?0:170}
         onFinished:stack.commitGroup()
     }
     ParallelAnimation {
         id:groupIn
-        NumberAnimation {target:stack;property:"groupShift";to:0;duration:stack.reduced?0:180;easing.type:Easing.OutCubic}
-        NumberAnimation {target:stack;property:"groupScale";to:1;duration:stack.reduced?0:180;easing.type:Easing.OutCubic}
-        NumberAnimation {target:stack;property:"groupOpacity";to:1;duration:stack.reduced?0:180}
+        NumberAnimation {target:stack;property:"groupShift";to:0;duration:stack.reduced?0:270;easing.type:Easing.OutCubic}
+        NumberAnimation {target:stack;property:"groupScale";to:1;duration:stack.reduced?0:270;easing.type:Easing.OutCubic}
+        NumberAnimation {target:stack;property:"groupOpacity";to:1;duration:stack.reduced?0:270}
         onFinished:{stack.groupCommitting=false;stack.groupStage=0;stack.updatePresentation();}
     }
     SequentialAnimation {

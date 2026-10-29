@@ -13,7 +13,7 @@ fid=QFontDatabase.addApplicationFont(str(src/'Assets/fonts/RhineMiSans-regular.o
 class Controller(QObject):
  changed=Signal()
  lane=2
- def __init__(self,art):super().__init__();self.art=art;self.at=0;self.actions=[];self.collected=False
+ def __init__(self,art):super().__init__();self.art=art.copy();self.at=0;self.actions=[];self.collected=False
  @Property('QVariantMap',notify=changed)
  def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['电子、摇滚、实验、意识、迷走','沿着夜色缓慢生长','午后的松弛感'][self.at],recordLane=self.lane,identities=[dict(id='7',name='Artist one / 很长的艺人名字'),dict(id='8',name='Second artist')],identityAvatar=self.art[0],identityCanOpen=True,loaded=True,artist='QA / 显式离线数据',description='在电子的律动与摇滚的呐喊之间，收集那些游走于秩序与混沌的声音。\n这里是关于实验、意识与边界的歌单，适合在深夜、旅途中或独处时聆听。\n' * 4,creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 小时 26 分钟',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
  @Property('QVariantList',notify=changed)
@@ -107,6 +107,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   assert len(w.findChildren(QObject,'textFrostedPanel'))==1
   assert bool(find('playlistShowcase'))==mode
  assert abs(material.property('radius')-22*900/1080)<.001
+ content=find('playlistShowcase');reading.setVisible(False);QTest.qWait(30);reading.setVisible(True);QTest.qWait(30);assert find('playlistShowcase') is content
  # Turning frosting off releases sampling while leaving collection controls usable.
  reading.setProperty('frosted',False);QTest.qWait(60);assert find('textFrostedPanel') is None and find('showcasePlay') is not None
  reading.setProperty('frosted',True);QTest.qWait(60);material=find('textFrostedPanel');assert material is not None
@@ -148,7 +149,9 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  payload=(d/'cover1.png').read_bytes()
  class Handler(http.server.BaseHTTPRequestHandler):
   def do_GET(self):
-   time.sleep(.25);self.send_response(200);self.send_header('Content-Type','image/png');self.end_headers();self.wfile.write(payload)
+   time.sleep(1.4 if 'slow-rear' in self.path else .25);self.send_response(200);self.send_header('Content-Type','image/png');self.end_headers()
+   try:self.wfile.write(payload)
+   except (BrokenPipeError,ConnectionResetError):pass
   def log_message(self,*args):pass
  server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);threading.Thread(target=server.serve_forever,daemon=True).start()
  old=find('playlistMainCover').property('source');c.art[1]=f'http://127.0.0.1:{server.server_port}/cold.png';c.lane=3;c.at=1;c.changed.emit();QTest.qWait(60)
@@ -156,11 +159,17 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  deadline=time.monotonic()+4
  while stack.property('groupStage') and time.monotonic()<deadline:QTest.qWait(40)
  assert stack.property('groupStage')==0 and stack.property('groupOpacity')==1,(stack.property('groupStage'),stack.property('groupOpacity'),errors)
- c.lane=2;c.at=0;c.changed.emit();QTest.qWait(550);assert stack.property('groupStage')==0 and stack.property('groupShift')==0
- server.shutdown();server.server_close()
- # A burst queues predictable adjacent turns instead of dropping all input.
+ c.lane=2;c.at=0;c.changed.emit();QTest.qWait(90);w.grabWindow().save(str(repo.parent/'g84-group-exit.png'));assert stack.property('groupStage')==2 and stack.property('groupShift')>2 and stack.property('groupScale')<.995;QTest.qWait(500);assert stack.property('groupStage')==0 and stack.property('groupShift')==0
+ # An offscreen entering cover must not block a ready adjacent cover.
+ c.art[2]=f'http://127.0.0.1:{server.server_port}/slow-rear.png';c.changed.emit();find('recordImage_netease:playlist:2').setProperty('source',QUrl(c.art[2]));QTest.qWait(30)
+ QTest.keyClick(w,Qt.Key_Right);QTest.qWait(80);assert stack.property('turning') and not stack.property('queuedKey')
+ QTest.qWait(700);assert c.at==1
+ c.art=art.copy();c.at=0;c.changed.emit();QTest.qWait(650)
+ # A burst coalesces to one recent direction; stale detents never replay later.
  for _ in range(3):QTest.keyClick(w,Qt.Key_Right)
- QTest.qWait(2400);assert c.at==0 and find('playlistShowcase').property('pendingMoves')==0
+ QTest.qWait(1800);assert c.at==2 and find('playlistShowcase').property('pendingMoves')==0,(c.at,c.actions[-6:],stack.property('busy'))
+ before=len(c.actions);QTest.qWait(500);assert len(c.actions)==before
+ server.shutdown();server.server_close()
  # Same-key metadata updates cannot replace the cached record source.
  image=find('playlistMainCover');source=image.property('source');c.changed.emit();QTest.qWait(80);assert image.property('source')==source
  assert find('textFrostedPanel') is material

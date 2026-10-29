@@ -33,7 +33,9 @@ Item {
         id:collectionLoader
         objectName:"playlistShowcaseLoader"
         anchors.fill:parent
-        active:reading.collectionActive
+        active:reading.collection
+        visible:reading.collectionActive
+        enabled:visible
         sourceComponent:PlaylistShowcase {controller:reading.controller;background:reading.background;unit:reading.unit}
     }
 }

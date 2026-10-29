@@ -39,7 +39,8 @@ private:
     quint64 m_account=0,m_token=0,m_revision=0;
     bool m_previewLoading=false,m_durationFailed=false,m_loadFailed=false;
     void loadIdentity(bool fallback=false);
-    bool m_avatarRetried=false;
+    void displayIdentity(QString url,QString cacheKey,bool canFallback);
+    bool m_avatarRetried=false,m_identityPending=false;
     QHash<QString,QString> m_avatarCache;
     QJsonArray records()const;
     void prepareInitialRecords();
