@@ -23,3 +23,7 @@
 ## Pending
 
 Full Windows compile/deploy, native integrated portrait check, packaging and physical-machine visual/performance acceptance remain CI/user work. Live provider portraits and logged-in mutation endpoints were not exercised locally. No full unrelated cover animation suite rerun is claimed. Total-duration calculation remains removed; roaming, cover carousel ordering, footer transport controls, navigation and original LiquidGlass/shader are unchanged.
+
+## Windows source-generation encoding correction
+
+Run 40924004830 stopped before compilation in `enable-g91.py`: implicit Path.read_text used the Windows cp1252 default on UTF-8 C++ containing Chinese text. Both input and output now specify UTF-8 explicitly. No UI/animation/API logic changes. The source-generation step is verified with the G91 script's implicit default deliberately simulated as cp1252; final Windows compilation and rendering remain pending.
