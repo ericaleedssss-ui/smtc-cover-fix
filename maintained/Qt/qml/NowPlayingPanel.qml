@@ -76,10 +76,20 @@ Item {
         return out;
     }
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
+    property bool lyricFollowRetryScheduled:false
     function follow(){
-        if(!following||playback.index<0||!lyrics.count)return;
+        if(!following||playback.index<0||!lyrics.count){lyricFollowPending=false;return;}
         var item=lyrics.itemAtIndex(playback.index);
-        if(!item){Qt.callLater(follow);return;}
+        if(!item){
+            // Ask the virtualized ListView to instantiate the target delegate.
+            // Retry once after layout; never spin an unbounded callLater loop.
+            if(!lyricFollowRetryScheduled){
+                lyricFollowRetryScheduled=true;
+                lyrics.positionViewAtIndex(playback.index,ListView.Contain);
+                Qt.callLater(function(){page.lyricFollowRetryScheduled=false;page.follow();});
+            }
+            return;
+        }
         var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
         lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
         lyricFollowPending=false;
