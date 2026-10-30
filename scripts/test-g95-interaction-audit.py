@@ -68,6 +68,12 @@ assert "c.more=b[\"more\"].toBool(b[\"hasMore\"].toBool(false))&&!a.isEmpty();" 
 assert "if(!a.isEmpty())c.before=a.last().toObject()[\"time\"].toInteger();" in messages, "refresh must replace the private-message cursor with the newest page cursor"
 assert "if(!reset||c.before==0)" not in messages, "private-message refresh must not retain a stale cursor condition"
 
+magazine_cpp = read("src/PlaylistMagazine.cpp")
+magazine_h = read("src/PlaylistMagazine.h")
+assert "m_artistRequest" in magazine_h, "album artist avatar requests need their own identity"
+assert "self->m_artistRequest!=request" in magazine_cpp and "self->m_artistID!=artistID" in magazine_cpp, "stale album artist API responses must be rejected"
+assert "self->m_artistRequest!=request" in magazine_cpp and "self->m_artistToken!=token" in magazine_cpp, "stale album artist image callbacks must be rejected"
+
 now_playing = read("src/NowPlaying.cpp")
 now_playing_h = read("src/NowPlaying.h")
 assert "m_artistRequest" in now_playing_h, "now-playing artist metadata requests need independent identities"
