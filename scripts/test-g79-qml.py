@@ -108,7 +108,7 @@ ArchiveNavigator {controller:rhine;navigation:({index:rhine.navPosition,total:5,
   meta=find('showcaseMetadata');date=find('showcaseDate');assert date.mapToItem(meta,date.boundingRect().bottomRight()).x()<=meta.width()+1,(width,height,meta.width())
   nav=find('archiveNavigator');assert abs(nav.x()+nav.width()/2-position.x()-page.width()/2)<1
   assert nav.y()>=position.y()+page.height() and nav.y()+nav.height()<976*height/1080
-  assert abs(find('archiveBrowseNext').mapToScene(QPointF()).x()-position.x())<1
+  assert find('archiveBrowseNext') is None
   title=find('showcaseTitle');assert title.x()+title.width()<stack.x()+stack.width()*.1
   for name in ['showcasePlay','showcaseShuffle','showcaseCollect','showcaseMore']:
    button=find(name);assert button.mapToItem(page,button.boundingRect().bottomRight()).x()<stack.x()
@@ -132,10 +132,9 @@ ArchiveNavigator {controller:rhine;navigation:({index:rhine.navPosition,total:5,
  nav=find('archiveNavigator');assert nav is not None
  assert abs(nav.x()+nav.width()/2-reading.x()-reading.width()/2)<1
  assert nav.y()>=reading.y()+reading.height() and nav.y()+nav.height()<976*900/1080
- assert abs(find('archiveBrowseNext').mapToScene(QPointF()).x()-reading.x())<1
+ assert find('archiveBrowseNext') is None
  click(find('archiveColumnNext'));assert b.actions[-1]=='column-next' and find('archiveColumnNumber').property('text')=='04 / 05'
  click(find('archiveColumnPrevious'));assert b.actions[-1]=='column-prev' and find('archiveColumnNumber').property('text')=='03 / 05'
- click(find('archiveBrowseNext'));assert b.actions[-1]=='next'
  assert find('showcaseTags').property('text')=='摇滚 / 实验' and find('showcaseDate').property('text')=='2025-06-12'
  meta=find('showcaseMetadata');assert find('showcaseDate').mapToItem(meta,find('showcaseDate').boundingRect().bottomRight()).x()<=meta.width()+1
  hint=find('showcaseTabHint');assert hint.x()>reading.width()*.7
