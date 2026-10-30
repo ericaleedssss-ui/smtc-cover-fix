@@ -37,7 +37,7 @@ void main() {
             trackShade+=exp(-pow((r-track)/.0015,2.0));
             trackLight+=exp(-pow((r-track+.0032)/.0013,2.0));
         }
-        vec3 pigment=mix(vec3(.93,.90,.85),vec3(.63,.67,.60),darkMode);
+        vec3 pigment=mix(vec3(.87,.83,.77),vec3(.63,.67,.60),darkMode);
         pigment*=1.0+.05*lit;
         float groove=.5+.5*sin(r*700.0);
         pigment-=vec3(.28)*trackShade+vec3(.035)*groove;
@@ -49,8 +49,11 @@ void main() {
         rgb=rgb*(1.0-lip)+vec3(1.0,.99,.96)*lip;a=a+lip*(1.0-a);
         // Outer contour: survives the left defocus so the disc still reads as a record.
         float leftEdge=1.0-smoothstep(-.40,.05,q.x);
-        float contour=exp(-pow((r-.489)/.0055,2.0))*(.24+.22*leftEdge);
+        float contour=exp(-pow((r-.489)/.0055,2.0))*(.38+.14*leftEdge);
         rgb=rgb*(1.0-contour)+vec3(.36,.31,.25)*contour;a=a+contour*(1.0-a);
+        // Bright inner lip on the lit (upper-right) side so the edge separates from the cream glass.
+        float rimHi=exp(-pow((r-.481)/.0024,2.0))*.50*max(lit,0.0);
+        rgb=rgb*(1.0-rimHi)+vec3(1.0,.99,.96)*rimHi;a=a+rimHi*(1.0-a);
         // Contact occlusion where the printed label sits on the vinyl.
         float ao=exp(-pow((r-phase-.004)/.010,2.0))*.24*smoothstep(phase-.004,phase,r);
         rgb=rgb*(1.0-ao)+vec3(.28,.22,.16)*ao;a=a+ao*(1.0-a);
@@ -61,7 +64,7 @@ void main() {
         // shadows, loses focus and alpha together before the glass boundary.
         vec2 uv=qt_TexCoord0;
         float focus=smoothstep(.26,.81,uv.x);
-        float spread=mix(.017,.00035,focus);
+        float spread=mix(.010,.00035,focus);
         vec2 dx=vec2(spread/max(phase,1.0),0),dy=vec2(0,spread);
         vec4 colour=texture(artwork,uv)*.28;
         colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.12;
@@ -72,10 +75,10 @@ void main() {
         colour.rgb+=vec3(.05,.045,.036)*colour.a*(1.0-clamp(lum,0.0,1.0));
         vec2 sp=uv*vec2(phase,1.0);
         float key=1.0-smoothstep(.10,1.25,distance(sp,vec2(phase,0.0)));
-        colour.rgb*=.95+.12*key;
+        colour.rgb*=.97+.05*key;
         float s=sp.x*.62-sp.y*.78;
         float winLight=exp(-pow((s-.50)/.045,2.0))+.75*exp(-pow((s-.66)/.035,2.0));
-        colour.rgb+=vec3(1.0,.95,.86)*colour.a*.06*winLight*smoothstep(.45,.75,uv.x);
+        colour.rgb+=vec3(1.0,.95,.86)*colour.a*.04*winLight*smoothstep(.45,.75,uv.x);
         float grain=fract(sin(dot(floor(sp*900.0),vec2(12.9898,78.233)))*43758.5453)-.5;
         colour.rgb+=grain*.05*colour.a;
         float veil=mix(.07,.30,1.0-smoothstep(.35,.88,uv.x));
@@ -83,7 +86,7 @@ void main() {
         colour.rgb=mix(colour.rgb,cream*colour.a,veil);
         colour.rgb=clamp(colour.rgb,vec3(0.0),vec3(colour.a));
         float fade=.22+.78*smoothstep(.08,.74,uv.x);
-        fade*=1.0-.24*smoothstep(.87,1.0,uv.x);
+        fade*=1.0-.10*smoothstep(.87,1.0,uv.x);
         fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
         // LiquidGlass has a 22-unit radius in a 440-unit-high content area.
         vec2 size=vec2(phase,1.0),q=abs((uv-.5)*size)-size*.5+.05;
