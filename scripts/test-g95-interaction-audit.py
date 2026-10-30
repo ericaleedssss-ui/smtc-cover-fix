@@ -39,6 +39,12 @@ assert "self->m_artistID==artistID" in cpp, "artist API response must be bound t
 magazine = read("src/PlaylistMagazine.cpp")
 assert "if(reset){m_socialOffset=0;m_socialTotal=0;m_social={};}" in magazine, "social pagination total must reset with its rows"
 
+showcase_cpp = read("src/PlaylistShowcase.cpp")
+showcase_h = read("src/PlaylistShowcase.h")
+assert "m_identityRequest" in showcase_h and "m_identityKey" in showcase_h, "playlist identity artwork needs its own request identity"
+assert "self->m_identityRequest!=request" in showcase_cpp and "self->m_identityKey!=cacheKey" in showcase_cpp, "stale playlist avatar callbacks must be rejected"
+assert "m_identityKey=cacheKey;++m_identityRequest;m_identityPending=false" in showcase_cpp, "a changed playlist artist/user must invalidate prior identity work"
+
 showcase = read("qml/PlaylistShowcase.qml")
 assert "wheelCarry-=whole;moveRecord(-whole);" in showcase, "large wheel deltas must preserve every whole navigation step"
 assert "pendingMoves+step" in showcase, "navigation input during an animation must accumulate instead of overwrite"
