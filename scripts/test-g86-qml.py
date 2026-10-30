@@ -15,11 +15,11 @@ class Controller(QObject):
  lane=2
  def __init__(self,art):super().__init__();self.art=art.copy();self.at=0;self.actions=[];self.collected=False
  @Property('QVariantMap',notify=changed)
- def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['鐢靛瓙銆佹憞婊氥€佸疄楠屻€佹剰璇嗐€佽糠璧?,'娌跨潃澶滆壊缂撴參鐢熼暱','鍗堝悗鐨勬澗寮涙劅'][self.at],recordLane=self.lane,identities=[dict(id='7',name='Artist one / 寰堥暱鐨勮壓浜哄悕瀛?),dict(id='8',name='Second artist')],identityAvatar=self.art[0],identityCanOpen=True,loaded=True,artist='QA / 鏄惧紡绂荤嚎鏁版嵁',description='鍦ㄧ數瀛愮殑寰嬪姩涓庢憞婊氱殑鍛愬枈涔嬮棿锛屾敹闆嗛偅浜涙父璧颁簬绉╁簭涓庢贩娌岀殑澹伴煶銆俓n杩欓噷鏄叧浜庡疄楠屻€佹剰璇嗕笌杈圭晫鐨勬瓕鍗曪紝閫傚悎鍦ㄦ繁澶溿€佹梾閫斾腑鎴栫嫭澶勬椂鑱嗗惉銆俓n' * 4,tags=['鎽囨粴','瀹為獙'],createdDate='2025-06-12',creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 灏忔椂 26 鍒嗛挓',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
+ def info(self):return dict(key='netease:playlist:'+str(self.at),id=str(self.at),kind='playlist',title=['电子、摇滚、实验、意识、迷走','沿着夜色缓慢生长','午后的松弛感'][self.at],recordLane=self.lane,identities=[dict(id='7',name='Artist one / 很长的艺人名字'),dict(id='8',name='Second artist')],identityAvatar=self.art[0],identityCanOpen=True,loaded=True,artist='QA / 显式离线数据',description='在电子的律动与摇滚的呐喊之间，收集那些游走于秩序与混沌的声音。\n这里是关于实验、意识与边界的歌单，适合在深夜、旅途中或独处时聆听。\n' * 4,tags=['摇滚','实验'],createdDate='2025-06-12',creatorID='7',cover=self.art[self.at],total=15,durationLabel='1 小时 26 分钟',canSubscribe=True,subscribed=self.collected,editable=False,recordsLoading=False,recordsMore=False,recordPosition=self.at+1,recordCount=3)
  @Property('QVariantList',notify=changed)
  def covers(self):return [self.recordNeighbour(-1),self.recordNeighbour(1)]
  @Property('QVariantList',notify=changed)
- def songs(self):return [dict(title='姝屾洸 '+str(i+1),artist='鐪熷疄鎺ュ彛鏍峰紡娴嬭瘯',id=str(i+1),kind='song') for i in range(15)]
+ def songs(self):return [dict(title='歌曲 '+str(i+1),artist='真实接口样式测试',id=str(i+1),kind='song') for i in range(15)]
  @Property(bool,notify=changed)
  def busy(self):return False
  @Property(str,notify=changed)
@@ -27,7 +27,7 @@ class Controller(QObject):
  @Slot(int,result='QVariantMap')
  def recordNeighbour(self,n):
   at=(self.at+n)%3
-  return dict(key='netease:playlist:'+str(at),title='姝屽崟 '+str(at),cover=self.art[at],kind='playlist',side=-1 if n<0 else 1)
+  return dict(key='netease:playlist:'+str(at),title='歌单 '+str(at),cover=self.art[at],kind='playlist',side=-1 if n<0 else 1)
  @Slot()
  def prepareRecords(self):pass
  @Slot(str)
@@ -61,7 +61,7 @@ class Backend(QObject):
  @Property(int,notify=changed)
  def navPosition(self):return self.navIndex
  @Property('QVariantMap',notify=changed)
- def state(self):return dict(dark=self.dark,reduced=False,queueOpen=False,accountProviderName='鏀惰棌姝屽崟')
+ def state(self):return dict(dark=self.dark,reduced=False,queueOpen=False,accountProviderName='收藏歌单')
  @Property('QVariantMap',notify=changed)
  def messages(self):return dict(state=dict(open=False))
 errors=[]
@@ -76,11 +76,11 @@ class PlaybackFixture(Controller):
  currentLine=1
  @Property('QVariantMap',notify=Controller.changed)
  def info(self):
-  return dict(session='netease:'+str(self.at+1),id=str(self.at+1),title=['鐜板湪姝ｅ湪鎾斁鐨勭湡瀹炴瓕鏇?,'鍙︿竴棣栨瓕鏇?,'绗笁棣?][self.at],album='涓撹緫鍚嶇О',albumID='8',artist='Artist one / Second artist',artists=[dict(id='7',name='Artist one'),dict(id='8',name='Second artist')],coverPixels=self.art[self.at],artistAvatar=self.art[0],date='2024-03-02',tags=['Jazz','Soul'],canLike=True,likeKnown=True,likeBusy=False,liked=False)
+  return dict(session='netease:'+str(self.at+1),id=str(self.at+1),title=['现在正在播放的真实歌曲','另一首歌曲','第三首'][self.at],album='专辑名称',albumID='8',artist='Artist one / Second artist',artists=[dict(id='7',name='Artist one'),dict(id='8',name='Second artist')],coverPixels=self.art[self.at],artistAvatar=self.art[0],date='2024-03-02',tags=['Jazz','Soul'],canLike=True,likeKnown=True,likeBusy=False,liked=False)
  @Property('QVariantMap',notify=playbackChanged)
  def playback(self):return dict(playing=self.playing,seekable=True,index=self.currentLine,timed=True,lyricStatus='ready')
  @Property('QVariantList',notify=linesChanged)
- def lines(self):return [dict(startMs=i*2500,text=('鏂版瓕' if self.at else '鍦ㄧ伀鏄熶笂璺宠垶鍚?)+' 路 '+str(i+1),translation='璁╅噸鍔涙殏鏃跺け鏁?) for i in range(30)]
+ def lines(self):return [dict(startMs=i*2500,text=('新歌' if self.at else '在火星上跳舞吧')+' · '+str(i+1),translation='让重力暂时失效') for i in range(30)]
  @Slot(str)
  def operate(self,op):self.actions.append((op,))
  @Slot(int,str)
@@ -227,7 +227,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  listing=find('nowPlayingLyrics');old=listing.property('contentY');pos=listing.mapToScene(listing.boundingRect().center());event=QWheelEvent(pos,QPointF(w.mapToGlobal(pos.toPoint())),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False);QCoreApplication.sendEvent(w,event);QTest.qWait(80);assert listing.property('contentY')>old and not page.property('following') and not a.actions
  QTest.qWait(300);before=listing.property('contentY');c.currentLine=2;c.playbackChanged.emit();QTest.qWait(70);assert listing.property('contentY')==before
  click(find('nowLyricsFollow'));click(find('nowLyric_2'));assert c.actions[-1]==('seek',2,'netease:1')
- c.at=1;c.currentLine=0;c.changed.emit();c.linesChanged.emit();c.playbackChanged.emit();QTest.qWait(120);assert find('nowPlayingTitle').property('text')=='鍙︿竴棣栨瓕鏇? and page.property('following')
+ c.at=1;c.currentLine=0;c.changed.emit();c.linesChanged.emit();c.playbackChanged.emit();QTest.qWait(120);assert find('nowPlayingTitle').property('text')=='另一首歌曲' and page.property('following')
  b.dark=True;b.changed.emit();QTest.qWait(80);w.grabWindow().save(str(repo.parent/'g86-now-playing-dark.png'))
  reading.setProperty('playing',False);QTest.qWait(80);assert find('playlistShowcase') and find('textFrostedPanel') is glass and not find('nowPlayingPanel')
  assert not errors,errors
