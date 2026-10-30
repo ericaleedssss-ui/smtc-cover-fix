@@ -157,7 +157,13 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert abs(incomingSpin.property('spinAngle')-spin.property('spinAngle'))<.01, 'old and new records share one rotation phase'
  c.at=2;c.changed.emit();QTest.qWait(90)
  assert incoming.property('visualSession')==c.info['session'], 'latest rapid song wins the incoming deck'
- QTest.qWait(700);assert not incoming.isVisible() and not page.property('recordTransitioning')
+ armPage=find('nowPlayingPanel');armPlane=find('nowTonearmPlane')
+ assert armPage.property('armTransitionRunning'), 'song change starts one tonearm transition'
+ pose=armPlane.property('pose')
+ for _ in range(4):c.playbackChanged.emit();QTest.qWait(30)
+ assert armPage.property('armTransitionRunning'), 'routine playback notifications must not cancel the tonearm transition'
+ assert armPlane.property('pose')>pose, 'tonearm motion must continue through routine playback notifications'
+ QTest.qWait(1600);assert not incoming.isVisible() and not page.property('recordTransitioning')
  assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')<.1
  c.playing=False;c.at=0;c.changed.emit();c.playbackChanged.emit();QTest.qWait(700)
  assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')>.9

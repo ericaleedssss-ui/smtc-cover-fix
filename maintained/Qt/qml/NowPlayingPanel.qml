@@ -17,6 +17,21 @@ Item {
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
     property real spinPhase:0
     property real platterPhase:0
+    property bool armPlaybackStateInitialized:false
+    property bool armObservedPlaying:false
+    property bool armPlaybackResyncPending:false
+    readonly property bool armTransitionRunning:armChangeAnimation.running
+    function syncArmPlayback(){
+        var playing=!!playback.playing;
+        if(!armPlaybackStateInitialized){armObservedPlaying=playing;armPlaybackStateInitialized=true;return;}
+        if(playing===armObservedPlaying)return;
+        armObservedPlaying=playing;
+        if(!armPlane)return;
+        if(recordTransitioning){armPlaybackResyncPending=true;return;}
+        armPlaybackResyncPending=false;
+        armChangeAnimation.stop();
+        armPlane.pose=armPlane.normalPose;
+    }
     function syncMotion(){
         for(var animation of [recordSpin,platterPulse]){
             if(!animation)continue;
@@ -25,7 +40,7 @@ Item {
         }
     }
     onMotionChanged:syncMotion()
-    Component.onCompleted:syncMotion()
+    Component.onCompleted:{armObservedPlaying=!!playback.playing;armPlaybackStateInitialized=true;syncMotion();}
     NumberAnimation on spinPhase {id:recordSpin;from:0;to:1;duration:40000;loops:Animation.Infinite;running:false}
     NumberAnimation on platterPhase {id:platterPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
     property bool following:true
@@ -88,17 +103,9 @@ Item {
         if(next.session!==session){session=next.session||"";following=true;lyricFollowPending=true;Qt.callLater(page.follow);}
     }
     property string session:""
-    function requestArmPose(target){
-        if(recordTransitioning)return;
-        armChangeAnimation.stop();
-        armPlane.pose=target;
-    }
     Connections {target:page.controller;function onPlaybackChanged(){
             page.follow();
-            if(armPlane){
-                if(!page.playback.playing){page.armChangeAnimation.stop();page.armPlane.pose=1;}
-                else if(!page.recordTransitioning){page.armChangeAnimation.stop();page.armPlane.pose=0;}
-            }
+            page.syncArmPlayback();
         } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
@@ -280,6 +287,12 @@ Item {
         PropertyAnimation {target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
         PauseAnimation {duration:rhine.state.reduced?0:730}
         PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
+        onFinished:{
+            if(page.armPlaybackResyncPending){
+                page.armPlaybackResyncPending=false;
+                armPlane.pose=armPlane.normalPose;
+            }
+        }
     }
     SequentialAnimation {id:recordChangeAnimation
         ParallelAnimation {

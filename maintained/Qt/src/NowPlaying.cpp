@@ -85,13 +85,14 @@ void NowPlaying::sync(){
     bool liked=false;const bool known=bool(m_music->likedIDs)&&song["provider"].toString()==m_music->provider;
     if(known)for(const auto &value:*m_music->likedIDs)if(id(value)==song["id"].toString()){liked=true;break;}
     if(m_known!=known||m_liked!=liked||m_write!=m_music->writeLoading){m_known=known;m_liked=liked;m_write=m_music->writeLoading;emit changed();}
-    syncLyrics();emit playbackChanged();
+    syncLyrics();
 }
 void NowPlaying::syncLyrics(){
     const auto &lyrics=m_music->player.lyrics;
     const auto document=lyrics.currentKey==LyricsController::trackKey(m_music->player.current)?lyrics.document():QJsonObject{};
     if(document!=m_document){m_document=document;emit linesChanged();}
-    emit playbackChanged();
+    const auto current=playback();
+    if(current!=m_lastPlayback){m_lastPlayback=current;emit playbackChanged();}
 }
 QVariantMap NowPlaying::info()const{
     auto info=m_track.toVariantMap();info["session"]=m_key;info["coverPixels"]=m_cover;info["artistAvatar"]=m_avatar;
