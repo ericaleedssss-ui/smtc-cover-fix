@@ -53,11 +53,12 @@ Item {
                 RhineIcon {anchors.centerIn:parent;width:14*page.unit;height:width;name:button.symbol;color:page.ink;visible:!!button.symbol&&!button.artwork}
                 Image {anchors.centerIn:parent;width:18*page.unit;height:width;source:button.artwork;visible:!!source;fillMode:Image.PreserveAspectFit;sourceSize:Qt.size(24,24)}
             }
-            Column {x:36*page.unit;anchors.verticalCenter:parent.verticalCenter;width:Math.max(0,parent.width-x);spacing:2*page.unit;visible:!!button.text
-                Label {width:parent.width;text:button.text;font.pixelSize:12*page.unit;font.weight:Font.Medium}
-                Label {width:parent.width;text:button.subtitle;font.pixelSize:9*page.unit;color:page.muted;visible:!!text}
+            Column {id:actionText;x:36*page.unit;anchors.verticalCenter:parent.verticalCenter;spacing:2*page.unit;visible:!!button.text
+                Label {text:button.text;font.pixelSize:12*page.unit;font.weight:Font.Medium}
+                Label {text:button.subtitle;font.pixelSize:9*page.unit;color:page.muted;visible:!!text}
             }
         }
+        width:button.text?36*page.unit+actionText.implicitWidth+8*page.unit:implicitWidth
         background:Item {}
         opacity:enabled?1:.45
     }
@@ -97,10 +98,10 @@ Item {
         Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词";color:page.muted}
     }
     Label {objectName:"nowLyricsFollow";x:26*unit;y:307*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
-    Row {x:26*unit;y:331*unit;spacing:20*unit;height:36*unit
-        Action {objectName:"nowLike";width:90*page.unit;enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
-        Action {objectName:"nowComments";symbol:"comment";width:100*page.unit;text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
-        Action {objectName:"nowShare";symbol:"share";width:90*page.unit;text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
+    Row {x:26*unit;y:331*unit;spacing:14*unit;height:36*unit
+        Action {objectName:"nowLike";enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
+        Action {objectName:"nowComments";symbol:"comment";text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
+        Action {objectName:"nowShare";symbol:"share";text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
         Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
             contentItem:Item {Row {anchors.centerIn:parent;spacing:3.5*page.unit;Repeater {model:3;Rectangle {width:2.6*page.unit;height:width;radius:width/2;color:page.ink}}}}
             background:Item {Rectangle {objectName:"nowMoreSurface";anchors.centerIn:parent;width:28*page.unit;height:width;radius:width/2;color:parent.parent.hovered?(rhine.state.dark?"#50fffdf3":"#c8fffdf6"):(rhine.state.dark?"#30fffdf3":"#8cfffdf6");border.width:.8*page.unit;border.color:rhine.state.dark?"#70fffdf3":"#e6fffdf3"}}
@@ -151,7 +152,7 @@ Item {
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             ShaderEffect {
-                objectName:"nowRecordShadow";opacity:.32;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
+                objectName:"nowRecordShadow";opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
                 property variant artwork:shadowArt
                 property real phase:0
                 property real shadowOnly:1
@@ -190,13 +191,13 @@ Item {
                     fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
                 }
             }
-            Item {id:etch;objectName:"nowRecordEtch";anchors.centerIn:parent;width:recordPrint.width+plane.width*.08;height:width
+            Item {id:etch;objectName:"nowRecordEtch";anchors.centerIn:parent;width:recordPrint.width+plane.width*.10;height:width
                 rotation:recordPrint.spinAngle
-                readonly property real radius:recordPrint.width/2+plane.width*.0185
+                readonly property real radius:recordPrint.width/2+plane.width*.022
                 layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true
-                Repeater {model:page.etchGlyphs(page.etchText,etch.radius,9.5*page.unit)
-                    Text {required property var modelData;text:modelData.c;textFormat:Text.PlainText;font.family:rhineFontFamily;font.pixelSize:9.5*page.unit;font.weight:Font.DemiBold;font.letterSpacing:0
-                        color:rhine.state.dark?"#dfe2d6":"#564c3e";opacity:.78
+                Repeater {model:page.etchGlyphs(page.etchText,etch.radius,11*page.unit)
+                    Text {required property var modelData;text:modelData.c;textFormat:Text.PlainText;font.family:rhineFontFamily;font.pixelSize:11*page.unit;font.weight:Font.DemiBold;font.letterSpacing:0
+                        color:rhine.state.dark?"#e6e8de":"#4a4034";opacity:.90
                         x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2
                         rotation:modelData.a*180/Math.PI+90}
                 }
@@ -213,7 +214,9 @@ Item {
 
     }
     Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
-        Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
+        Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:Qt.darker(page.muted,1.25)
+            Rectangle {objectName:"nowDetailsChip";z:-1;x:-9*unit;y:-1*unit;width:parent.width+18*unit;height:parent.height+2*unit;radius:height/2;color:rhine.state.dark?"#b0303a2c":"#d6f7f4ec";border.width:.7*unit;border.color:rhine.state.dark?"#40fffdf3":"#ccfffdf6"}
+            MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
     }
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
         Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}
