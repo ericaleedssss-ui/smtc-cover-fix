@@ -247,7 +247,7 @@ void PlaylistMagazine::setTab(QString t){if(!m_folder||!QStringList{"songs","com
 void PlaylistMagazine::more(){if(tab()=="songs")m_music->loadDirectoryPage();else loadSocial(false);}
 void PlaylistMagazine::loadSocial(bool reset){
     if(!m_folder||m_socialLoading||m_music->provider!="netease"||m_folder->item["virtual"].toBool())return;
-    if(reset){m_socialOffset=0;m_social={};}else if(m_socialOffset>=m_socialTotal)return;
+    if(reset){m_socialOffset=0;m_socialTotal=0;m_social={};}else if(m_socialOffset>=m_socialTotal)return;
     const auto token=++m_socialToken;const auto account=m_account;const auto folder=m_folder;const auto section=tab();const bool comments=section=="comments";
     m_socialLoading=true;emit changed();QPointer<PlaylistMagazine> self(this);
     m_music->api.request(comments?(m_folder->item["kind"]=="album"?"/comment/album":"/comment/playlist"):"/playlist/subscribers",{{"id",folder->item["id"]},{"limit",20},{"offset",m_socialOffset}},[self,comments](MusicReply r){
