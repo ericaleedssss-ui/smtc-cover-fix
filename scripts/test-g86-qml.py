@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory() as tmp:
   for ring,colour in enumerate(['#9baeb0','#a89b9d','#b58f94','#cd9b86','#eee5cb']):
    inset=65+ring*47;painter.setBrush(QColor(colour));painter.drawEllipse(inset,inset,640-inset*2,640-inset*2)
   painter.setBrush(QColor('#657666'));painter.drawEllipse(150,150,32,32);painter.end();path=d/f'cover{i}.png';image.save(str(path));art.append(QUrl.fromLocalFile(str(path)).toString())
- for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon','ArtistMarquee','ArchiveNavigator','NowPlayingPanel','NowPlayingShortcut']:
+ for name in ['ArchiveReading','PlaylistShowcase','RecordStack','LiquidGlass','ArchiveActionIcon','RhineIcon','ArtistMarquee','ArchiveNavigator','NowPlayingPanel','RecordTonearm','NowPlayingShortcut']:
   origin=repo/'maintained/Qt/qml'/f'{name}.qml';shutil.copyfile(origin if origin.exists() else src/'Qt/qml'/f'{name}.qml',d/f'{name}.qml')
   # Runtime loading accepts some syntax rejected by the release cache compiler.
   compiler=Path(QLibraryInfo.path(QLibraryInfo.LibraryExecutablesPath))/('qmlcachegen.exe' if os.name=='nt' else 'qmlcachegen')
@@ -149,8 +149,11 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
  arm=find('nowTonearm');assert arm and find('nowTonearmPlane')
- assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.18
+ assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.48
  assert abs(arm.property('armAngle'))<.01
+ pivot=arm.mapToItem(page,QPointF(arm.property('pivotX'),arm.property('pivotY')))
+ assert 18*page.property('unit')<page.width()-pivot.x()<32*page.property('unit') and 18*page.property('unit')<pivot.y()<32*page.property('unit'),('upper-right pivot',pivot)
+ assert find('nowTonearmSurface') is not None
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==32
  assert edge.y()==3*page.property('unit') and base.rotation()==0 and platter.rotation()==0
  angle=spin.property('spinAngle');QTest.qWait(180);assert (spin.property('spinAngle')-angle+360)%360>.3,(angle,spin.property('spinAngle'),page.property('motion'),page.isVisible())
@@ -172,10 +175,10 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   mask=w.grabWindow();assert not mask.isNull()
   def alpha(x,y=.25):
    point=page.mapToScene(QPointF(page.width()*x,page.height()*y));return mask.pixelColor(round(point.x()),round(point.y())).red()
-  assert alpha(.35)==0 and 5<alpha(.5)<90 and alpha(.74)>210 and alpha(.99)<170,('assembled fade',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
+  assert 80<alpha(.35)<140 and 150<alpha(.5)<210 and alpha(.74)>245 and 180<alpha(.99)<220,('assembled fade',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
   assert alpha(.995,.005)==0 and alpha(.995,.995)==0,('gloss/shadow must not escape rounded glass corners',alpha(.995,.005),alpha(.995,.995))
   mask.save(str(repo.parent/'g92-assembled-mask.png'))
-  print('G92 actual assembled mask brightness on black:',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
+  print('G93 continuous assembled mask brightness on black:',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
   probe.setParentItem(None);probe.deleteLater();backdrop.setParentItem(None);backdrop.deleteLater();QTest.qWait(80)
   rings=find('nowRecordRings');record=find('nowRecord');rings.setOpacity(1)
   record.setProperty('phase',.03);QTest.qWait(80);first=w.grabWindow();first.save(str(repo.parent/'g89-ripples-a.png'))

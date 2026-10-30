@@ -9,62 +9,37 @@ layout(std140, binding = 0) uniform Params {
     float darkMode;
 };
 layout(binding = 1) uniform sampler2D artwork;
-float segmentDistance(vec2 p,vec2 a,vec2 b){
-    vec2 v=b-a;return length(p-a-v*clamp(dot(p-a,v)/dot(v,v),0.0,1.0));
-}
-vec2 armNearest(vec2 p,vec2 a,vec2 b){vec2 v=b-a;return a+v*clamp(dot(p-a,v)/dot(v,v),0.0,1.0);}
-float armCoverage(vec2 uv){
-    vec2 pivot=vec2(.70,.04),bend=vec2(.78,.14),tip=vec2(.82,.25);
-    float rod=min(segmentDistance(uv,pivot,bend),segmentDistance(uv,bend,tip));
-    vec2 v=normalize(tip-bend),n=vec2(-v.y,v.x),q=uv-tip;
-    float body=max(abs(dot(q,n))-.014,abs(dot(q,v))-.033);
-    return max(max(1.0-smoothstep(.0055,.008,rod),1.0-smoothstep(0.0,.003,body)),(1.0-smoothstep(.032,.036,length(uv-pivot)))*.9);
-}
 void main() {
-    if(shadowOnly>7.5){
-        vec2 uv=qt_TexCoord0;
-        float a=armCoverage(uv)*.40;
-        a+=(armCoverage(uv+vec2(.004,0))+armCoverage(uv-vec2(.004,0))+armCoverage(uv+vec2(0,.004))+armCoverage(uv-vec2(0,.004)))*.15;
-        a*=.23;
-        fragColor=vec4(vec3(.23,.21,.18)*a,a)*qt_Opacity;return;
+    if(shadowOnly>8.5){
+        // A broad, translucent annulus outside the untouched G88 cover label.
+        // Its body remains visible beneath lyrics; opacity is not a cut-out.
+        vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
+        float annulus=smoothstep(phase-.003,phase+.006,r)*(1.0-smoothstep(.493,.502,r));
+        float groove=.5+.5*cos(r*1256.64);
+        float sweep=pow(abs(cos(angle-.65)),10.0);
+        float bevel=exp(-pow((r-.492)/.0045,2.0));
+        vec3 pigment=mix(vec3(.57,.55,.50),vec3(.70,.71,.66),darkMode);
+        pigment+=vec3(.10)*groove+vec3(.20)*sweep+vec3(.15)*bevel;
+        float a=(.32+.10*sweep+.08*bevel)*annulus;
+        fragColor=vec4(pigment*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>6.5){
         // Shared screen-space fade: every physical layer, including gloss and
         // shadows, loses focus and alpha together before the glass boundary.
         vec2 uv=qt_TexCoord0;
-        float focus=smoothstep(.42,.80,uv.x);
+        float focus=smoothstep(.26,.81,uv.x);
         float spread=mix(.009,.0005,focus);
         vec2 dx=vec2(spread/max(phase,1.0),0),dy=vec2(0,spread);
         vec4 colour=texture(artwork,uv)*.40;
         colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.15;
-        float fade=smoothstep(.39,.79,uv.x);
-        fade*=1.0-.48*smoothstep(.87,1.0,uv.x);
+        float fade=.12+.88*smoothstep(.10,.76,uv.x);
+        fade*=1.0-.24*smoothstep(.87,1.0,uv.x);
         fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
         // LiquidGlass has a 22-unit radius in a 440-unit-high content area.
         vec2 size=vec2(phase,1.0),q=abs((uv-.5)*size)-size*.5+.05;
         float d=length(max(q,vec2(0)))+min(max(q.x,q.y),0.0)-.05;
         float clipMask=1.0-smoothstep(-.001,0.0,d);
         fragColor=colour*fade*clipMask*qt_Opacity;return;
-    }
-    if(shadowOnly>5.5){
-        vec2 uv=qt_TexCoord0;
-        vec2 pivot=vec2(.70,.04),bend=vec2(.78,.14),tip=vec2(.82,.25);
-        vec2 nearA=armNearest(uv,pivot,bend),nearB=armNearest(uv,bend,tip);
-        bool first=length(uv-nearA)<length(uv-nearB);
-        vec2 direction=normalize(first?bend-pivot:tip-bend);
-        float side=dot(uv-(first?nearA:nearB),vec2(-direction.y,direction.x))/.008;
-        float cylinder=sqrt(max(0.0,1.0-side*side));
-        vec3 tone=mix(vec3(.61,.60,.56),vec3(.99,.985,.96),clamp(.25+.62*cylinder-.16*side,0.0,1.0));
-        float hub=1.0-smoothstep(.032,.036,length(uv-pivot));
-        vec2 hubP=(uv-pivot)/.035;
-        vec3 hubTone=mix(vec3(.68,.67,.62),vec3(.99,.985,.96),clamp(.56-dot(hubP,vec2(.25,.36)),0.0,1.0));
-        tone=mix(tone,hubTone,hub);
-        vec2 v=normalize(tip-bend),n=vec2(-v.y,v.x),q=uv-tip;
-        float head=(1.0-smoothstep(.014,.017,abs(dot(q,n))))*(1.0-smoothstep(.033,.036,abs(dot(q,v))));
-        vec3 headTone=mix(vec3(.79,.78,.73),vec3(.995,.99,.97),clamp(.6-dot(q,n)*12.0,0.0,1.0));
-        tone=mix(tone,headTone,head);
-        float a=armCoverage(uv)*.91;
-        fragColor=vec4(tone*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>4.5){
         // The aperture belongs to the assembled platter; the outer composite
@@ -80,8 +55,8 @@ void main() {
         float inner=exp(-pow((r-.470)/.0020,2.0))*.05;
         float hub=exp(-pow((r-.022)/.0025,2.0))*.18;
         // Fine grooves live outside the unchanged-size cover label.
-        float vinyl=smoothstep(.407,.418,r)*(1.0-smoothstep(.483,.498,r));
-        float grooves=pow(.5+.5*cos(r*728.85),6.0)*.07*vinyl;
+        float vinyl=smoothstep(phase+.004,phase+.014,r)*(1.0-smoothstep(.483,.498,r));
+        float grooves=pow(.5+.5*cos(r*728.85),6.0)*.13*vinyl;
         float a=clamp(band*(1.0-smoothstep(.47,.50,r))+rim+inner+hub+grooves,0.0,.85)*(1.0-smoothstep(.499,.505,r));
         vec3 light=mix(vec3(1.0,.98,.91),vec3(.86,.91,.82),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;

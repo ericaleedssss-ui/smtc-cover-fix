@@ -12,7 +12,7 @@ Item {
     readonly property color ink:rhine.state.dark?"#eceee3":"#30372e"
     readonly property color muted:rhine.state.dark?"#b1b9a5":"#77806e"
     readonly property real discSize:Math.min(490*unit,width*.60)
-    readonly property real vinylInset:discSize*.10
+    readonly property real vinylInset:discSize*.25
     readonly property real textWidth:width*.50-42*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
     function syncMotion(){
@@ -154,9 +154,12 @@ Item {
             }
             // Thin fixed ivory lip and contact edge, with no offset opaque cylinder.
             Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;opacity:.15;color:rhine.state.dark?"#666759":"#bfb09b"}
-            Rectangle {objectName:"nowRecordPlatter";anchors.fill:parent;radius:width/2;opacity:.14
-                gradient:Gradient {GradientStop {position:0;color:rhine.state.dark?"#d0cbb6":"#fff9ed"} GradientStop {position:.6;color:rhine.state.dark?"#777a68":"#eae1d0"} GradientStop {position:1;color:rhine.state.dark?"#a7a48e":"#d5c5ae"}}
-                border.width:page.unit;border.color:"#c0fffdf5"
+            ShaderEffect {objectName:"nowRecordPlatter";anchors.fill:parent
+                property variant artwork:printArt
+                property real phase:recordPrint.width/(plane.width*2)
+                property real shadowOnly:9
+                property real darkMode:rhine.state.dark?1:0
+                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
             }
             Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
                 opacity:rhine.state.dark?.72:.64
@@ -176,31 +179,19 @@ Item {
             }
             ShaderEffect {objectName:"nowRecordGloss";anchors.fill:parent
                 property variant artwork:printArt
-                property real phase:0
+                property real phase:recordPrint.width/(plane.width*2)
                 property real shadowOnly:4
                 property real darkMode:rhine.state.dark?1:0
                 fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
             }
         }
-        // Separate from the circular compositing layer: the arm is stationary
-        // in the same inclined plane and swings only when playback pauses.
-        Item {id:armPlane;objectName:"nowTonearmPlane";x:plane.x-20*page.unit;y:plane.y-20*page.unit;width:plane.width;height:plane.height
-            transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            Item {id:tonearm;objectName:"nowTonearm";anchors.fill:parent
-                property real armAngle:page.playback.playing?0:-12
-                Behavior on armAngle {enabled:page.visible&&!rhine.state.reduced;NumberAnimation {duration:280;easing.type:Easing.OutCubic}}
-                transform:Rotation {origin.x:tonearm.width*.70;origin.y:tonearm.height*.04;angle:tonearm.armAngle}
-                ShaderEffect {objectName:"nowTonearmShadow";x:4*page.unit;y:6*page.unit;width:parent.width;height:parent.height
-                    property variant artwork:shadowArt;property real phase:0;property real shadowOnly:8;property real darkMode:rhine.state.dark?1:0
-                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                }
-                ShaderEffect {objectName:"nowTonearmSurface";anchors.fill:parent
-                    property variant artwork:shadowArt;property real phase:0;property real shadowOnly:6;property real darkMode:rhine.state.dark?1:0
-                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                }
-            }
-        }
     }
+        // The pivot is anchored to the glass's upper-right corner, independent
+        // of the large record's cropped bounds. The arm uses the same incline.
+        Item {id:armPlane;objectName:"nowTonearmPlane";x:page.width-103*page.unit;y:3*page.unit;width:110*page.unit;height:236*page.unit
+            transform:[Rotation {origin.x:tonearm.pivotX;origin.y:tonearm.pivotY;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:tonearm.pivotX;origin.y:tonearm.pivotY;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+            RecordTonearm {id:tonearm;objectName:"nowTonearm";anchors.fill:parent;playing:page.playback.playing;reduced:rhine.state.reduced;dark:rhine.state.dark}
+        }
     }
     Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
         Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
