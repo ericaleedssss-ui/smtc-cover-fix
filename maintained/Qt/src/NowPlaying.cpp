@@ -182,7 +182,7 @@ void NowPlaying::pixels(QString url,QString role,bool fallback){
 }
 void NowPlaying::artist(bool fallback){
     const auto cacheKey=m_music->provider+":"+m_artistID;
-    if(!fallback&&m_artists.contains(cacheKey)){m_avatar=m_artists[cacheKey];emit changed();return;}
+    if(!fallback&&m_artists.contains(cacheKey)){++m_avatarRequest;m_avatar=m_artists[cacheKey];emit changed();return;}
     if(m_artistID.isEmpty()||m_artistID=="0"||m_music->provider!="netease"||m_track["provider"].toString()!=m_music->provider)return;
     QPointer<NowPlaying> self(this);const auto generation=m_generation;const auto account=m_account;const auto artistID=m_artistID;
     m_music->api.request(fallback?"/artists":"/artist/detail",{{"id",artistID}},[self,fallback,artistID](MusicReply reply){
