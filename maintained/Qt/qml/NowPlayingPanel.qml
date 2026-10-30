@@ -29,6 +29,7 @@ Item {
     property bool visualInitialized:false
     property bool recordTransitioning:false
     property string visualFallbackCover:""
+    property string displayedFallbackCover:""
     // Title etched in the clear seat ring. Rebuilt only when the song changes.
     readonly property string etchText:(info.title||"")+"  ·  "+(info.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
     function etchGlyphs(text,radius,px){
@@ -44,25 +45,29 @@ Item {
     }
     function beginRecordChange(next){
         if(!next||!next.session)return;
+        displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
         pendingInfo=mergeInfo({},next);recordTransitioning=true;
+        incomingRecord.setVisualSpin(record.visualSpin());incomingRecord.setVisualPhase(record.visualPhase());
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
         armPlane.pose=1;recordChangeAnimation.stop();recordChangeAnimation.start();
     }
     function finishRecordChange(){
         if(!recordTransitioning)return;
+        record.setVisualSpin(incomingRecord.visualSpin());record.setVisualPhase(incomingRecord.visualPhase());
         displayedInfo=mergeInfo({},pendingInfo||info);record.transitionY=0;record.visualOpacity=1;
+        displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        pendingInfo=null;recordTransitioning=false;armPlane.pose=armPlane.normalPose;
+        armPlane.pose=armPlane.normalPose;pendingInfo=null;recordTransitioning=false;
     }
     onInfoChanged:{
         var next=info||({});
-        if(!visualInitialized){displayedInfo=mergeInfo({},next);visualFallbackCover=next.coverPixels||"";visualInitialized=true;}
+        if(!visualInitialized){displayedInfo=mergeInfo({},next);visualFallbackCover=next.coverPixels||"";displayedFallbackCover=visualFallbackCover;visualInitialized=true;}
         else if(next.session!==displayedInfo.session){
             if(recordTransitioning)pendingInfo=mergeInfo(pendingInfo,next);else beginRecordChange(next);
         }else if(recordTransitioning){pendingInfo=mergeInfo(pendingInfo,next);}
         else displayedInfo=mergeInfo(displayedInfo,next);
-        if(next.coverPixels)visualFallbackCover=next.coverPixels;
+        if(next.coverPixels){visualFallbackCover=next.coverPixels;if(!recordTransitioning)displayedFallbackCover=next.coverPixels;}
         if(next.session!==session){session=next.session||"";following=true;lyrics.contentY=0;}
     }
     property string session:""
@@ -157,13 +162,16 @@ Item {
         property string fallbackCover:""
         property real transitionY:0
         property real visualOpacity:1
-        property bool transitionLite:false
         property real phase:0
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
         width:page.discSize;height:width
         x:parent.width-width+38*page.unit
         y:(parent.height-height)/2-6*page.unit+transitionY
         opacity:visualOpacity
+        function visualSpin(){return recordPrint.spinAngle;}
+        function setVisualSpin(value){recordPrint.spinAngle=value;}
+        function visualPhase(){return phase;}
+        function setVisualPhase(value){phase=value;}
         function syncMotion(active){
             for(var animation of [discSpin,ringPulse]){
                 if(!animation)continue;
@@ -176,13 +184,13 @@ Item {
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             transform:[Rotation {objectName:"nowRecordTilt"+nameSuffix;origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;visible:!transitionLite;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
+            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
                 property variant artwork:shadowArt;property real phase:0;property real shadowOnly:1;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
                 Image {id:shadowArt;visible:false;source:visualInfo.coverPixels||fallbackCover||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
-            ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;visible:!transitionLite;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
+            ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
                 property variant artwork:printArt;property real phase:0;property real shadowOnly:10;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
-            ShaderEffect {objectName:"nowRecordPlatter"+nameSuffix;visible:!transitionLite;anchors.fill:parent
+            ShaderEffect {objectName:"nowRecordPlatter"+nameSuffix;anchors.fill:parent
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:9;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:recordPrint;objectName:"nowRecordPrint"+nameSuffix;anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
                 opacity:rhine.state.dark?.82:.90;property real spinAngle:0
@@ -199,7 +207,7 @@ Item {
                         x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2;rotation:modelData.a*180/Math.PI+90}
                 }
             }
-            ShaderEffect {objectName:"nowRecordGloss"+nameSuffix;visible:!transitionLite;anchors.fill:parent
+            ShaderEffect {objectName:"nowRecordGloss"+nameSuffix;anchors.fill:parent
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:4;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
         }
     }
@@ -216,9 +224,9 @@ Item {
                 ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:pendingInfo||displayedInfo;fallbackCover:displayedInfo.coverPixels||visualFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
-        RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:visualFallbackCover;transitionLite:recordTransitioning;z:2}
-        Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||visualFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:pendingInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
+        RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:displayedFallbackCover;z:2}
+        Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
         // the glass is clipped by discField and its composite, like the record.
         Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:(parent.height-record.height)/2-6*page.unit-page.vinylInset;width:record.width+2*page.vinylInset;height:width;z:3
@@ -230,7 +238,7 @@ Item {
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
-            Behavior on pose {enabled:!rhine.state.reduced;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
+            Behavior on pose {enabled:!rhine.state.reduced&&!page.recordTransitioning;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
             readonly property real lift:Math.min(1,pose*2.4)
             readonly property real swing:-145+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
