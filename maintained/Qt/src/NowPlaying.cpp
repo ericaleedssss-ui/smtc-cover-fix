@@ -80,7 +80,7 @@ void NowPlaying::sync(){
         const auto people=song["artists"].toArray();
         const auto nextArtistID=people.isEmpty()?QString():id(people.first().toObject()["id"]);
         if(nextArtistID!=m_artistID){
-            m_artistID=nextArtistID;++m_avatarRequest;m_avatar.clear();
+            m_artistID=nextArtistID;++m_avatarRequest;++m_artistRequest;m_avatar.clear();
             if(!m_artistID.isEmpty())artist();
         }
         emit changed();
@@ -182,12 +182,12 @@ void NowPlaying::pixels(QString url,QString role,bool fallback){
 }
 void NowPlaying::artist(bool fallback){
     const auto cacheKey=m_music->provider+":"+m_artistID;
-    if(!fallback&&m_artists.contains(cacheKey)){++m_avatarRequest;m_avatar=m_artists[cacheKey];emit changed();return;}
+    if(!fallback&&m_artists.contains(cacheKey)){++m_artistRequest;++m_avatarRequest;m_avatar=m_artists[cacheKey];emit changed();return;}
     if(m_artistID.isEmpty()||m_artistID=="0"||m_music->provider!="netease"||m_track["provider"].toString()!=m_music->provider)return;
-    QPointer<NowPlaying> self(this);const auto generation=m_generation;const auto account=m_account;const auto artistID=m_artistID;
-    m_music->api.request(fallback?"/artists":"/artist/detail",{{"id",artistID}},[self,fallback,artistID](MusicReply reply){
-        if(!self||self->m_artistID!=artistID)return;const auto body=reply.value.toObject();const auto person=fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject();QString url;
+    QPointer<NowPlaying> self(this);const auto generation=m_generation;const auto account=m_account;const auto artistID=m_artistID;const auto request=++m_artistRequest;
+    m_music->api.request(fallback?"/artists":"/artist/detail",{{"id",artistID}},[self,fallback,artistID,request](MusicReply reply){
+        if(!self||self->m_artistID!=artistID||self->m_artistRequest!=request)return;const auto body=reply.value.toObject();const auto person=fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject();QString url;
         for(const auto &field:{"avatar","img1v1Url","picUrl","cover"})if(!person[field].toString().isEmpty()){url=person[field].toString();break;}
         if(!reply.ok()||url.isEmpty()){if(!fallback)self->artist(true);return;}self->pixels(url,"avatar",fallback);
-    },[self,generation,account,artistID]{return self&&self->m_generation==generation&&self->m_artistID==artistID&&self->m_music->accountGeneration()==account;});
+    },[self,generation,account,artistID,request]{return self&&self->m_generation==generation&&self->m_artistID==artistID&&self->m_artistRequest==request&&self->m_music->accountGeneration()==account;});
 }
