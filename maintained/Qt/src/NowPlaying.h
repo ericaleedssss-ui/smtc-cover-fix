@@ -31,7 +31,7 @@ private:
     QVariantMap m_lastPlayback;
     QString m_key,m_cover,m_avatar,m_artistID,m_status;
     quint64 m_generation=0,m_account=0;
-    quint64 m_coverRequest=0,m_avatarRequest=0;
+    quint64 m_coverRequest=0,m_avatarRequest=0,m_artistRequest=0;
     bool m_known=false,m_liked=false,m_write=false,m_coverLoading=false;
     QHash<QString,QString> m_images,m_artists;
     QHash<QString,QJsonObject> m_albums;
