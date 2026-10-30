@@ -156,7 +156,7 @@ Item {
             }
             MouseArea {id:hit;anchors.fill:parent;hoverEnabled:true;cursorShape:page.playback.timed&&page.playback.seekable?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{page.controller.seekLine(line.index,page.info.session);page.following=true;}}
         }
-        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词";color:page.muted}
+        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":(page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词");color:page.muted}
     }
     Label {objectName:"nowLyricsFollow";x:26*unit;y:421*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
     Row {x:26*unit;y:331*unit;spacing:14*unit;height:36*unit
