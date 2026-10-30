@@ -150,7 +150,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert base and platter and edge and find('nowRecordShadow')
  assert find('nowTonearm') is not None and find('nowTonearmPlane') is not None and find('nowTonearmShadow') is not None
  incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
- assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.100)<.001
+ assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.108)<.001
  c.at=1;c.changed.emit();QTest.qWait(90)
  assert incoming.isVisible() and page.property('recordTransitioning') and incoming.property('visualSession')==c.info['session']
  c.at=2;c.changed.emit();QTest.qWait(90)
@@ -215,7 +215,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  click(find('nowLike'));assert c.actions[-1]==('like',)
  click(find('nowShare'));assert c.actions[-1]==('share',)
  click(find('nowMore'));click(find('nowCollect'));assert c.actions[-1]==('collect',)
- click(find('nowDetails'));assert c.actions[-1]==('details',)
+ assert find('nowDetails') is None and find('nowDetailsChip') is None
  click(find('nowPlayingTitleHit'));assert c.actions[-1]==('details',)
  album=find('nowAlbum');title=find('nowPlayingTitle');assert 0<album.y()-title.y()-title.height()<=8*page.property('unit')
  click(find('nowAlbumHit'));assert c.actions[-1]==('album',)

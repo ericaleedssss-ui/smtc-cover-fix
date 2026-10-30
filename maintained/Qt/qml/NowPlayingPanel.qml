@@ -157,6 +157,7 @@ Item {
         property string fallbackCover:""
         property real transitionY:0
         property real visualOpacity:1
+        property bool transitionLite:false
         property real phase:0
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
         width:page.discSize;height:width
@@ -175,13 +176,13 @@ Item {
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             transform:[Rotation {objectName:"nowRecordTilt"+nameSuffix;origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
+            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;visible:!transitionLite;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
                 property variant artwork:shadowArt;property real phase:0;property real shadowOnly:1;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
                 Image {id:shadowArt;visible:false;source:visualInfo.coverPixels||fallbackCover||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
-            ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
+            ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;visible:!transitionLite;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
                 property variant artwork:printArt;property real phase:0;property real shadowOnly:10;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
-            ShaderEffect {objectName:"nowRecordPlatter"+nameSuffix;anchors.fill:parent
+            ShaderEffect {objectName:"nowRecordPlatter"+nameSuffix;visible:!transitionLite;anchors.fill:parent
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:9;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:recordPrint;objectName:"nowRecordPrint"+nameSuffix;anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
                 opacity:rhine.state.dark?.82:.90;property real spinAngle:0
@@ -198,7 +199,7 @@ Item {
                         x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2;rotation:modelData.a*180/Math.PI+90}
                 }
             }
-            ShaderEffect {objectName:"nowRecordGloss"+nameSuffix;anchors.fill:parent
+            ShaderEffect {objectName:"nowRecordGloss"+nameSuffix;visible:!transitionLite;anchors.fill:parent
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:4;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
         }
     }
@@ -216,7 +217,7 @@ Item {
             }
         }
         RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:pendingInfo||displayedInfo;fallbackCover:displayedInfo.coverPixels||visualFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
-        RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:visualFallbackCover;z:2}
+        RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:visualFallbackCover;transitionLite:recordTransitioning;z:2}
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||visualFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
         // the glass is clipped by discField and its composite, like the record.
@@ -224,14 +225,14 @@ Item {
             visible:GraphicsInfo.api!==GraphicsInfo.Software
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             readonly property real armLength:width*.60
-            readonly property real pivotX:width*1.100
+            readonly property real pivotX:width*1.108
             readonly property real pivotY:height*.5566
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             Behavior on pose {enabled:!rhine.state.reduced;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-139.44+21*pose
+            readonly property real swing:-145+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
@@ -265,11 +266,6 @@ Item {
         PauseAnimation {duration:25}
         PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:155;easing.type:Easing.InOutCubic}
         ScriptAction {script:page.finishRecordChange()}
-    }
-    Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
-        Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:Qt.darker(page.muted,1.25)
-            Rectangle {objectName:"nowDetailsChip";z:-1;x:-9*unit;y:-1*unit;width:parent.width+18*unit;height:parent.height+2*unit;radius:height/2;color:rhine.state.dark?"#b0303a2c":"#d6f7f4ec";border.width:.7*unit;border.color:rhine.state.dark?"#40fffdf3":"#ccfffdf6"}
-            MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
     }
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
         Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}
