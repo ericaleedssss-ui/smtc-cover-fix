@@ -24,13 +24,13 @@ void PlaylistShowcase::sync(){
     const auto account=m_music->accountGeneration();const auto current=m_music->current;
     if(m_account!=account||m_key!=key(current)||m_directory!=bool(m_music->directory)){
         m_directory=bool(m_music->directory);
-        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_identityPending=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
+        ++m_token;m_account=account;m_key=key(current);m_item=current;m_songs={};m_ids={};m_loading=false;m_previewLoading=false;m_previewPendingIndex=-1;m_previewBatchStart=-1;m_loadFailed=false;m_identityAvatar.clear();m_avatarRetried=false;m_identityPending=false;m_loaded=false;m_pending.clear();m_unsubscribe.clear();m_status.clear();
         if(container(current)&&!m_music->directory){loadIdentity();load();}
         emit changed();return;
     }
     if(m_revision!=m_music->revision){m_revision=m_music->revision;if(container(m_item))emit changed();}
 }
-void PlaylistShowcase::refresh(){if(!m_loading){++m_token;m_identityPending=false;m_loaded=false;m_previewLoading=false;m_loadFailed=false;m_pending.clear();m_music->host->invalidateMetadata();load();}}
+void PlaylistShowcase::refresh(){if(!m_loading){++m_token;m_identityPending=false;m_loaded=false;m_previewLoading=false;m_previewPendingIndex=-1;m_previewBatchStart=-1;m_loadFailed=false;m_pending.clear();m_music->host->invalidateMetadata();load();}}
 void PlaylistShowcase::load(){
     if(m_loading||!container(m_item)||m_music->directory)return;
     m_loading=true;m_loadFailed=false;m_status.clear();emit changed();const auto token=m_token;const auto account=m_account;const auto k=m_key;QPointer<PlaylistShowcase> self(this);
@@ -134,16 +134,26 @@ void PlaylistShowcase::execute(QString op){
 
 QVariantList PlaylistShowcase::songs()const{return queue().toVariantList();}
 void PlaylistShowcase::preview(int at){
-    if(!m_loaded||m_previewLoading||at<0||at>=m_ids.size())return;
+    if(!m_loaded||at<0||at>=m_ids.size())return;
     const auto id=textID(m_ids[at]);for(const auto &v:m_songs)if(v.toObject()["id"]==id&&v.toObject()["duration"].toInteger()>0)return;
-    m_previewLoading=true;const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
-    const auto ids=MusicData::slice(m_ids,at/100*100,100);
-    m_music->api.call("songs",{ids},[self,ids,token](MusicReply r){
-        if(!self)return;self->m_previewLoading=false;
+    const int batchStart=at/100*100;
+    if(m_previewLoading){
+        // Keep only the latest requested batch; the in-flight batch already
+        // covers every selected song inside its own 100-track window.
+        m_previewPendingIndex=batchStart==m_previewBatchStart?-1:at;
+        return;
+    }
+    m_previewLoading=true;m_previewBatchStart=batchStart;const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
+    const auto ids=MusicData::slice(m_ids,batchStart,100);
+    m_music->api.call("songs",{ids},[self,token](MusicReply r){
+        if(!self||self->m_token!=token)return;
+        self->m_previewLoading=false;self->m_previewBatchStart=-1;
+        const int pending=self->m_previewPendingIndex;self->m_previewPendingIndex=-1;
         if(r.ok()){
             for(const auto &value:r.value.toArray()){const auto song=value.toObject();const int at=MusicData::indexOfId(self->m_songs,song["id"].toString());if(at>=0)self->m_songs.replace(at,song);else self->m_songs.append(song);}
         }else self->m_status="部分曲目信息读取失败，可重新读取资料";
         emit self->changed();
+        if(pending>=0)self->preview(pending);
     },[self,token,account]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account;});
 }
 void PlaylistShowcase::playSong(int at){const auto tracks=queue();if(at>=0&&at<tracks.size()){m_music->archiveNowPlaying=true;m_music->archivePlayingDirectory=m_music->directory;m_music->archiveReturnItem=m_item;m_music->player.play(tracks[at].toObject(),tracks,at);m_music->changed();}}
