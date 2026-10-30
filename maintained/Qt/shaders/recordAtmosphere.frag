@@ -14,27 +14,40 @@ void main() {
         // The offset lower rim is a narrow physical sidewall. No opaque disc
         // underneath the translucent material and no luminous thickness.
         vec2 q=qt_TexCoord0-.5;float r=length(q);
-        float lip=smoothstep(.487,.491,r)*(1.0-smoothstep(.497,.501,r));
-        float underside=smoothstep(-.12,.32,q.y);
-        float a=lip*mix(.025,.19,underside);
-        vec3 material=mix(vec3(.48,.45,.39),vec3(.39,.42,.36),darkMode);
+        float lip=smoothstep(.478,.486,r)*(1.0-smoothstep(.497,.501,r));
+        float underside=smoothstep(-.20,.34,q.y);
+        float a=lip*mix(.08,.42,underside);
+        vec3 material=mix(vec3(.70,.66,.59),vec3(.39,.42,.36),darkMode)*mix(1.0,.80,underside);
         fragColor=vec4(material*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>8.5){
         // Five separated track boundaries across broad smooth clear-vinyl bands.
         vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
-        float annulus=smoothstep(phase-.003,phase+.006,r)*(1.0-smoothstep(.493,.502,r));
-        float sweep=pow(abs(cos(angle-.65)),16.0);
-        float trackShade=0.0;
+        float seatOuter=phase+.036;
+        float seat=smoothstep(phase-.003,phase+.002,r)*(1.0-smoothstep(seatOuter-.002,seatOuter+.002,r));
+        float body=smoothstep(seatOuter-.002,seatOuter+.004,r)*(1.0-smoothstep(.493,.502,r));
+        // Key light from the upper right: one broad soft bow-tie, fixed in place.
+        float sweep=pow(abs(cos(angle+.75)),6.0);
+        float lit=clamp(dot(normalize(q+vec2(1e-5)),vec2(.707,-.707)),-1.0,1.0);
+        float trackShade=0.0,trackLight=0.0;
         for(int i=0;i<5;++i){
-            float track=mix(phase+.024,.476,float(i)/4.0);
+            float track=mix(seatOuter+.03,.474,float(i)/4.0);
             trackShade+=exp(-pow((r-track)/.0015,2.0));
+            trackLight+=exp(-pow((r-track+.0032)/.0013,2.0));
         }
-        vec3 pigment=mix(vec3(.64,.62,.57),vec3(.63,.67,.60),darkMode);
-        pigment-=vec3(.24)*trackShade;
-        pigment+=vec3(.12)*sweep;
-        float a=(.28+.06*sweep)*annulus;
-        fragColor=vec4(pigment*a,a)*qt_Opacity;return;
+        vec3 pigment=mix(vec3(.93,.90,.85),vec3(.63,.67,.60),darkMode);
+        pigment*=1.0+.05*lit;
+        pigment-=vec3(.20)*trackShade;
+        pigment+=vec3(.10)*trackLight+vec3(.08)*sweep;
+        float a=(.34+.05*sweep)*body+.10*seat;
+        vec3 rgb=pigment*a;
+        // A fine bright lip where the clear seat meets the milky body.
+        float lip=exp(-pow((r-seatOuter)/.0016,2.0))*.50*(1.0-smoothstep(.49,.50,r));
+        rgb=rgb*(1.0-lip)+vec3(1.0,.99,.96)*lip;a=a+lip*(1.0-a);
+        // Contact occlusion where the printed label sits on the vinyl.
+        float ao=exp(-pow((r-phase-.004)/.010,2.0))*.24*smoothstep(phase-.004,phase,r);
+        rgb=rgb*(1.0-ao)+vec3(.28,.22,.16)*ao;a=a+ao*(1.0-a);
+        fragColor=vec4(rgb,a)*qt_Opacity;return;
     }
     if(shadowOnly>6.5){
         // Shared screen-space fade: every physical layer, including gloss and
@@ -46,6 +59,21 @@ void main() {
         vec4 colour=texture(artwork,uv)*.28;
         colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.12;
         colour+=(texture(artwork,uv+dx+dy)+texture(artwork,uv+dx-dy)+texture(artwork,uv-dx+dy)+texture(artwork,uv-dx-dy))*.06;
+        float lum=dot(colour.rgb,vec3(.299,.587,.114));
+        colour.rgb=mix(colour.rgb,vec3(lum),.10);
+        colour.rgb+=vec3(.034,.030,.024)*colour.a*(1.0-clamp(lum,0.0,1.0));
+        vec2 sp=uv*vec2(phase,1.0);
+        float key=1.0-smoothstep(.10,1.25,distance(sp,vec2(phase,0.0)));
+        colour.rgb*=.95+.12*key;
+        float s=sp.x*.62-sp.y*.78;
+        float winLight=exp(-pow((s-.50)/.045,2.0))+.75*exp(-pow((s-.66)/.035,2.0));
+        colour.rgb+=vec3(1.0,.95,.86)*colour.a*.06*winLight*smoothstep(.45,.75,uv.x);
+        float grain=fract(sin(dot(floor(sp*900.0),vec2(12.9898,78.233)))*43758.5453)-.5;
+        colour.rgb+=grain*.05*colour.a;
+        float veil=mix(.07,.30,1.0-smoothstep(.35,.88,uv.x));
+        vec3 cream=mix(vec3(.965,.950,.920),vec3(.24,.27,.23),darkMode);
+        colour.rgb=mix(colour.rgb,cream*colour.a,veil);
+        colour.rgb=clamp(colour.rgb,vec3(0.0),vec3(colour.a));
         float fade=.12+.88*smoothstep(.10,.76,uv.x);
         fade*=1.0-.24*smoothstep(.87,1.0,uv.x);
         fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
@@ -73,16 +101,17 @@ void main() {
     if(shadowOnly>3.5){
         vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
         float vinyl=smoothstep(phase-.002,phase+.008,r)*(1.0-smoothstep(.495,.502,r));
-        float sweep=pow(abs(cos(angle-.65)),16.0);
+        float sweep=pow(abs(cos(angle+.75)),6.0);
         float bands=0.0;
         for(int i=0;i<5;++i){
-            float track=mix(phase+.024,.476,float(i)/4.0);
+            float track=mix(phase+.066,.474,float(i)/4.0);
             // A recessed track and a neighboring thin reflection, not wire rings.
             bands+=exp(-pow((r-track-.002)/.0014,2.0))*(.07+.14*sweep);
         }
         float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.045;
         float rim=exp(-pow((r-.494)/.0018,2.0))*(.05+.08*sweep);
-        float a=clamp((bands+.10*sweep+rim)*vinyl+band*(1.0-smoothstep(.47,.50,r)),0.0,.34);
+        float vinylOnly=vinyl*smoothstep(phase+.034,phase+.040,r);
+        float a=clamp((bands+.13*sweep+rim)*vinylOnly+band*(1.0-smoothstep(.47,.50,r)),0.0,.34);
         vec3 light=mix(vec3(1.0,.98,.93),vec3(.87,.92,.85),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;
     }
@@ -99,8 +128,16 @@ void main() {
         float angle=-phase*6.28318530718;
         vec2 uv=mat2(cos(angle),sin(angle),-sin(angle),cos(angle))*q+.5;
         float feather=mix(.004,.026,smoothstep(-.1,.8,q.x+q.y));
-        float mask=1.0-smoothstep(.50-feather,.50,length(q));
-        fragColor=texture(artwork,uv)*mask*qt_Opacity;return;
+        float rr=length(q);
+        float mask=1.0-smoothstep(.50-feather,.50,rr);
+        vec4 c=texture(artwork,uv)*mask;
+        float lit=clamp(dot(normalize(q+vec2(1e-5)),vec2(.707,-.707)),-1.0,1.0);
+        float bevel=exp(-pow((rr-.488)/.008,2.0));
+        c.rgb*=1.0-.22*smoothstep(.36,.50,rr);
+        c.rgb*=1.0+.06*lit;
+        c.rgb+=c.a*bevel*max(lit,0.0)*.22;
+        c.rgb*=1.0-bevel*max(-lit,0.0)*.20;
+        fragColor=c*qt_Opacity;return;
     }
     // Same fixed plane as the platter, with padded bounds for feathered light.
     vec2 p=(qt_TexCoord0-.5)*(shadowOnly>.5?1.64:1.90);
@@ -112,10 +149,10 @@ void main() {
         vec3 tint=vec3(0.0);
         for(int j=-1;j<=1;++j)for(int i=-1;i<=1;++i)
             tint+=texture(artwork,clamp(uv+vec2(i,j)*.16,vec2(.05),vec2(.95))).rgb/9.0;
-        float contact=exp(-pow((r-.485)/.035,2.0))*.18;
-        float bounce=exp(-pow(r/.53,4.0))*.12;
+        float contact=exp(-pow((r-.485)/.035,2.0))*.20;
+        float bounce=exp(-pow(r/.56,4.0))*.20;
         float alpha=(contact+bounce)*edge;
-        vec3 colour=mix(vec3(.35,.29,.22),tint,.45);
+        vec3 colour=mix(vec3(.35,.29,.22),tint,.62);
         fragColor=vec4(colour*alpha,alpha)*qt_Opacity;
     } else {
         // Neutral translucent white sheets. Their broad interiors overlap;
