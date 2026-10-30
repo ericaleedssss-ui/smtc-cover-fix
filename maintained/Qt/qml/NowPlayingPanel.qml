@@ -247,7 +247,7 @@ Item {
             visible:GraphicsInfo.api!==GraphicsInfo.Software
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             readonly property real armLength:width*.54
-            readonly property real pivotX:width*1.145
+            readonly property real pivotX:width*1.10
             readonly property real pivotY:height*.5566
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
