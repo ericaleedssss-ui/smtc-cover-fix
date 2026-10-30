@@ -10,17 +10,30 @@ layout(std140, binding = 0) uniform Params {
 };
 layout(binding = 1) uniform sampler2D artwork;
 void main() {
+    if(shadowOnly>9.5){
+        // The offset lower rim is a narrow physical sidewall. No opaque disc
+        // underneath the translucent material and no luminous thickness.
+        vec2 q=qt_TexCoord0-.5;float r=length(q);
+        float lip=smoothstep(.487,.491,r)*(1.0-smoothstep(.497,.501,r));
+        float underside=smoothstep(-.12,.32,q.y);
+        float a=lip*mix(.025,.19,underside);
+        vec3 material=mix(vec3(.48,.45,.39),vec3(.39,.42,.36),darkMode);
+        fragColor=vec4(material*a,a)*qt_Opacity;return;
+    }
     if(shadowOnly>8.5){
-        // A broad, translucent annulus outside the untouched G88 cover label.
-        // Its body remains visible beneath lyrics; opacity is not a cut-out.
+        // Five separated track boundaries across broad smooth clear-vinyl bands.
         vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
         float annulus=smoothstep(phase-.003,phase+.006,r)*(1.0-smoothstep(.493,.502,r));
-        float groove=.5+.5*cos(r*1256.64);
-        float sweep=pow(abs(cos(angle-.65)),10.0);
-        float bevel=exp(-pow((r-.492)/.0045,2.0));
-        vec3 pigment=mix(vec3(.57,.55,.50),vec3(.70,.71,.66),darkMode);
-        pigment+=vec3(.10)*groove+vec3(.20)*sweep+vec3(.15)*bevel;
-        float a=(.32+.10*sweep+.08*bevel)*annulus;
+        float sweep=pow(abs(cos(angle-.65)),16.0);
+        float trackShade=0.0;
+        for(int i=0;i<5;++i){
+            float track=mix(phase+.024,.476,float(i)/4.0);
+            trackShade+=exp(-pow((r-track)/.0015,2.0));
+        }
+        vec3 pigment=mix(vec3(.64,.62,.57),vec3(.63,.67,.60),darkMode);
+        pigment-=vec3(.24)*trackShade;
+        pigment+=vec3(.12)*sweep;
+        float a=(.28+.06*sweep)*annulus;
         fragColor=vec4(pigment*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>6.5){
@@ -28,10 +41,11 @@ void main() {
         // shadows, loses focus and alpha together before the glass boundary.
         vec2 uv=qt_TexCoord0;
         float focus=smoothstep(.26,.81,uv.x);
-        float spread=mix(.009,.0005,focus);
+        float spread=mix(.024,.00035,focus);
         vec2 dx=vec2(spread/max(phase,1.0),0),dy=vec2(0,spread);
-        vec4 colour=texture(artwork,uv)*.40;
-        colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.15;
+        vec4 colour=texture(artwork,uv)*.28;
+        colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.12;
+        colour+=(texture(artwork,uv+dx+dy)+texture(artwork,uv+dx-dy)+texture(artwork,uv-dx+dy)+texture(artwork,uv-dx-dy))*.06;
         float fade=.12+.88*smoothstep(.10,.76,uv.x);
         fade*=1.0-.24*smoothstep(.87,1.0,uv.x);
         fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
@@ -45,20 +59,31 @@ void main() {
         // The aperture belongs to the assembled platter; the outer composite
         // handles focal fade so no isolated reflection can survive it.
         vec2 uv=qt_TexCoord0;
-        float hole=smoothstep(.017,.020,length(uv-.5));
-        fragColor=texture(artwork,uv)*hole*qt_Opacity;return;
+        vec2 q=uv-.5;float r=length(q);
+        float hole=smoothstep(.016,.0175,r);
+        vec4 colour=texture(artwork,uv)*hole;
+        // Regular inner wall: upper interior is darker, lower lip catches light.
+        // This is inside the aperture, rather than an irregular cast shadow.
+        float wall=smoothstep(.016,.0175,r)*(1.0-smoothstep(.020,.022,r));
+        float facing=smoothstep(-.014,.014,q.y);
+        vec3 material=mix(vec3(.40,.37,.32),vec3(.85,.82,.74),facing);
+        float a=wall*.48;
+        fragColor=(vec4(material*a,a)+colour*(1.0-a))*qt_Opacity;return;
     }
     if(shadowOnly>3.5){
-        vec2 q=qt_TexCoord0-.5;float r=length(q);
-        float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.08;
-        float rim=exp(-pow((r-.491)/.0028,2.0))*(.14+.16*smoothstep(-.35,.35,-q.x-q.y));
-        float inner=exp(-pow((r-.470)/.0020,2.0))*.05;
-        float hub=exp(-pow((r-.022)/.0025,2.0))*.18;
-        // Fine grooves live outside the unchanged-size cover label.
-        float vinyl=smoothstep(phase+.004,phase+.014,r)*(1.0-smoothstep(.483,.498,r));
-        float grooves=pow(.5+.5*cos(r*728.85),6.0)*.13*vinyl;
-        float a=clamp(band*(1.0-smoothstep(.47,.50,r))+rim+inner+hub+grooves,0.0,.85)*(1.0-smoothstep(.499,.505,r));
-        vec3 light=mix(vec3(1.0,.98,.91),vec3(.86,.91,.82),darkMode);
+        vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
+        float vinyl=smoothstep(phase-.002,phase+.008,r)*(1.0-smoothstep(.495,.502,r));
+        float sweep=pow(abs(cos(angle-.65)),16.0);
+        float bands=0.0;
+        for(int i=0;i<5;++i){
+            float track=mix(phase+.024,.476,float(i)/4.0);
+            // A recessed track and a neighboring thin reflection, not wire rings.
+            bands+=exp(-pow((r-track-.002)/.0014,2.0))*(.07+.14*sweep);
+        }
+        float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.045;
+        float rim=exp(-pow((r-.494)/.0018,2.0))*(.05+.08*sweep);
+        float a=clamp((bands+.10*sweep+rim)*vinyl+band*(1.0-smoothstep(.47,.50,r)),0.0,.34);
+        vec3 light=mix(vec3(1.0,.98,.93),vec3(.87,.92,.85),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>2.5){

@@ -116,7 +116,7 @@ Item {
     }
     Item {
         id:discField;objectName:"nowDiscField";anchors.fill:parent;clip:true;z:-1
-        // One composite owns the record, all reflections, bounce and tonearm.
+        // One composite owns the record, all reflections and bounce.
         // It alone applies screen-space focal fade and the exact glass boundary.
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
         layer.effect:ShaderEffect {objectName:"nowRecordComposite";property variant artwork;property real phase:discField.width/Math.max(1,discField.height);property real shadowOnly:7;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
@@ -144,7 +144,7 @@ Item {
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             ShaderEffect {
-                objectName:"nowRecordShadow";opacity:.18;x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
+                objectName:"nowRecordShadow";opacity:.10;x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
                 property variant artwork:shadowArt
                 property real phase:0
                 property real shadowOnly:1
@@ -152,8 +152,14 @@ Item {
                 fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
                 Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
-            // Thin fixed ivory lip and contact edge, with no offset opaque cylinder.
-            Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;opacity:.15;color:rhine.state.dark?"#666759":"#bfb09b"}
+            // A narrow lower sidewall, not a bright outline or a filled shadow disc.
+            ShaderEffect {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height
+                property variant artwork:printArt
+                property real phase:0
+                property real shadowOnly:10
+                property real darkMode:rhine.state.dark?1:0
+                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+            }
             ShaderEffect {objectName:"nowRecordPlatter";anchors.fill:parent
                 property variant artwork:printArt
                 property real phase:recordPrint.width/(plane.width*2)
@@ -186,12 +192,7 @@ Item {
             }
         }
     }
-        // The pivot is anchored to the glass's upper-right corner, independent
-        // of the large record's cropped bounds. The arm uses the same incline.
-        Item {id:armPlane;objectName:"nowTonearmPlane";x:page.width-103*page.unit;y:3*page.unit;width:110*page.unit;height:236*page.unit
-            transform:[Rotation {origin.x:tonearm.pivotX;origin.y:tonearm.pivotY;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:tonearm.pivotX;origin.y:tonearm.pivotY;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            RecordTonearm {id:tonearm;objectName:"nowTonearm";anchors.fill:parent;playing:page.playback.playing;reduced:rhine.state.reduced;dark:rhine.state.dark}
-        }
+
     }
     Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
         Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:page.muted;MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}

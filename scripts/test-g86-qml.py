@@ -148,20 +148,16 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  shortcut.setProperty('available',True)
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
- arm=find('nowTonearm');assert arm and find('nowTonearmPlane')
+ assert find('nowTonearm') is None and find('nowTonearmPlane') is None
  assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.48
- assert abs(arm.property('armAngle'))<.01
- pivot=arm.mapToItem(page,QPointF(arm.property('pivotX'),arm.property('pivotY')))
- assert 18*page.property('unit')<page.width()-pivot.x()<32*page.property('unit') and 18*page.property('unit')<pivot.y()<32*page.property('unit'),('upper-right pivot',pivot)
- assert find('nowTonearmSurface') is not None
+ assert edge.property('shadowOnly')==10
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==32
  assert edge.y()==3*page.property('unit') and base.rotation()==0 and platter.rotation()==0
  angle=spin.property('spinAngle');QTest.qWait(180);assert (spin.property('spinAngle')-angle+360)%360>.3,(angle,spin.property('spinAngle'),page.property('motion'),page.isVisible())
  assert spin.rotation()==0 and base.rotation()==0 and platter.rotation()==0 and edge.rotation()==0
- w.grabWindow().save(str(repo.parent/'g91-arm-playing.png'))
+ w.grabWindow().save(str(repo.parent/'g94-record-playing.png'))
  c.playing=False;c.playbackChanged.emit();QTest.qWait(200);angle=spin.property('spinAngle');QTest.qWait(150);assert abs(spin.property('spinAngle')-angle)<.01 and find('nowRecordRings').opacity()==0
- assert abs(arm.property('armAngle')+12)<.01
- w.grabWindow().save(str(repo.parent/'g91-arm-paused.png'))
+ w.grabWindow().save(str(repo.parent/'g94-record-paused.png'))
  if os.environ.get('QT_QUICK_BACKEND')=='rhi':
   # Render a white test input through the *actual assembled-record effect*.
   # The shared mask must fade every layer and clip the original rounded glass.
@@ -178,7 +174,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   assert 80<alpha(.35)<140 and 150<alpha(.5)<210 and alpha(.74)>245 and 180<alpha(.99)<220,('assembled fade',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
   assert alpha(.995,.005)==0 and alpha(.995,.995)==0,('gloss/shadow must not escape rounded glass corners',alpha(.995,.005),alpha(.995,.995))
   mask.save(str(repo.parent/'g92-assembled-mask.png'))
-  print('G93 continuous assembled mask brightness on black:',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
+  print('G94 continuous assembled mask brightness on black:',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
   probe.setParentItem(None);probe.deleteLater();backdrop.setParentItem(None);backdrop.deleteLater();QTest.qWait(80)
   rings=find('nowRecordRings');record=find('nowRecord');rings.setOpacity(1)
   record.setProperty('phase',.03);QTest.qWait(80);first=w.grabWindow();first.save(str(repo.parent/'g89-ripples-a.png'))
