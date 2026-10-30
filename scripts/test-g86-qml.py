@@ -168,11 +168,20 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  for _ in range(4):c.playbackChanged.emit();QTest.qWait(30)
  assert armPage.property('armTransitionRunning'), 'routine playback notifications must not cancel the tonearm transition'
  assert armPlane.property('pose')>pose, 'tonearm motion must continue through routine playback notifications'
- QTest.qWait(1600);assert not incoming.isVisible() and not page.property('recordTransitioning')
+ c.playing=False;c.playbackChanged.emit();QTest.qWait(100)
+ assert armPage.property('armTransitionRunning'), 'pause during a record transition must not cancel the arm sequence'
+ c.playing=True;c.playbackChanged.emit();QTest.qWait(100)
+ assert armPage.property('armTransitionRunning'), 'resume during a record transition must not cancel the arm sequence'
+ QTest.qWait(1450);assert not incoming.isVisible() and not page.property('recordTransitioning')
  assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')<.1
- c.playing=False;c.at=0;c.changed.emit();c.playbackChanged.emit();QTest.qWait(700)
- assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')>.9
- c.playing=True;c.playbackChanged.emit();QTest.qWait(180)
+ # Pause/resume outside a track change must animate through intermediate poses,
+ # rather than snapping directly to normalPose.
+ c.playing=False;c.playbackChanged.emit();QTest.qWait(110)
+ assert .01<armPlane.property('pose')<.99, ('pause must animate',armPlane.property('pose'))
+ QTest.qWait(360);assert armPlane.property('pose')>.99, 'pause animation must settle on the lifted pose'
+ c.playing=True;c.playbackChanged.emit();QTest.qWait(110)
+ assert .01<armPlane.property('pose')<.99, ('resume must animate',armPlane.property('pose'))
+ QTest.qWait(360);assert armPlane.property('pose')<.01, 'resume animation must settle on the playing pose'
  assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.60
  assert edge.property('shadowOnly')==10
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==38
