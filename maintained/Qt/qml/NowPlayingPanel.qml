@@ -61,7 +61,6 @@ Item {
     // The text panel follows the real player immediately, while the record
     // keeps its own old/new visual identities until a platter change settles.
     property var displayedInfo: ({})
-    property var pendingInfo: null
     property var transitionInfo: null
     property bool visualInitialized:false
     property bool recordTransitioning:false
@@ -104,7 +103,7 @@ Item {
     function beginRecordChange(next){
         if(!next||!next.session)return;
         displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
-        transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
+        transitionInfo=mergeInfo({},next);recordTransitioning=true;
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
         armChangeAnimation.stop();armPlaybackAnimation.stop();recordChangeAnimation.stop();recordCoverWait.stop();
@@ -117,8 +116,7 @@ Item {
         displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        var queued=pendingInfo;pendingInfo=null;transitionInfo=null;recordTransitioning=false;
-        if(queued&&queued.session&&queued.session!==displayedInfo.session)Qt.callLater(function(){page.beginRecordChange(queued);});
+        transitionInfo=null;recordTransitioning=false;
     }
     onInfoChanged:{
         var next=info||({});
