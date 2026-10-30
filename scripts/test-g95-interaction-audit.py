@@ -63,4 +63,15 @@ queue = read("qml/PlayerQueueGlass.qml")
 assert "onPageStartChanged: syncRows()" in queue, "queue page changes must reset the list viewport even if row data is identical"
 assert "var pageChanged = syncedPage !== pageStart;" in queue and "if (!rowsChanged && !pageChanged) return;" in queue, "queue synchronization must compare page identity separately from row content"
 
+messages = read("src/MessageCenter.cpp")
+assert "c.more=b[\"more\"].toBool(b[\"hasMore\"].toBool(false))&&!a.isEmpty();" in messages, "refresh must recompute private-message pagination availability"
+assert "if(!a.isEmpty())c.before=a.last().toObject()[\"time\"].toInteger();" in messages, "refresh must replace the private-message cursor with the newest page cursor"
+assert "if(!reset||c.before==0)" not in messages, "private-message refresh must not retain a stale cursor condition"
+
+now_playing = read("src/NowPlaying.cpp")
+now_playing_h = read("src/NowPlaying.h")
+assert "m_artistRequest" in now_playing_h, "now-playing artist metadata requests need independent identities"
+assert "self->m_artistRequest!=request" in now_playing, "stale artist metadata responses must not overwrite a newer request"
+assert "self->m_artistRequest==request" in now_playing, "artist metadata request validity must include its identity"
+
 print("Interaction state audit regressions passed.")
