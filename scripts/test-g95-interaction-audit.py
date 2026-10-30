@@ -39,4 +39,10 @@ assert "self->m_artistID==artistID" in cpp, "artist API response must be bound t
 magazine = read("src/PlaylistMagazine.cpp")
 assert "if(reset){m_socialOffset=0;m_socialTotal=0;m_social={};}" in magazine, "social pagination total must reset with its rows"
 
+showcase = read("qml/PlaylistShowcase.qml")
+assert "wheelCarry-=whole;moveRecord(-whole);" in showcase, "large wheel deltas must preserve every whole navigation step"
+assert "pendingMoves+step" in showcase, "navigation input during an animation must accumulate instead of overwrite"
+assert "Math.max(-6,Math.min(6,pendingMoves+step))" in showcase, "queued navigation must be bounded"
+assert "if(!controller.songs.length)return;" in showcase, "song navigation must tolerate an empty playlist"
+
 print("Interaction state audit regressions passed.")
