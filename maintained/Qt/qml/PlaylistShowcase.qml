@@ -43,7 +43,7 @@ Item {
     }
     function moveRecord(step){
         pendingMoves=Math.max(-6,Math.min(6,pendingMoves+step));
-        pendingUntil=Date.now()+2500;drainMoves();
+        pendingUntil=Date.now()+5000;drainMoves();
     }
     readonly property bool keysEnabled:visible&&enabled&&!more.visible&&!cancelCollect.visible&&!rhine.state.queueOpen&&!rhine.messages.state.open&&!Controls.Overlay.overlay.visible
     function playSelection(){if(showSongs&&songIndex>=0)controller.playSong(songIndex);else controller.operate("play");}
