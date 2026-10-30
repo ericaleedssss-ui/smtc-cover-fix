@@ -19,6 +19,17 @@ QString circularPNG(const QImage &source,int side){
     QByteArray bytes;QBuffer buffer(&bytes);buffer.open(QIODevice::WriteOnly);if(!image.save(&buffer,"PNG"))return {};
     return "data:image/png;base64,"+QString::fromLatin1(bytes.toBase64());
 }
+QJsonArray wikiTags(const QString &wiki){
+    QJsonArray tags;
+    for(const auto &line:wiki.split('\n',Qt::SkipEmptyParts)){
+        const auto colon=line.indexOf(QChar(0xff1a));
+        if(colon<0||(!line.contains(QStringLiteral("\u6807\u7b7e"))&&!line.contains("tag",Qt::CaseInsensitive)))continue;
+        for(auto value:line.mid(colon+1).split('/',Qt::SkipEmptyParts)){
+            value=value.trimmed();if(!value.isEmpty()&&!tags.contains(value))tags.append(value);
+        }
+    }
+    return tags;
+}
 }
 NowPlaying::NowPlaying(MusicLibrary *music,PlaylistMagazine *magazine,QObject *parent):QObject(parent),m_music(music),m_magazine(magazine){
     connect(&music->player,&MusicPlayer::changed,this,&NowPlaying::sync);
@@ -27,14 +38,26 @@ NowPlaying::NowPlaying(MusicLibrary *music,PlaylistMagazine *magazine,QObject *p
     connect(magazine,&PlaylistMagazine::changed,this,&NowPlaying::changed);
     sync();
 }
+void NowPlaying::loadTags(){
+    if(m_track["provider"].toString()!="netease"||m_key.isEmpty()||!m_tags.isEmpty())return;
+    if(m_tagsCache.contains(m_key)){m_tags=m_tagsCache.value(m_key);emit changed();return;}
+    QPointer<NowPlaying> self(this);const auto generation=m_generation;const auto account=m_account;const auto key=m_key;
+    m_music->api.call("wiki",{m_track["id"]},[self,generation,account,key](MusicReply reply){
+        if(!self||self->m_generation!=generation||self->m_music->accountGeneration()!=account||self->m_key!=key||!reply.ok())return;
+        const auto tags=wikiTags(reply.value.toString());
+        if(tags.isEmpty())return;
+        self->m_tags=tags;if(self->m_tagsCache.size()>64)self->m_tagsCache.clear();self->m_tagsCache.insert(key,tags);emit self->changed();
+    },[self,generation,account,key]{return self&&self->m_generation==generation&&self->m_music->accountGeneration()==account&&self->m_key==key;});
+}
 void NowPlaying::sync(){
     const auto song=m_music->player.current;const auto key=identity(song);const auto account=m_music->accountGeneration();
     if(key!=m_key||account!=m_account){
-        ++m_generation;m_key=key;m_account=account;m_track=song;m_status.clear();m_album={};m_cover.clear();m_avatar.clear();m_artistID.clear();m_document={};
+        ++m_generation;m_key=key;m_account=account;m_track=song;m_status.clear();m_album={};m_tags=m_tagsCache.value(key);m_cover.clear();m_avatar.clear();m_artistID.clear();m_document={};
         if(m_images.size()>16)m_images.clear();
         emit changed();emit linesChanged();
         if(!key.isEmpty()){
             pixels(song["cover"].toString(),"cover");
+            loadTags();
             const auto people=song["artists"].toArray();if(!people.isEmpty())m_artistID=id(people.first().toObject()["id"]);
             artist();
             const auto albumID=song["albumID"].toString();const auto albumKey=song["provider"].toString()+":"+albumID;
@@ -70,7 +93,7 @@ void NowPlaying::syncLyrics(){
 QVariantMap NowPlaying::info()const{
     auto info=m_track.toVariantMap();info["session"]=m_key;info["coverPixels"]=m_cover;info["artistAvatar"]=m_avatar;
     info["date"]=m_album["date"].toString(m_track["date"].toString());
-    auto tags=m_track["tags"].toArray();if(tags.isEmpty())tags=m_album["tags"].toArray();info["tags"]=tags.toVariantList();
+    auto tags=m_tags;if(tags.isEmpty())tags=m_track["tags"].toArray();if(tags.isEmpty())tags=m_album["tags"].toArray();info["tags"]=tags.toVariantList();
     info["liked"]=m_liked;info["likeKnown"]=m_known;info["likeBusy"]=m_write;
     info["canLike"]=m_track["provider"].toString()==m_music->provider&&m_music->provider=="netease"&&!m_music->uid.isEmpty();return info;
 }
@@ -104,7 +127,7 @@ void NowPlaying::operate(QString operation){
     if(operation=="album"){if(!m_track["albumID"].toString().isEmpty()&&m_track["albumID"]!="0")emit navigate("player:song-album");return;}
     if(operation=="details"){emit navigate("player:song-detail");return;}
     if(operation=="retry-lyrics"){emit navigate("player:lyrics-retry");return;}
-    if(operation=="comments"){emit navigate("player:comments");return;}
+    if(operation=="comments"){m_music->archiveNowPlaying=true;emit navigate("player:comments");return;}
     if(operation=="like"){if(m_known&&!m_write&&info()["canLike"].toBool())emit navigate("music:like-current");return;}
     if(operation=="share"||operation=="collect"||operation=="official"){
         if(operation=="official"){emit navigate("player:official");return;}

@@ -33,8 +33,11 @@ private:
     bool m_known=false,m_liked=false,m_write=false;
     QHash<QString,QString> m_images,m_artists;
     QHash<QString,QJsonObject> m_albums;
+    QJsonArray m_tags;
+    QHash<QString,QJsonArray> m_tagsCache;
     void sync();
     void syncLyrics();
+    void loadTags();
     void artist(bool fallback=false);
     void pixels(QString url,QString role,bool fallback=false);
 };
