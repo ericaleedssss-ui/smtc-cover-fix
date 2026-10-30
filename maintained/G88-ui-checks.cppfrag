@@ -25,6 +25,11 @@
         check(desktop&&entry&&(volumeBounds.value("x").toDouble()+volumeBounds.value("width").toDouble())*stageUnit<desktop->mapToScene(QPointF()).x()&&desktop->mapToScene(QPointF(desktop->width(),0)).x()<entry->mapToScene(QPointF()).x(),"G88 volume, desktop lyrics and global now-playing have separate aligned hit regions");
         auto *field=findVisual(window->contentItem(),"nowDiscField");auto *page=findVisual(window->contentItem(),"nowPlayingPanel");auto *disc=findVisual(window->contentItem(),"nowRecord");
         check(field&&field->clip()&&page&&disc&&disc->width()>page->width()*.45,"G88 immersive disc is enlarged inside its bounded fading field");
+        if(page&&disc&&field){
+            const auto expected=std::min(490*stageUnit,page->width()*.60);
+            check(std::abs(disc->width()-expected)<.01&&std::abs(disc->mapToItem(page,QPointF()).x()-(page->width()-expected+38*stageUnit))<.01,"G92 record restores exact G88 size and rightward placement without fitting its rim inward");
+            check(std::abs(field->width()-page->width())<.01&&std::abs(field->height()-page->height())<.01,"G92 visual field has unchanged glass bounds");
+        }
         hud.openModal("player");refresh();entry=findVisual(window->contentItem(),"globalNowPlaying");
         check(entry&&!entry->isEnabled(),"G88 queue modal blocks the now-playing shortcut with all other background controls");
         backend.action("queue-close");refresh();

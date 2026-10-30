@@ -12,48 +12,76 @@ layout(binding = 1) uniform sampler2D artwork;
 float segmentDistance(vec2 p,vec2 a,vec2 b){
     vec2 v=b-a;return length(p-a-v*clamp(dot(p-a,v)/dot(v,v),0.0,1.0));
 }
+vec2 armNearest(vec2 p,vec2 a,vec2 b){vec2 v=b-a;return a+v*clamp(dot(p-a,v)/dot(v,v),0.0,1.0);}
+float armCoverage(vec2 uv){
+    vec2 pivot=vec2(.70,.04),bend=vec2(.78,.14),tip=vec2(.82,.25);
+    float rod=min(segmentDistance(uv,pivot,bend),segmentDistance(uv,bend,tip));
+    vec2 v=normalize(tip-bend),n=vec2(-v.y,v.x),q=uv-tip;
+    float body=max(abs(dot(q,n))-.014,abs(dot(q,v))-.033);
+    return max(max(1.0-smoothstep(.0055,.008,rod),1.0-smoothstep(0.0,.003,body)),(1.0-smoothstep(.032,.036,length(uv-pivot)))*.9);
+}
 void main() {
+    if(shadowOnly>7.5){
+        vec2 uv=qt_TexCoord0;
+        float a=armCoverage(uv)*.40;
+        a+=(armCoverage(uv+vec2(.004,0))+armCoverage(uv-vec2(.004,0))+armCoverage(uv+vec2(0,.004))+armCoverage(uv-vec2(0,.004)))*.15;
+        a*=.23;
+        fragColor=vec4(vec3(.23,.21,.18)*a,a)*qt_Opacity;return;
+    }
+    if(shadowOnly>6.5){
+        // Shared screen-space fade: every physical layer, including gloss and
+        // shadows, loses focus and alpha together before the glass boundary.
+        vec2 uv=qt_TexCoord0;
+        float focus=smoothstep(.42,.80,uv.x);
+        float spread=mix(.009,.0005,focus);
+        vec2 dx=vec2(spread/max(phase,1.0),0),dy=vec2(0,spread);
+        vec4 colour=texture(artwork,uv)*.40;
+        colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.15;
+        float fade=smoothstep(.39,.79,uv.x);
+        fade*=1.0-.48*smoothstep(.87,1.0,uv.x);
+        fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
+        // LiquidGlass has a 22-unit radius in a 440-unit-high content area.
+        vec2 size=vec2(phase,1.0),q=abs((uv-.5)*size)-size*.5+.05;
+        float d=length(max(q,vec2(0)))+min(max(q.x,q.y),0.0)-.05;
+        float clipMask=1.0-smoothstep(-.001,0.0,d);
+        fragColor=colour*fade*clipMask*qt_Opacity;return;
+    }
     if(shadowOnly>5.5){
-        // An ivory arm and its small cartridge, expressed in the platter plane.
-        // No rectangular player body and no rotating background geometry.
         vec2 uv=qt_TexCoord0;
         vec2 pivot=vec2(.70,.04),bend=vec2(.78,.14),tip=vec2(.82,.25);
-        float rod=min(segmentDistance(uv,pivot,bend),segmentDistance(uv,bend,tip));
-        float arm=1.0-smoothstep(.0055,.0080,rod);
+        vec2 nearA=armNearest(uv,pivot,bend),nearB=armNearest(uv,bend,tip);
+        bool first=length(uv-nearA)<length(uv-nearB);
+        vec2 direction=normalize(first?bend-pivot:tip-bend);
+        float side=dot(uv-(first?nearA:nearB),vec2(-direction.y,direction.x))/.008;
+        float cylinder=sqrt(max(0.0,1.0-side*side));
+        vec3 tone=mix(vec3(.61,.60,.56),vec3(.99,.985,.96),clamp(.25+.62*cylinder-.16*side,0.0,1.0));
         float hub=1.0-smoothstep(.032,.036,length(uv-pivot));
+        vec2 hubP=(uv-pivot)/.035;
+        vec3 hubTone=mix(vec3(.68,.67,.62),vec3(.99,.985,.96),clamp(.56-dot(hubP,vec2(.25,.36)),0.0,1.0));
+        tone=mix(tone,hubTone,hub);
         vec2 v=normalize(tip-bend),n=vec2(-v.y,v.x),q=uv-tip;
-        float body=max(abs(dot(q,n))-.014,abs(dot(q,v))-.033);
-        float head=1.0-smoothstep(0.0,.003,body);
-        float a=max(max(arm,head),hub*.8)*.84;
-        float shine=1.0-smoothstep(.002,.006,rod);
-        vec3 tone=mix(vec3(.83,.82,.78),vec3(1.0),max(shine,head*.8));
-        float cap=1.0-smoothstep(.012,.016,length(uv-pivot));
-        tone=mix(tone,vec3(.76,.76,.72),cap*.45);
+        float head=(1.0-smoothstep(.014,.017,abs(dot(q,n))))*(1.0-smoothstep(.033,.036,abs(dot(q,v))));
+        vec3 headTone=mix(vec3(.79,.78,.73),vec3(.995,.99,.97),clamp(.6-dot(q,n)*12.0,0.0,1.0));
+        tone=mix(tone,headTone,head);
+        float a=armCoverage(uv)*.91;
         fragColor=vec4(tone*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>4.5){
-        // Partial loss of the lower/right silhouette, with the top/left rim
-        // retained. This compositing gradient never rotates with the artwork.
+        // The aperture belongs to the assembled platter; the outer composite
+        // handles focal fade so no isolated reflection can survive it.
         vec2 uv=qt_TexCoord0;
-        float merge=smoothstep(.08,.98,uv.x)*smoothstep(.08,.98,uv.y);
-        float focus=smoothstep(.02,.54,uv.x);
-        float soft=(1.0-focus)*.65;
-        vec2 blur=vec2(.002+.006*(1.0-focus));
-        vec4 centre=texture(artwork,uv);
-        vec4 feathered=centre*.4;
-        feathered+=(texture(artwork,uv+blur)+texture(artwork,uv-blur)+texture(artwork,uv+vec2(blur.x,-blur.y))+texture(artwork,uv+vec2(-blur.x,blur.y)))*.15;
         float hole=smoothstep(.017,.020,length(uv-.5));
-        fragColor=mix(centre,feathered,soft)*(.38+.62*focus)*(1.0-.32*merge)*hole*qt_Opacity;return;
+        fragColor=texture(artwork,uv)*hole*qt_Opacity;return;
     }
     if(shadowOnly>3.5){
         vec2 q=qt_TexCoord0-.5;float r=length(q);
-        float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.12;
-        float rim=exp(-pow((r-.491)/.0028,2.0))*(.38+.42*smoothstep(-.35,.35,-q.x-q.y));
-        float inner=exp(-pow((r-.470)/.0020,2.0))*.12;
+        float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.08;
+        float rim=exp(-pow((r-.491)/.0028,2.0))*(.14+.16*smoothstep(-.35,.35,-q.x-q.y));
+        float inner=exp(-pow((r-.470)/.0020,2.0))*.05;
         float hub=exp(-pow((r-.022)/.0025,2.0))*.18;
         // Fine grooves live outside the unchanged-size cover label.
         float vinyl=smoothstep(.407,.418,r)*(1.0-smoothstep(.483,.498,r));
-        float grooves=pow(.5+.5*cos(r*728.85),6.0)*.15*vinyl;
+        float grooves=pow(.5+.5*cos(r*728.85),6.0)*.07*vinyl;
         float a=clamp(band*(1.0-smoothstep(.47,.50,r))+rim+inner+hub+grooves,0.0,.85)*(1.0-smoothstep(.499,.505,r));
         vec3 light=mix(vec3(1.0,.98,.91),vec3(.86,.91,.82),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;

@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile,shutil,subprocess
 from PySide6.QtCore import QLibraryInfo,QObject,Signal,Property,Slot,QUrl,Qt,QPointF,QPoint,QCoreApplication,QResource
 from PySide6.QtGui import QGuiApplication,QImage,QColor,QFontDatabase,QWheelEvent,QPainter
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQml import QQmlApplicationEngine,QQmlComponent
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtTest import QTest
 repo=Path(__file__).resolve().parents[1];src=repo.parent/'upstream';app=QGuiApplication([])
@@ -129,8 +129,17 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  reading.setProperty('frosted',False);QTest.qWait(50);assert not find('textFrostedPanel')
  reading.setProperty('frosted',True);QTest.qWait(50);glass=find('textFrostedPanel');assert glass
  for width,height in [(1600,900),(960,540),(960,720),(1920,1080)]:
-  w.setWidth(width);w.setHeight(height);QTest.qWait(80);page=find('nowPlayingPanel');disc=find('nowRecord');lyric=find('nowPlayingLyrics');field=find('nowDiscField');assert field.property('clip') and disc.width()>page.width()*.45 and field.x()+field.width()<=page.width()+1 and lyric.x()+lyric.width()<disc.mapToItem(page,QPointF()).x()
-  assert page.height()==440*height/1080 and abs(page.width()-reading.width())<1
+  w.setWidth(width);w.setHeight(height)
+  for _ in range(60):
+   QTest.qWait(20);page=find('nowPlayingPanel')
+   if abs(page.height()-440*height/1080)<.01 and abs(reading.width()-(width*(1-.50520833)-3*height/1080))<.01:break
+  disc=find('nowRecord');lyric=find('nowPlayingLyrics');field=find('nowDiscField');assert field.property('clip') and disc.width()>page.width()*.45 and field.x()+field.width()<=page.width()+1
+  assert abs(page.height()-440*height/1080)<.01 and abs(page.width()-reading.width())<1,(width,height,w.width(),w.height(),page.width(),page.height(),reading.width())
+  u=page.property('unit');expected=min(490*u,page.width()*.60)
+  assert abs(disc.width()-expected)<.01
+  assert abs(disc.mapToItem(page,QPointF()).x()-(page.width()-expected+38*u))<.01
+  assert disc.mapToItem(page,QPointF(disc.width(),0)).x()>page.width(), 'G88 oversized cover is intentionally cropped, never fitted inward'
+  assert find('nowRecordComposite') if os.environ.get('QT_QUICK_BACKEND')=='rhi' else True
   w.grabWindow().save(str(repo.parent/f'g86-now-playing-{width}x{height}.png'))
  w.setWidth(1600);w.setHeight(900);QTest.qWait(80)
  shortcut=find('globalNowPlaying');click(shortcut);assert b.actions[-1]=='player:now-playing'
@@ -144,13 +153,30 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert abs(arm.property('armAngle'))<.01
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==32
  assert edge.y()==3*page.property('unit') and base.rotation()==0 and platter.rotation()==0
- angle=spin.property('spinAngle');QTest.qWait(180);assert spin.property('spinAngle')>angle+.3
+ angle=spin.property('spinAngle');QTest.qWait(180);assert (spin.property('spinAngle')-angle+360)%360>.3,(angle,spin.property('spinAngle'),page.property('motion'),page.isVisible())
  assert spin.rotation()==0 and base.rotation()==0 and platter.rotation()==0 and edge.rotation()==0
  w.grabWindow().save(str(repo.parent/'g91-arm-playing.png'))
  c.playing=False;c.playbackChanged.emit();QTest.qWait(200);angle=spin.property('spinAngle');QTest.qWait(150);assert abs(spin.property('spinAngle')-angle)<.01 and find('nowRecordRings').opacity()==0
  assert abs(arm.property('armAngle')+12)<.01
  w.grabWindow().save(str(repo.parent/'g91-arm-paused.png'))
  if os.environ.get('QT_QUICK_BACKEND')=='rhi':
+  # Render a white test input through the *actual assembled-record effect*.
+  # The shared mask must fade every layer and clip the original rounded glass.
+  field=find('nowDiscField');component=QQmlComponent(engine)
+  component.setData(b'import QtQuick; Rectangle { anchors.fill:parent; color:"black"; z:-2 }',QUrl())
+  backdrop=component.create();assert backdrop is not None;backdrop.setParentItem(page)
+  component.setData(b'import QtQuick; Rectangle { anchors.fill:parent; color:"white"; z:1000 }',QUrl())
+  probe=component.create();assert probe is not None;probe.setParentItem(field);QTest.qWait(120)
+  # Item.grabToImage captures a layer's source, omitting its layer.effect.
+  # Capture the window framebuffer against black to measure actual compositing.
+  mask=w.grabWindow();assert not mask.isNull()
+  def alpha(x,y=.25):
+   point=page.mapToScene(QPointF(page.width()*x,page.height()*y));return mask.pixelColor(round(point.x()),round(point.y())).red()
+  assert alpha(.35)==0 and 5<alpha(.5)<90 and alpha(.74)>210 and alpha(.99)<170,('assembled fade',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
+  assert alpha(.995,.005)==0 and alpha(.995,.995)==0,('gloss/shadow must not escape rounded glass corners',alpha(.995,.005),alpha(.995,.995))
+  mask.save(str(repo.parent/'g92-assembled-mask.png'))
+  print('G92 actual assembled mask brightness on black:',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
+  probe.setParentItem(None);probe.deleteLater();backdrop.setParentItem(None);backdrop.deleteLater();QTest.qWait(80)
   rings=find('nowRecordRings');record=find('nowRecord');rings.setOpacity(1)
   record.setProperty('phase',.03);QTest.qWait(80);first=w.grabWindow();first.save(str(repo.parent/'g89-ripples-a.png'))
   record.setProperty('phase',.18);QTest.qWait(80);second=w.grabWindow();second.save(str(repo.parent/'g89-ripples-b.png'))
@@ -173,7 +199,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   spin.setProperty('spinAngle',turn);QTest.qWait(35)
   assert [base.mapToScene(p) for p in points]==fixed and spin.rotation()==0
   w.grabWindow().save(str(repo.parent/f'g87-fixed-disc-{turn}.png'))
- c.playing=True;c.playbackChanged.emit();QTest.qWait(120);assert spin.property('spinAngle')>angle+.1
+ c.playing=True;c.playbackChanged.emit();QTest.qWait(120);assert (spin.property('spinAngle')-angle+360)%360>.1
  page=find('nowPlayingPanel');page.setVisible(False);angle=spin.property('spinAngle');QTest.qWait(120);assert abs(spin.property('spinAngle')-angle)<.01;page.setVisible(True)
  click(find('nowComments'));assert c.actions[-1]==('comments',)
  click(find('nowLike'));assert c.actions[-1]==('like',)

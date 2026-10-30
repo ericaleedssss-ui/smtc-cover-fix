@@ -11,7 +11,7 @@ Item {
     readonly property var playback:controller.playback
     readonly property color ink:rhine.state.dark?"#eceee3":"#30372e"
     readonly property color muted:rhine.state.dark?"#b1b9a5":"#77806e"
-    readonly property real discSize:Math.min(450*unit,width*.51-10*unit)
+    readonly property real discSize:Math.min(490*unit,width*.60)
     readonly property real vinylInset:discSize*.10
     readonly property real textWidth:width*.50-42*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
@@ -115,7 +115,11 @@ Item {
         Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
     }
     Item {
-        id:discField;objectName:"nowDiscField";x:page.width*.12;y:0;width:page.width-x;height:page.height;clip:true;z:-1
+        id:discField;objectName:"nowDiscField";anchors.fill:parent;clip:true;z:-1
+        // One composite owns the record, all reflections, bounce and tonearm.
+        // It alone applies screen-space focal fade and the exact glass boundary.
+        layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
+        layer.effect:ShaderEffect {objectName:"nowRecordComposite";property variant artwork;property real phase:discField.width/Math.max(1,discField.height);property real shadowOnly:7;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
         Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:3;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
@@ -131,7 +135,7 @@ Item {
             }
         }
     Item {
-        id:record;objectName:"nowRecord";x:parent.width-width-6*page.unit;y:(parent.height-height)/2-6*page.unit;width:page.discSize;height:width
+        id:record;objectName:"nowRecord";x:parent.width-width+38*page.unit;y:(parent.height-height)/2-6*page.unit;width:page.discSize;height:width
         property real phase:0
         NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
         // The perspective belongs to the stationary platter. Only its inset print spins.
@@ -149,13 +153,13 @@ Item {
                 Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
             // Thin fixed ivory lip and contact edge, with no offset opaque cylinder.
-            Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;opacity:.24;color:rhine.state.dark?"#666759":"#bfb09b"}
-            Rectangle {objectName:"nowRecordPlatter";anchors.fill:parent;radius:width/2;opacity:.34
+            Rectangle {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height;radius:width/2;opacity:.15;color:rhine.state.dark?"#666759":"#bfb09b"}
+            Rectangle {objectName:"nowRecordPlatter";anchors.fill:parent;radius:width/2;opacity:.14
                 gradient:Gradient {GradientStop {position:0;color:rhine.state.dark?"#d0cbb6":"#fff9ed"} GradientStop {position:.6;color:rhine.state.dark?"#777a68":"#eae1d0"} GradientStop {position:1;color:rhine.state.dark?"#a7a48e":"#d5c5ae"}}
                 border.width:page.unit;border.color:"#c0fffdf5"
             }
             Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
-                opacity:rhine.state.dark?.70:.60
+                opacity:rhine.state.dark?.72:.64
                 property real spinAngle:0
                 NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
                 Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
@@ -180,17 +184,20 @@ Item {
         }
         // Separate from the circular compositing layer: the arm is stationary
         // in the same inclined plane and swings only when playback pauses.
-        Item {id:armPlane;objectName:"nowTonearmPlane";x:plane.x;y:plane.y;width:plane.width;height:plane.height
+        Item {id:armPlane;objectName:"nowTonearmPlane";x:plane.x-20*page.unit;y:plane.y-20*page.unit;width:plane.width;height:plane.height
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            ShaderEffect {id:tonearm;objectName:"nowTonearm";anchors.fill:parent
+            Item {id:tonearm;objectName:"nowTonearm";anchors.fill:parent
                 property real armAngle:page.playback.playing?0:-12
                 Behavior on armAngle {enabled:page.visible&&!rhine.state.reduced;NumberAnimation {duration:280;easing.type:Easing.OutCubic}}
                 transform:Rotation {origin.x:tonearm.width*.70;origin.y:tonearm.height*.04;angle:tonearm.armAngle}
-                property variant artwork:shadowArt
-                property real phase:0
-                property real shadowOnly:6
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                ShaderEffect {objectName:"nowTonearmShadow";x:4*page.unit;y:6*page.unit;width:parent.width;height:parent.height
+                    property variant artwork:shadowArt;property real phase:0;property real shadowOnly:8;property real darkMode:rhine.state.dark?1:0
+                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                }
+                ShaderEffect {objectName:"nowTonearmSurface";anchors.fill:parent
+                    property variant artwork:shadowArt;property real phase:0;property real shadowOnly:6;property real darkMode:rhine.state.dark?1:0
+                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                }
             }
         }
     }
