@@ -57,7 +57,10 @@ void NowPlaying::sync(){
         emit changed();emit linesChanged();
         if(!key.isEmpty()){
             pixels(song["cover"].toString(),"cover");
-            loadTags();
+            QPointer<NowPlaying> tagOwner(this);const auto tagGeneration=m_generation;const auto accountGeneration=account;const auto tagKey=key;
+            m_music->host->schedule(700,[tagOwner,tagGeneration,accountGeneration,tagKey]{
+                if(tagOwner&&tagOwner->m_generation==tagGeneration&&tagOwner->m_music->accountGeneration()==accountGeneration&&tagOwner->m_key==tagKey)tagOwner->loadTags();
+            });
             const auto people=song["artists"].toArray();if(!people.isEmpty())m_artistID=id(people.first().toObject()["id"]);
             artist();
             const auto albumID=song["albumID"].toString();const auto albumKey=song["provider"].toString()+":"+albumID;
