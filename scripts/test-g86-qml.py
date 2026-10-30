@@ -150,9 +150,11 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert base and platter and edge and find('nowRecordShadow')
  assert find('nowTonearm') is not None and find('nowTonearmPlane') is not None and find('nowTonearmShadow') is not None
  incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
+ incomingSpin=find('nowRecordPrintIncoming');assert incomingSpin
  assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.108)<.001
  c.at=1;c.changed.emit();QTest.qWait(90)
  assert incoming.isVisible() and page.property('recordTransitioning') and incoming.property('visualSession')==c.info['session']
+ assert abs(incomingSpin.property('spinAngle')-spin.property('spinAngle'))<.01, 'old and new records share one rotation phase'
  c.at=2;c.changed.emit();QTest.qWait(90)
  assert incoming.property('visualSession')==c.info['session'], 'latest rapid song wins the incoming deck'
  QTest.qWait(700);assert not incoming.isVisible() and not page.property('recordTransitioning')
