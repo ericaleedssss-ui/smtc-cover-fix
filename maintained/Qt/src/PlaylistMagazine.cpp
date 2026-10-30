@@ -310,8 +310,8 @@ void PlaylistMagazine::mutateChunks(QString pid,QJsonArray songs,bool remove,int
     if(m_music->accountGeneration()!=m_account){m_mutating=false;report("账号已切换，操作取消");return;}
     QStringList ids;QJsonArray chunk;for(int i=offset;i<std::min(offset+100,int(songs.size()));++i){ids.append(songs.at(i).toObject()["id"].toString());chunk.append(songs.at(i));}
     const auto account=m_account;const auto folder=m_removeFolder;QPointer<PlaylistMagazine> self(this);
-    m_music->mutate("/playlist/tracks",{{"pid",pid},{"tracks",ids.join(',')},{"op",remove?"del":"add"}},[folder,chunk,remove](QJsonObject){
-        if(!folder||!remove)return;QSet<QString> ids;for(const auto &v:chunk)ids.insert(v.toObject()["id"].toString());
+    m_music->mutate("/playlist/tracks",{{"pid",pid},{"tracks",ids.join(',')},{"op",remove?"del":"add"}},[self,folder,chunk,remove,account](QJsonObject){
+        if(!self||account!=self->m_music->accountGeneration()||account!=self->m_account||!folder||!remove)return;QSet<QString> ids;for(const auto &v:chunk)ids.insert(v.toObject()["id"].toString());
         QJsonArray keptSongs,keptIDs;int before=0;for(int i=0;i<folder->ids.size();++i){const auto id=folder->ids.at(i);if(!ids.contains(id.toString()))keptIDs.append(id);else if(i<folder->cursor)++before;}
         for(const auto &v:folder->songs)if(!ids.contains(v.toObject()["id"].toString()))keptSongs.append(v);
         folder->item["trackCount"]=std::max(0,folder->item["trackCount"].toInt()-int(folder->ids.size()-keptIDs.size()));
@@ -327,11 +327,11 @@ void PlaylistMagazine::setSubscribed(QString sessionKey,bool enabled){
     if(info().value("subscribed").toBool()==enabled)return;
     const auto folder=m_folder;const auto item=folder->item;
     const auto lane=item["kind"]=="album"?4:3;
-    QPointer<PlaylistMagazine> self(this);
+    const auto account=m_account;QPointer<PlaylistMagazine> self(this);
     m_music->mutate(item["kind"]=="album"?"/album/sub":"/playlist/subscribe",
         {{"id",item["id"]},{"t",enabled?1:2}},
-        [self,folder,item,lane,sessionKey,enabled](QJsonObject){
-            if(!self)return;
+        [self,folder,item,lane,sessionKey,enabled,account](QJsonObject){
+            if(!self||account!=self->m_music->accountGeneration()||account!=self->m_account)return;
             folder->item["subscribed"]=enabled;
             if(enabled){
                 self->m_music->subscriptions.insert(sessionKey);
@@ -342,7 +342,7 @@ void PlaylistMagazine::setSubscribed(QString sessionKey,bool enabled){
                 self->m_music->lists[lane]=kept;
             }
             self->m_music->totals[lane]=self->m_music->lists[lane].size();
-        },[self,enabled](bool ok){if(self)self->report(ok?(enabled?"已收藏":"已取消收藏"):"收藏操作失败，请重试");});
+        },[self,enabled,account](bool ok){if(self&&account==self->m_music->accountGeneration()&&account==self->m_account)self->report(ok?(enabled?"已收藏":"已取消收藏"):"收藏操作失败，请重试");});
 }
 void PlaylistMagazine::share(){if(!m_folder)return;if(m_folder->item["virtual"].toBool()){report("这个临时列表没有公开歌单链接");return;}const auto url=m_music->sourceURL(m_folder->item);if(url.isEmpty()){report("此歌单暂不支持分享");return;}m_music->host->copy(m_folder->item["title"].toString()+"\n"+url);report("已复制歌单分享链接");}
 void PlaylistMagazine::showSongMenu(QString scope,int i,QString identity,double x,double y){
