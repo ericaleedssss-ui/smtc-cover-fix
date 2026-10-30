@@ -38,8 +38,11 @@ assert "self->m_artistID==artistID" in cpp, "artist API response must be bound t
 
 magazine = read("src/PlaylistMagazine.cpp")
 assert "if(reset){m_socialOffset=0;m_socialTotal=0;m_social={};}" in magazine, "social pagination total must reset with its rows"
+assert "account!=self->m_music->accountGeneration()||account!=self->m_account" in magazine, "playlist mutation success must not update a different account"
+assert "account==self->m_music->accountGeneration()&&account==self->m_account" in magazine, "playlist mutation completion must be account-scoped"
 
 showcase_cpp = read("src/PlaylistShowcase.cpp")
+assert "account!=self->m_music->accountGeneration()||account!=self->m_account" in showcase_cpp, "showcase subscription success must not cross account boundaries"
 showcase_h = read("src/PlaylistShowcase.h")
 assert "m_identityRequest" in showcase_h and "m_identityKey" in showcase_h, "playlist identity artwork needs its own request identity"
 assert "self->m_identityRequest!=request" in showcase_cpp and "self->m_identityKey!=cacheKey" in showcase_cpp, "stale playlist avatar callbacks must be rejected"
