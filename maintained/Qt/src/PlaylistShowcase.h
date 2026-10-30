@@ -38,6 +38,7 @@ private:
     QJsonObject m_item;QJsonArray m_songs,m_ids;
     quint64 m_account=0,m_token=0,m_revision=0;
     bool m_previewLoading=false,m_loadFailed=false;
+    int m_previewPendingIndex=-1,m_previewBatchStart=-1;
     void loadIdentity(bool fallback=false);
     void displayIdentity(QString url,QString cacheKey,bool canFallback);
     bool m_avatarRetried=false,m_identityPending=false;
