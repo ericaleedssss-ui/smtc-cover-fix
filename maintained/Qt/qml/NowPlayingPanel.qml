@@ -212,6 +212,38 @@ Item {
         }
     }
 
+    // Tonearm in the same inclined plane as the platter. Everything outside
+    // the glass is clipped by discField and its composite, like the record.
+    Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:record.y-page.vinylInset;width:record.width+2*page.vinylInset;height:width
+        visible:GraphicsInfo.api!==GraphicsInfo.Software
+        transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+        readonly property real armLength:width*.60
+        readonly property real pivotX:width*1.0772
+        readonly property real pivotY:height*.5566
+        // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
+        property real pose:page.playback.playing?0:1
+        Behavior on pose {enabled:!rhine.state.reduced;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
+        readonly property real lift:Math.min(1,pose*2.4)
+        readonly property real swing:-139.44+21*pose
+        Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
+            ShaderEffect {x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
+                transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
+                property variant artwork:shadowArt
+                property real phase:armPlane.lift
+                property real shadowOnly:11
+                property real darkMode:rhine.state.dark?1:0
+                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+            }
+        }
+        ShaderEffect {objectName:"nowTonearm";x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
+            transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
+            property variant artwork:shadowArt
+            property real phase:armPlane.lift
+            property real shadowOnly:12
+            property real darkMode:rhine.state.dark?1:0
+            fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+        }
+    }
     }
     Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
         Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:Qt.darker(page.muted,1.25)
