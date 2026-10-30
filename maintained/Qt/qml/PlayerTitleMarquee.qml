@@ -81,4 +81,9 @@ Item {
     onOverflowsChanged: {
         if (!overflows) shift = 0
     }
+    onRunningChanged: {
+        // Stopping the animation (for example when reduced motion is enabled)
+        // must not leave the title stranded at an intermediate offset.
+        if (!running) shift = 0
+    }
 }
