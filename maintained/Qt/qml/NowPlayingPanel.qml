@@ -15,12 +15,19 @@ Item {
     readonly property real vinylInset:discSize*.31
     readonly property real textWidth:width*.50-42*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
+    property real spinPhase:0
+    property real platterPhase:0
     function syncMotion(){
-        if(record)record.syncMotion(motion);
-        if(incomingRecord)incomingRecord.syncMotion(motion&&recordTransitioning);
+        for(var animation of [recordSpin,platterPulse]){
+            if(!animation)continue;
+            if(motion){if(animation.paused)animation.resume();else if(!animation.running)animation.start();}
+            else if(animation.running&&!animation.paused)animation.pause();
+        }
     }
     onMotionChanged:syncMotion()
     Component.onCompleted:syncMotion()
+    NumberAnimation on spinPhase {id:recordSpin;from:0;to:1;duration:40000;loops:Animation.Infinite;running:false}
+    NumberAnimation on platterPhase {id:platterPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
     property bool following:true
     // The text panel follows the real player immediately, while the record
     // keeps its own old/new visual identities until a platter change settles.
@@ -47,18 +54,16 @@ Item {
         if(!next||!next.session)return;
         displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
         pendingInfo=mergeInfo({},next);recordTransitioning=true;
-        incomingRecord.setVisualSpin(record.visualSpin());incomingRecord.setVisualPhase(record.visualPhase());
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
-        armPlane.pose=1;recordChangeAnimation.stop();recordChangeAnimation.start();
+        armPoseAnimation.stop();recordChangeAnimation.stop();recordChangeAnimation.start();
     }
     function finishRecordChange(){
         if(!recordTransitioning)return;
-        record.setVisualSpin(incomingRecord.visualSpin());record.setVisualPhase(incomingRecord.visualPhase());
         displayedInfo=mergeInfo({},pendingInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        armPlane.pose=armPlane.normalPose;pendingInfo=null;recordTransitioning=false;
+        pendingInfo=null;recordTransitioning=false;
     }
     onInfoChanged:{
         var next=info||({});
@@ -71,7 +76,11 @@ Item {
         if(next.session!==session){session=next.session||"";following=true;lyrics.contentY=0;}
     }
     property string session:""
-    Connections {target:page.controller;function onPlaybackChanged(){page.follow();if(!page.recordTransitioning&&armPlane)armPlane.pose=armPlane.normalPose;} function onLinesChanged(){Qt.callLater(page.follow);}}
+    function requestArmPose(target){
+        if(recordTransitioning)return;
+        armPoseAnimation.stop();armPoseAnimation.to=target;armPoseAnimation.duration=rhine.state.reduced?0:900;armPoseAnimation.start();
+    }
+    Connections {target:page.controller;function onPlaybackChanged(){page.follow();if(!page.recordTransitioning&&armPlane)page.requestArmPose(armPlane.normalPose);} function onLinesChanged(){Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
@@ -162,24 +171,12 @@ Item {
         property string fallbackCover:""
         property real transitionY:0
         property real visualOpacity:1
-        property real phase:0
+        property real phase:page.platterPhase
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
         width:page.discSize;height:width
         x:parent.width-width+38*page.unit
         y:(parent.height-height)/2-6*page.unit+transitionY
         opacity:visualOpacity
-        function visualSpin(){return recordPrint.spinAngle;}
-        function setVisualSpin(value){recordPrint.spinAngle=value;}
-        function visualPhase(){return phase;}
-        function setVisualPhase(value){phase=value;}
-        function syncMotion(active){
-            for(var animation of [discSpin,ringPulse]){
-                if(!animation)continue;
-                if(active){if(animation.paused)animation.resume();else if(!animation.running)animation.start();}
-                else if(animation.running&&!animation.paused)animation.pause();
-            }
-        }
-        NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
         Item {id:plane;objectName:"nowRecordBase"+nameSuffix;anchors.fill:parent;anchors.margins:-page.vinylInset
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
@@ -193,8 +190,7 @@ Item {
             ShaderEffect {objectName:"nowRecordPlatter"+nameSuffix;anchors.fill:parent
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:9;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:recordPrint;objectName:"nowRecordPrint"+nameSuffix;anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
-                opacity:rhine.state.dark?.82:.90;property real spinAngle:0
-                NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
+                opacity:rhine.state.dark?.82:.90;property real spinAngle:page.spinPhase*360
                 Image {id:printArt;objectName:"nowRecordArtwork"+nameSuffix;anchors.fill:parent;source:visualInfo.coverPixels||fallbackCover||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
                     visible:GraphicsInfo.api===GraphicsInfo.Software;rotation:visible?recordPrint.spinAngle:0}
                 ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software
@@ -238,7 +234,6 @@ Item {
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
-            Behavior on pose {enabled:!rhine.state.reduced&&!page.recordTransitioning;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
             readonly property real lift:Math.min(1,pose*2.4)
             readonly property real swing:-145+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
@@ -263,16 +258,17 @@ Item {
             }
         }
     }
+    PropertyAnimation {id:armPoseAnimation;target:armPlane;property:"pose";duration:900;easing.type:Easing.InOutCubic}
     SequentialAnimation {id:recordChangeAnimation
-        PropertyAnimation {target:armPlane;property:"pose";to:1;duration:140;easing.type:Easing.InOutCubic}
+        PropertyAnimation {target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
         ParallelAnimation {
-            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:300;easing.type:Easing.OutCubic}
-            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:260;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:300;easing.type:Easing.OutCubic}
-            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:280;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:rhine.state.reduced?0:620;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:rhine.state.reduced?0:620;easing.type:Easing.InOutCubic}
         }
-        PauseAnimation {duration:25}
-        PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:155;easing.type:Easing.InOutCubic}
+        PauseAnimation {duration:rhine.state.reduced?0:80}
+        PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
         ScriptAction {script:page.finishRecordChange()}
     }
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
