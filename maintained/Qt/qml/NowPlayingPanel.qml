@@ -63,7 +63,6 @@ Item {
     property var displayedInfo: ({})
     property var pendingInfo: null
     property var transitionInfo: null
-    property bool lyricFollowPending:false
     property bool visualInitialized:false
     property bool recordTransitioning:false
     property string visualFallbackCover:""
@@ -78,7 +77,7 @@ Item {
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
     property bool lyricFollowRetryScheduled:false
     function follow(){
-        if(!following||playback.index<0||!lyrics.count){lyricFollowPending=false;return;}
+        if(!following||playback.index<0||playback.index>=lyrics.count||!lyrics.count)return;
         var item=lyrics.itemAtIndex(playback.index);
         if(!item){
             // Ask the virtualized ListView to instantiate the target delegate.
@@ -91,14 +90,12 @@ Item {
                     // If layout still has not produced the delegate, stop here.
                     // A later playback/lyrics notification can request another attempt.
                     if(lyrics.itemAtIndex(page.playback.index))page.follow();
-                    else page.lyricFollowPending=false;
                 });
             }
             return;
         }
         var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
         lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
-        lyricFollowPending=false;
     }
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
     function mergeInfo(base,next){
@@ -133,14 +130,13 @@ Item {
         }
         else displayedInfo=mergeInfo(displayedInfo,next);
         if(next.coverPixels){visualFallbackCover=next.coverPixels;if(!recordTransitioning)displayedFallbackCover=next.coverPixels;}
-        if(next.session!==session){session=next.session||"";following=true;lyricFollowPending=true;Qt.callLater(page.follow);}
+        if(next.session!==session){session=next.session||"";following=true;Qt.callLater(page.follow);}
     }
     property string session:""
     Connections {target:page.controller;function onPlaybackChanged(){
-            page.lyricFollowPending=true;
             page.follow();
             page.syncArmPlayback();
-        } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
+        } function onLinesChanged(){Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
