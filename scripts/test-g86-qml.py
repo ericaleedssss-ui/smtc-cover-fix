@@ -149,10 +149,10 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
  assert find('nowTonearm') is None and find('nowTonearmPlane') is None
- assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.48
+ assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.60
  assert edge.property('shadowOnly')==10
- assert base.findChild(QObject,'nowRecordTilt').property('angle')==32
- assert edge.y()==3*page.property('unit') and base.rotation()==0 and platter.rotation()==0
+ assert base.findChild(QObject,'nowRecordTilt').property('angle')==38
+ assert edge.y()==6*page.property('unit') and base.rotation()==0 and platter.rotation()==0
  angle=spin.property('spinAngle');QTest.qWait(180);assert (spin.property('spinAngle')-angle+360)%360>.3,(angle,spin.property('spinAngle'),page.property('motion'),page.isVisible())
  assert spin.rotation()==0 and base.rotation()==0 and platter.rotation()==0 and edge.rotation()==0
  w.grabWindow().save(str(repo.parent/'g94-record-playing.png'))
