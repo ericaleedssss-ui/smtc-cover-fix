@@ -86,7 +86,13 @@ Item {
             if(!lyricFollowRetryScheduled){
                 lyricFollowRetryScheduled=true;
                 lyrics.positionViewAtIndex(playback.index,ListView.Contain);
-                Qt.callLater(function(){page.lyricFollowRetryScheduled=false;page.follow();});
+                Qt.callLater(function(){
+                    page.lyricFollowRetryScheduled=false;
+                    // If layout still has not produced the delegate, stop here.
+                    // A later playback/lyrics notification can request another attempt.
+                    if(lyrics.itemAtIndex(page.playback.index))page.follow();
+                    else page.lyricFollowPending=false;
+                });
             }
             return;
         }
@@ -131,6 +137,7 @@ Item {
     }
     property string session:""
     Connections {target:page.controller;function onPlaybackChanged(){
+            page.lyricFollowPending=true;
             page.follow();
             page.syncArmPlayback();
         } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
