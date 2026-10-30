@@ -149,6 +149,17 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
  assert find('nowTonearm') is not None and find('nowTonearmPlane') is not None and find('nowTonearmShadow') is not None
+ incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
+ assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.100)<.001
+ c.at=1;c.changed.emit();QTest.qWait(90)
+ assert incoming.isVisible() and page.property('recordTransitioning') and incoming.property('visualSession')==c.info['session']
+ c.at=2;c.changed.emit();QTest.qWait(90)
+ assert incoming.property('visualSession')==c.info['session'], 'latest rapid song wins the incoming deck'
+ QTest.qWait(700);assert not incoming.isVisible() and not page.property('recordTransitioning')
+ assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')<.1
+ c.playing=False;c.at=0;c.changed.emit();c.playbackChanged.emit();QTest.qWait(700)
+ assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')>.9
+ c.playing=True;c.playbackChanged.emit();QTest.qWait(180)
  assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.60
  assert edge.property('shadowOnly')==10
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==38

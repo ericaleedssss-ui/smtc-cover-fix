@@ -16,15 +16,19 @@ Item {
     readonly property real textWidth:width*.50-42*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
     function syncMotion(){
-        for(var animation of [discSpin,ringPulse]){
-            if(!animation)continue;
-            if(motion){if(animation.paused)animation.resume();else if(!animation.running)animation.start();}
-            else if(animation.running&&!animation.paused)animation.pause();
-        }
+        if(record)record.syncMotion(motion);
+        if(incomingRecord)incomingRecord.syncMotion(motion&&recordTransitioning);
     }
     onMotionChanged:syncMotion()
     Component.onCompleted:syncMotion()
     property bool following:true
+    // The text panel follows the real player immediately, while the record
+    // keeps its own old/new visual identities until a platter change settles.
+    property var displayedInfo: ({})
+    property var pendingInfo: null
+    property bool visualInitialized:false
+    property bool recordTransitioning:false
+    property string visualFallbackCover:""
     // Title etched in the clear seat ring. Rebuilt only when the song changes.
     readonly property string etchText:(info.title||"")+"  ·  "+(info.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
     function etchGlyphs(text,radius,px){
@@ -35,9 +39,34 @@ Item {
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
     function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Beginning);}
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
-    onInfoChanged:if(info.session!==session){session=info.session||"";following=true;lyrics.contentY=0;}
+    function mergeInfo(base,next){
+        var merged=Object.assign({},base||{});if(next)for(var key in next)merged[key]=next[key];return merged;
+    }
+    function beginRecordChange(next){
+        if(!next||!next.session)return;
+        pendingInfo=mergeInfo({},next);recordTransitioning=true;
+        record.transitionY=0;record.visualOpacity=1;
+        incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
+        armPlane.pose=1;recordChangeAnimation.stop();recordChangeAnimation.start();
+    }
+    function finishRecordChange(){
+        if(!recordTransitioning)return;
+        displayedInfo=mergeInfo({},pendingInfo||info);record.transitionY=0;record.visualOpacity=1;
+        incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
+        pendingInfo=null;recordTransitioning=false;armPlane.pose=armPlane.normalPose;
+    }
+    onInfoChanged:{
+        var next=info||({});
+        if(!visualInitialized){displayedInfo=mergeInfo({},next);visualFallbackCover=next.coverPixels||"";visualInitialized=true;}
+        else if(next.session!==displayedInfo.session){
+            if(recordTransitioning)pendingInfo=mergeInfo(pendingInfo,next);else beginRecordChange(next);
+        }else if(recordTransitioning){pendingInfo=mergeInfo(pendingInfo,next);}
+        else displayedInfo=mergeInfo(displayedInfo,next);
+        if(next.coverPixels)visualFallbackCover=next.coverPixels;
+        if(next.session!==session){session=next.session||"";following=true;lyrics.contentY=0;}
+    }
     property string session:""
-    Connections {target:page.controller;function onPlaybackChanged(){page.follow();} function onLinesChanged(){Qt.callLater(page.follow);}}
+    Connections {target:page.controller;function onPlaybackChanged(){page.follow();if(!page.recordTransitioning&&armPlane)armPlane.pose=armPlane.normalPose;} function onLinesChanged(){Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
@@ -122,9 +151,59 @@ Item {
         Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"│";color:page.muted}
         Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
     }
-    Item {
-        id:discField;objectName:"nowDiscField";anchors.fill:parent;clip:true;z:-1
-        // One composite owns the record, all reflections and bounce.
+    component RecordVisual: Item {
+        required property var visualInfo
+        property string nameSuffix:""
+        property string fallbackCover:""
+        property real transitionY:0
+        property real visualOpacity:1
+        property real phase:0
+        readonly property string visualSession:(visualInfo&&visualInfo.session)||""
+        width:page.discSize;height:width
+        x:parent.width-width+38*page.unit
+        y:(parent.height-height)/2-6*page.unit+transitionY
+        opacity:visualOpacity
+        function syncMotion(active){
+            for(var animation of [discSpin,ringPulse]){
+                if(!animation)continue;
+                if(active){if(animation.paused)animation.resume();else if(!animation.running)animation.start();}
+                else if(animation.running&&!animation.paused)animation.pause();
+            }
+        }
+        NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
+        Item {id:plane;objectName:"nowRecordBase"+nameSuffix;anchors.fill:parent;anchors.margins:-page.vinylInset
+            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
+            layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+            transform:[Rotation {objectName:"nowRecordTilt"+nameSuffix;origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
+                property variant artwork:shadowArt;property real phase:0;property real shadowOnly:1;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                Image {id:shadowArt;visible:false;source:visualInfo.coverPixels||fallbackCover||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+            }
+            ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
+                property variant artwork:printArt;property real phase:0;property real shadowOnly:10;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+            ShaderEffect {objectName:"nowRecordPlatter"+nameSuffix;anchors.fill:parent
+                property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:9;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+            Item {id:recordPrint;objectName:"nowRecordPrint"+nameSuffix;anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
+                opacity:rhine.state.dark?.82:.90;property real spinAngle:0
+                NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
+                Image {id:printArt;objectName:"nowRecordArtwork"+nameSuffix;anchors.fill:parent;source:visualInfo.coverPixels||fallbackCover||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
+                    visible:GraphicsInfo.api===GraphicsInfo.Software;rotation:visible?recordPrint.spinAngle:0}
+                ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software
+                    property variant artwork:printArt;property real phase:recordPrint.spinAngle/360;property real shadowOnly:2;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+            }
+            Item {id:etch;objectName:"nowRecordEtch"+nameSuffix;anchors.centerIn:parent;width:recordPrint.width+plane.width*.10;height:width;rotation:recordPrint.spinAngle
+                readonly property real radius:recordPrint.width/2+plane.width*.022;layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true
+                Repeater {model:page.etchGlyphs((visualInfo.title||"")+"  \u8def  "+(visualInfo.artist||"")+"  \u8def  SIDE A  \u8def  33 1/3  \u8def  RHINE MUSIC DATABASE  \u8def  ",etch.radius,11*page.unit)
+                    Text {required property var modelData;text:modelData.c;textFormat:Text.PlainText;font.family:rhineFontFamily;font.pixelSize:11*page.unit;font.weight:Font.DemiBold;font.letterSpacing:0;color:rhine.state.dark?"#e6e8de":"#4a4034";opacity:.90
+                        x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2;rotation:modelData.a*180/Math.PI+90}
+                }
+            }
+            ShaderEffect {objectName:"nowRecordGloss"+nameSuffix;anchors.fill:parent
+                property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:4;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+        }
+    }
+    Item {id:discField;objectName:"nowDiscField";anchors.fill:parent;clip:true;z:-1
+        // One composite owns both temporary decks, all reflections and bounce.
         // It alone applies screen-space focal fade and the exact glass boundary.
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
         layer.effect:ShaderEffect {objectName:"nowRecordComposite";property variant artwork;property real phase:discField.width/Math.max(1,discField.height);property real shadowOnly:7;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
@@ -133,119 +212,45 @@ Item {
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:3;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:haloPlane;x:record.x;y:record.y;width:record.width;height:record.height
                 transform:[Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width
-                    property variant artwork:shadowArt
-                    property real phase:record.phase
-                    property real shadowOnly:0
-                    property real darkMode:rhine.state.dark?1:0
-                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                }
+                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-    Item {
-        id:record;objectName:"nowRecord";x:parent.width-width+38*page.unit;y:(parent.height-height)/2-6*page.unit;width:page.discSize;height:width
-        property real phase:0
-        NumberAnimation on phase {id:ringPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
-        // The perspective belongs to the stationary platter. Only its inset print spins.
-        Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent;anchors.margins:-page.vinylInset
-            layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
-            layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
-            transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            ShaderEffect {
-                objectName:"nowRecordShadow";opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
-                property variant artwork:shadowArt
-                property real phase:0
-                property real shadowOnly:1
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:pendingInfo||displayedInfo;fallbackCover:displayedInfo.coverPixels||visualFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
+        RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:visualFallbackCover;z:2}
+        Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||visualFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+        // Tonearm in the same inclined plane as the platter. Everything outside
+        // the glass is clipped by discField and its composite, like the record.
+        Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:(parent.height-record.height)/2-6*page.unit-page.vinylInset;width:record.width+2*page.vinylInset;height:width;z:3
+            visible:GraphicsInfo.api!==GraphicsInfo.Software
+            transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+            readonly property real armLength:width*.60
+            readonly property real pivotX:width*1.100
+            readonly property real pivotY:height*.5566
+            readonly property real normalPose:page.playback.playing?0:1
+            // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
+            property real pose:normalPose
+            Behavior on pose {enabled:!rhine.state.reduced;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
+            readonly property real lift:Math.min(1,pose*2.4)
+            readonly property real swing:-139.44+21*pose
+            Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
+                ShaderEffect {x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength;transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing};property variant artwork:armShadowArt;property real phase:armPlane.lift;property real shadowOnly:11;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
-            // A narrow lower sidewall, not a bright outline or a filled shadow disc.
-            ShaderEffect {objectName:"nowRecordContactEdge";x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
-                property variant artwork:printArt
-                property real phase:0
-                property real shadowOnly:10
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-            }
-            ShaderEffect {objectName:"nowRecordPlatter";anchors.fill:parent
-                property variant artwork:printArt
-                property real phase:recordPrint.width/(plane.width*2)
-                property real shadowOnly:9
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-            }
-            Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
-                opacity:rhine.state.dark?.82:.90
-                property real spinAngle:0
-                NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
-                Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
-                    visible:GraphicsInfo.api===GraphicsInfo.Software
-                    rotation:visible?recordPrint.spinAngle:0
-                }
-                ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software
-                    property variant artwork:printArt
-                    property real phase:recordPrint.spinAngle/360
-                    property real shadowOnly:2
-                    property real darkMode:0
-                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                }
-            }
-            Item {id:etch;objectName:"nowRecordEtch";anchors.centerIn:parent;width:recordPrint.width+plane.width*.10;height:width
-                rotation:recordPrint.spinAngle
-                readonly property real radius:recordPrint.width/2+plane.width*.022
-                layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true
-                Repeater {model:page.etchGlyphs(page.etchText,etch.radius,11*page.unit)
-                    Text {required property var modelData;text:modelData.c;textFormat:Text.PlainText;font.family:rhineFontFamily;font.pixelSize:11*page.unit;font.weight:Font.DemiBold;font.letterSpacing:0
-                        color:rhine.state.dark?"#e6e8de":"#4a4034";opacity:.90
-                        x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2
-                        rotation:modelData.a*180/Math.PI+90}
-                }
-            }
-            ShaderEffect {objectName:"nowRecordGloss";anchors.fill:parent
-                property variant artwork:printArt
-                property real phase:recordPrint.width/(plane.width*2)
-                property real shadowOnly:4
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-            }
+            ShaderEffect {objectName:"nowTonearm";x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength;transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing};property variant artwork:armShadowArt;property real phase:armPlane.lift;property real shadowOnly:12;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
         }
     }
-
-    // Tonearm in the same inclined plane as the platter. Everything outside
-    // the glass is clipped by discField and its composite, like the record.
-    Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:record.y-page.vinylInset;width:record.width+2*page.vinylInset;height:width
-        visible:GraphicsInfo.api!==GraphicsInfo.Software
-        transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-        readonly property real armLength:width*.60
-        readonly property real pivotX:width*1.0772
-        readonly property real pivotY:height*.5566
-        // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
-        property real pose:page.playback.playing?0:1
-        Behavior on pose {enabled:!rhine.state.reduced;NumberAnimation {duration:900;easing.type:Easing.InOutCubic}}
-        readonly property real lift:Math.min(1,pose*2.4)
-        readonly property real swing:-139.44+21*pose
-        Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
-            ShaderEffect {x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
-                transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
-                property variant artwork:shadowArt
-                property real phase:armPlane.lift
-                property real shadowOnly:11
-                property real darkMode:rhine.state.dark?1:0
-                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-            }
+    SequentialAnimation {id:recordChangeAnimation
+        PropertyAnimation {target:armPlane;property:"pose";to:1;duration:140;easing.type:Easing.InOutCubic}
+        ParallelAnimation {
+            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:300;easing.type:Easing.OutCubic}
+            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:260;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:300;easing.type:Easing.OutCubic}
+            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:280;easing.type:Easing.InOutCubic}
         }
-        ShaderEffect {objectName:"nowTonearm";x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
-            transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
-            property variant artwork:shadowArt
-            property real phase:armPlane.lift
-            property real shadowOnly:12
-            property real darkMode:rhine.state.dark?1:0
-            fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-        }
+        PauseAnimation {duration:25}
+        PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:155;easing.type:Easing.InOutCubic}
+        ScriptAction {script:page.finishRecordChange()}
     }
-    }
-    Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
+\r\n    Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
         Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:Qt.darker(page.muted,1.25)
             Rectangle {objectName:"nowDetailsChip";z:-1;x:-9*unit;y:-1*unit;width:parent.width+18*unit;height:parent.height+2*unit;radius:height/2;color:rhine.state.dark?"#b0303a2c":"#d6f7f4ec";border.width:.7*unit;border.color:rhine.state.dark?"#40fffdf3":"#ccfffdf6"}
             MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
