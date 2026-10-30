@@ -23,10 +23,28 @@ Item {
     property int pendingMoves:0
     property double pendingUntil:0
     property double lastWheelTime:0
-    function wheelRecord(e){var now=Date.now();if(now-lastWheelTime>220)wheelCarry=0;lastWheelTime=now;var dy=e.pixelDelta.y?e.pixelDelta.y/60:e.angleDelta.y/120;wheelCarry+=dy;if(Math.abs(wheelCarry)>=1){var step=wheelCarry<0?1:-1;wheelCarry=0;moveRecord(step);}}
-    function drainMoves(){if(pendingMoves&&Date.now()>pendingUntil)pendingMoves=0;if(!pendingMoves||recordStack.busy)return;var step=pendingMoves>0?1:-1;var target=controller.recordNeighbour(step);if(target.key){if(recordStack.choose(Object.assign({},target,{side:step}))!==false)pendingMoves-=step;}else {controller.prepareRecords();pendingMoves=0;}}
-    function moveSong(step){showSongs=true;songIndex=Math.max(0,Math.min(controller.songs.length-1,songIndex+step));controller.preview(songIndex);songList.positionViewAtIndex(songIndex,ListView.Contain);}
-    function moveRecord(step){pendingMoves=step;pendingUntil=Date.now()+750;drainMoves();}
+    function wheelRecord(e){
+        var now=Date.now();if(now-lastWheelTime>220)wheelCarry=0;lastWheelTime=now;
+        var dy=e.pixelDelta.y?e.pixelDelta.y/60:e.angleDelta.y/120;wheelCarry+=dy;
+        var whole=wheelCarry<0?Math.ceil(wheelCarry):Math.floor(wheelCarry);
+        if(whole!==0){wheelCarry-=whole;moveRecord(-whole);}
+    }
+    function drainMoves(){
+        if(pendingMoves&&Date.now()>pendingUntil)pendingMoves=0;
+        if(!pendingMoves||recordStack.busy)return;
+        var step=pendingMoves>0?1:-1;var target=controller.recordNeighbour(step);
+        if(target.key){if(recordStack.choose(Object.assign({},target,{side:step}))!==false)pendingMoves-=step;}
+        else {controller.prepareRecords();pendingMoves=0;}
+    }
+    function moveSong(step){
+        if(!controller.songs.length)return;
+        showSongs=true;songIndex=Math.max(0,Math.min(controller.songs.length-1,songIndex+step));
+        controller.preview(songIndex);songList.positionViewAtIndex(songIndex,ListView.Contain);
+    }
+    function moveRecord(step){
+        pendingMoves=Math.max(-6,Math.min(6,pendingMoves+step));
+        pendingUntil=Date.now()+2500;drainMoves();
+    }
     readonly property bool keysEnabled:visible&&enabled&&!more.visible&&!cancelCollect.visible&&!rhine.state.queueOpen&&!rhine.messages.state.open&&!Controls.Overlay.overlay.visible
     function playSelection(){if(showSongs&&songIndex>=0)controller.playSong(songIndex);else controller.operate("play");}
     Shortcut {sequences:["Return","Enter"];enabled:page.keysEnabled;autoRepeat:false;onActivated:page.playSelection()}
