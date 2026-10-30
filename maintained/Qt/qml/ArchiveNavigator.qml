@@ -34,7 +34,6 @@ Item {
             }
         }
     }
-    Arrow {objectName:"archiveBrowseNext";x:nav.downOffset;y:18*unit;glyph:"↓";actionName:"next"}
     Arrow {objectName:"archiveColumnPrevious";x:0;y:18*unit;glyph:"←";actionName:"column-prev";enabled:nav.total>1}
     Item {
         x:44*unit;width:parent.width-88*unit;height:parent.height
