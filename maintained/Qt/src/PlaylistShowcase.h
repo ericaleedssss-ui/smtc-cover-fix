@@ -41,6 +41,8 @@ private:
     void loadIdentity(bool fallback=false);
     void displayIdentity(QString url,QString cacheKey,bool canFallback);
     bool m_avatarRetried=false,m_identityPending=false;
+    QString m_identityKey;
+    quint64 m_identityRequest=0;
     QHash<QString,QString> m_avatarCache;
     QJsonArray records()const;
     void prepareInitialRecords();
