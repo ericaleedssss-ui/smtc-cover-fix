@@ -33,19 +33,28 @@ Item {
     // keeps its own old/new visual identities until a platter change settles.
     property var displayedInfo: ({})
     property var pendingInfo: null
+    property var transitionInfo: null
+    property bool lyricFollowPending:false
     property bool visualInitialized:false
     property bool recordTransitioning:false
     property string visualFallbackCover:""
     property string displayedFallbackCover:""
     // Title etched in the clear seat ring. Rebuilt only when the song changes.
-    readonly property string etchText:(info.title||"")+"  ·  "+(info.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
+    readonly property string etchText:(info.title||"")+"  路  "+(info.artist||"")+"  路  SIDE A  路  33鈪? 路  RHINE MUSIC DATABASE  路  "
     function etchGlyphs(text,radius,px){
         var out=[],a=-Math.PI*.5,r=Math.max(1,radius);
         for(var i=0;i<text.length&&a<Math.PI*1.45;++i){var ch=text[i];var w=(ch.charCodeAt(0)>0x2e80?1.0:.6)*px;a+=w/2/r;out.push({c:ch,a:a});a+=w/2/r+.7/r;}
         return out;
     }
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
-    function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Beginning);}
+    function follow(){
+        if(!following||playback.index<0||!lyrics.count)return;
+        var item=lyrics.itemAtIndex(playback.index);
+        if(!item){Qt.callLater(follow);return;}
+        var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
+        lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
+        lyricFollowPending=false;
+    }
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
     function mergeInfo(base,next){
         var merged=Object.assign({},base||{});if(next)for(var key in next)merged[key]=next[key];return merged;
@@ -53,34 +62,44 @@ Item {
     function beginRecordChange(next){
         if(!next||!next.session)return;
         displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
-        pendingInfo=mergeInfo({},next);recordTransitioning=true;
+        transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
-        armPoseAnimation.stop();recordChangeAnimation.stop();recordChangeAnimation.start();
+        armChangeAnimation.stop();recordChangeAnimation.stop();armChangeAnimation.start();recordChangeAnimation.start();
     }
     function finishRecordChange(){
         if(!recordTransitioning)return;
-        displayedInfo=mergeInfo({},pendingInfo||info);record.transitionY=0;record.visualOpacity=1;
+        displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        pendingInfo=null;recordTransitioning=false;
+        var queued=pendingInfo;pendingInfo=null;transitionInfo=null;recordTransitioning=false;
+        if(queued&&queued.session&&queued.session!==displayedInfo.session)Qt.callLater(function(){page.beginRecordChange(queued);});
     }
     onInfoChanged:{
         var next=info||({});
         if(!visualInitialized){displayedInfo=mergeInfo({},next);visualFallbackCover=next.coverPixels||"";displayedFallbackCover=visualFallbackCover;visualInitialized=true;}
-        else if(next.session!==displayedInfo.session){
-            if(recordTransitioning)pendingInfo=mergeInfo(pendingInfo,next);else beginRecordChange(next);
-        }else if(recordTransitioning){pendingInfo=mergeInfo(pendingInfo,next);}
+        else if(recordTransitioning){
+            if(next.session&&next.session!==((transitionInfo&&transitionInfo.session)||""))beginRecordChange(next);
+            else transitionInfo=mergeInfo(transitionInfo,next);
+        }else if(next.session!==displayedInfo.session){beginRecordChange(next);
+        }
         else displayedInfo=mergeInfo(displayedInfo,next);
         if(next.coverPixels){visualFallbackCover=next.coverPixels;if(!recordTransitioning)displayedFallbackCover=next.coverPixels;}
-        if(next.session!==session){session=next.session||"";following=true;lyrics.contentY=0;}
+        if(next.session!==session){session=next.session||"";following=true;lyricFollowPending=true;Qt.callLater(page.follow);}
     }
     property string session:""
     function requestArmPose(target){
         if(recordTransitioning)return;
-        armPoseAnimation.stop();armPoseAnimation.to=target;armPoseAnimation.duration=rhine.state.reduced?0:900;armPoseAnimation.start();
+        armChangeAnimation.stop();
+        armPlane.pose=target;
     }
-    Connections {target:page.controller;function onPlaybackChanged(){page.follow();if(!page.recordTransitioning&&armPlane)page.requestArmPose(armPlane.normalPose);} function onLinesChanged(){Qt.callLater(page.follow);}}
+    Connections {target:page.controller;function onPlaybackChanged(){
+            page.follow();
+            if(armPlane){
+                if(!page.playback.playing){page.armChangeAnimation.stop();page.armPlane.pose=1;}
+                else if(!page.recordTransitioning){page.armChangeAnimation.stop();page.armPlane.pose=0;}
+            }
+        } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
@@ -106,8 +125,8 @@ Item {
         opacity:enabled?1:.45
     }
     MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{var p=mapToItem(null,e.x,e.y);rhine.wheelInput(p.x/page.unit,p.y/page.unit,e.pixelDelta.y,e.angleDelta.y);e.accepted=true;}}
-    Label {x:26*unit;y:25*unit;width:page.textWidth;text:"NOW PLAYING / 正在播放";font.pixelSize:11*unit;color:page.muted}
-    Label {id:songTitle;objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:implicitHeight;text:info.title||"正在播放";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
+    Label {x:26*unit;y:25*unit;width:page.textWidth;text:"NOW PLAYING / 姝ｅ湪鎾斁";font.pixelSize:11*unit;color:page.muted}
+    Label {id:songTitle;objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:implicitHeight;text:info.title||"姝ｅ湪鎾斁";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
         color:titleHit.containsMouse?page.muted:page.ink
         MouseArea {id:titleHit;objectName:"nowPlayingTitleHit";anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:page.controller.operate("details")}
     }
@@ -120,8 +139,7 @@ Item {
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:ShaderEffect {property variant source;property size panelSize:Qt.size(lyrics.width,lyrics.height);property real topInset:0;property real fadePx:10*page.unit;property real fadeTop:1;property real bottomFadePx:10*page.unit;fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"}
         WheelHandler {target:null;onWheel:e=>{page.following=false;var dy=e.pixelDelta.y||e.angleDelta.y/120*55*page.unit;lyrics.contentY=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),lyrics.contentY-dy));e.accepted=true;}}
-        Behavior on contentY {enabled:page.following&&!rhine.state.reduced&&!lyrics.dragging;NumberAnimation {duration:240;easing.type:Easing.OutCubic}}
-        onDraggingChanged:if(dragging)page.following=false
+        onDraggingChanged:if(dragging){page.following=false;page.lyricFollowAnimation.stop();}
         delegate:Item {
             id:line
             required property var modelData
@@ -138,18 +156,18 @@ Item {
             }
             MouseArea {id:hit;anchors.fill:parent;hoverEnabled:true;cursorShape:page.playback.timed&&page.playback.seekable?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{page.controller.seekLine(line.index,page.info.session);page.following=true;}}
         }
-        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词";color:page.muted}
+        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"姝ｅ湪璇诲彇姝岃瘝鈥?:page.playback.lyricStatus==="error"?"姝岃瘝鏆備笉鍙敤":"鏆傛棤姝岃瘝";color:page.muted}
     }
-    Label {objectName:"nowLyricsFollow";x:26*unit;y:421*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
+    Label {objectName:"nowLyricsFollow";x:26*unit;y:421*unit;text:"鍥炲埌褰撳墠姝岃瘝";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
     Row {x:26*unit;y:331*unit;spacing:14*unit;height:36*unit
-        Action {objectName:"nowLike";enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
-        Action {objectName:"nowComments";symbol:"comment";text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
-        Action {objectName:"nowShare";symbol:"share";text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
-        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
+        Action {objectName:"nowLike";enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"宸插枩娆?:"鍠滄"):"璇诲彇涓?;subtitle:info.liked?"鐣欏湪鍠滄閲?:"鏀惰棌杩欓姝?;artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"鍙栨秷鍠滄":"鍠滄";onClicked:controller.operate("like")}
+        Action {objectName:"nowComments";symbol:"comment";text:"璇勮";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 鏉¤瘎璁?:"鏌ョ湅璇勮";onClicked:controller.operate("comments")}
+        Action {objectName:"nowShare";symbol:"share";text:"鍒嗕韩";subtitle:"鍒嗕韩杩欓姝?;Accessible.name:"鍒嗕韩";onClicked:controller.operate("share")}
+        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"鏇村鎿嶄綔"
             contentItem:Item {Row {anchors.centerIn:parent;spacing:3.5*page.unit;Repeater {model:3;Rectangle {width:2.6*page.unit;height:width;radius:width/2;color:page.ink}}}}
             background:Item {Rectangle {objectName:"nowMoreSurface";anchors.centerIn:parent;width:28*page.unit;height:width;radius:width/2;color:parent.parent.hovered?(rhine.state.dark?"#50fffdf3":"#c8fffdf6"):(rhine.state.dark?"#30fffdf3":"#8cfffdf6");border.width:.8*page.unit;border.color:rhine.state.dark?"#70fffdf3":"#e6fffdf3"}}
             HoverHandler {cursorShape:Qt.PointingHandCursor}
-            Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"更多操作";Controls.ToolTip.delay:500
+            Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"鏇村鎿嶄綔";Controls.ToolTip.delay:500
             onClicked:{var p=mapToItem(page,0,height);more.x=Math.max(0,Math.min(page.width-more.implicitWidth,p.x));more.y=Math.min(page.height-more.implicitHeight,Math.max(0,p.y+6*page.unit));more.open();}
         }
     }
@@ -159,11 +177,11 @@ Item {
             RhineIcon {anchors.centerIn:parent;width:16*page.unit;height:width;name:"user";color:page.muted}
             Image {anchors.fill:parent;source:page.info.artistAvatar||"";fillMode:Image.PreserveAspectFit}
         }
-        ArtistMarquee {people:page.info.artists||[];fallback:page.info.artist||"未知艺人";unit:page.unit;height:26*page.unit;width:Math.min(implicitWidth,Math.max(45*page.unit,metadata.width*.34));onPersonClicked:id=>page.controller.openArtist(id)}
-        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"│";color:page.muted}
-        Label {id:date;objectName:"nowReleaseDate";height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:info.date||"发行日期暂无";font.pixelSize:12*page.unit;color:page.muted}
-        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"│";color:page.muted}
-        Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
+        ArtistMarquee {people:page.info.artists||[];fallback:page.info.artist||"鏈煡鑹轰汉";unit:page.unit;height:26*page.unit;width:Math.min(implicitWidth,Math.max(45*page.unit,metadata.width*.34));onPersonClicked:id=>page.controller.openArtist(id)}
+        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"鈹?;color:page.muted}
+        Label {id:date;objectName:"nowReleaseDate";height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:info.date||"鍙戣鏃ユ湡鏆傛棤";font.pixelSize:12*page.unit;color:page.muted}
+        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"鈹?;color:page.muted}
+        Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"鏇查鏆傛棤";font.pixelSize:12*page.unit;color:page.muted}
     }
     component RecordVisual: Item {
         required property var visualInfo
@@ -220,7 +238,7 @@ Item {
                 ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:pendingInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
+        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
         RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:displayedFallbackCover;z:2}
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
@@ -228,14 +246,14 @@ Item {
         Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:(parent.height-record.height)/2-6*page.unit-page.vinylInset;width:record.width+2*page.vinylInset;height:width;z:3
             visible:GraphicsInfo.api!==GraphicsInfo.Software
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            readonly property real armLength:width*.60
-            readonly property real pivotX:width*1.108
+            readonly property real armLength:width*.54
+            readonly property real pivotX:width*1.145
             readonly property real pivotY:height*.5566
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-145+18*pose
+            readonly property real swing:-138+16*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
@@ -258,24 +276,28 @@ Item {
             }
         }
     }
-    PropertyAnimation {id:armPoseAnimation;target:armPlane;property:"pose";duration:900;easing.type:Easing.InOutCubic}
-    SequentialAnimation {id:recordChangeAnimation
+    SequentialAnimation {id:armChangeAnimation
         PropertyAnimation {target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
-        ParallelAnimation {
-            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:rhine.state.reduced?0:620;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:rhine.state.reduced?0:620;easing.type:Easing.InOutCubic}
-        }
-        PauseAnimation {duration:rhine.state.reduced?0:80}
+        PauseAnimation {duration:rhine.state.reduced?0:730}
         PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
+    }
+    SequentialAnimation {id:recordChangeAnimation
+        ParallelAnimation {
+            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:rhine.state.reduced?0:570;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:rhine.state.reduced?0:570;easing.type:Easing.InOutCubic}
+        }
+        PauseAnimation {duration:rhine.state.reduced?0:60}
         ScriptAction {script:page.finishRecordChange()}
     }
+    NumberAnimation {id:lyricFollowAnimation;target:lyrics;property:"contentY";duration:280;easing.type:Easing.OutCubic}
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
-        Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}
-        Controls.MenuItem {text:"查看歌曲详情";onTriggered:controller.operate("details")}
-        Controls.MenuItem {text:"重新读取歌词";onTriggered:controller.operate("retry-lyrics")}
-        Controls.MenuItem {text:"在官方客户端打开";onTriggered:controller.operate("official")}
-        Controls.MenuItem {text:"返回浏览信息";onTriggered:controller.operate("browse")}
+        Controls.MenuItem {objectName:"nowCollect";text:"娣诲姞鍒版瓕鍗?;onTriggered:controller.operate("collect")}
+        Controls.MenuItem {text:"鏌ョ湅姝屾洸璇︽儏";onTriggered:controller.operate("details")}
+        Controls.MenuItem {text:"閲嶆柊璇诲彇姝岃瘝";onTriggered:controller.operate("retry-lyrics")}
+        Controls.MenuItem {text:"鍦ㄥ畼鏂瑰鎴风鎵撳紑";onTriggered:controller.operate("official")}
+        Controls.MenuItem {text:"杩斿洖娴忚淇℃伅";onTriggered:controller.operate("browse")}
     }
 }
+
