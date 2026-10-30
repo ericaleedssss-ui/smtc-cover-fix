@@ -22,16 +22,23 @@ Item {
     property bool armPlaybackResyncPending:false
     readonly property bool armTransitionRunning:armChangeAnimation.running
     readonly property bool recordVisualTransitionRunning:recordChangeAnimation.running
+    function animateArmToPlaybackState(){
+        if(!armPlane)return;
+        armPlaybackAnimation.stop();
+        armPlaybackAnimation.to=armPlane.normalPose;
+        armPlaybackAnimation.start();
+    }
     function syncArmPlayback(){
         var playing=!!playback.playing;
         if(!armPlaybackStateInitialized){armObservedPlaying=playing;armPlaybackStateInitialized=true;return;}
         if(playing===armObservedPlaying)return;
         armObservedPlaying=playing;
         if(!armPlane)return;
-        if(recordTransitioning){armPlaybackResyncPending=true;return;}
+        // A record change owns the arm until its complete lift/hold/return
+        // sequence finishes. Playback changes are reconciled afterwards.
+        if(recordTransitioning||armChangeAnimation.running){armPlaybackResyncPending=true;return;}
         armPlaybackResyncPending=false;
-        armChangeAnimation.stop();
-        armPlane.pose=armPlane.normalPose;
+        animateArmToPlaybackState();
     }
     function startRecordVisualTransition(){
         if(!recordTransitioning||recordChangeAnimation.running)return;
@@ -87,7 +94,7 @@ Item {
         transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
-        armChangeAnimation.stop();recordChangeAnimation.stop();recordCoverWait.stop();
+        armChangeAnimation.stop();armPlaybackAnimation.stop();recordChangeAnimation.stop();recordCoverWait.stop();
         if(incomingRecord.artworkReady)startRecordVisualTransition();
         else recordCoverWait.restart();
     }
@@ -302,10 +309,11 @@ Item {
         onFinished:{
             if(page.armPlaybackResyncPending){
                 page.armPlaybackResyncPending=false;
-                armPlane.pose=armPlane.normalPose;
+                page.animateArmToPlaybackState();
             }
         }
     }
+    NumberAnimation {id:armPlaybackAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
     SequentialAnimation {id:recordChangeAnimation
         ParallelAnimation {
             PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
