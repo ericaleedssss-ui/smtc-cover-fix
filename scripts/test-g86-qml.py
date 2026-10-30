@@ -74,9 +74,10 @@ class PlaybackFixture(Controller):
  linesChanged=Signal()
  playing=True
  currentLine=1
+ def __init__(self,art):super().__init__(art);self.coverPending=False
  @Property('QVariantMap',notify=Controller.changed)
  def info(self):
-  return dict(session='netease:'+str(self.at+1),id=str(self.at+1),title=['现在正在播放的真实歌曲','另一首歌曲','第三首'][self.at],album='专辑名称',albumID='8',artist='Artist one / Second artist',artists=[dict(id='7',name='Artist one'),dict(id='8',name='Second artist')],coverPixels=self.art[self.at],artistAvatar=self.art[0],date='2024-03-02',tags=['Jazz','Soul'],canLike=True,likeKnown=True,likeBusy=False,liked=False)
+  return dict(session='netease:'+str(self.at+1),id=str(self.at+1),title=['现在正在播放的真实歌曲','另一首歌曲','第三首'][self.at],album='专辑名称',albumID='8',artist='Artist one / Second artist',artists=[dict(id='7',name='Artist one'),dict(id='8',name='Second artist')],coverPixels='' if self.coverPending else self.art[self.at],coverLoading=self.coverPending,artistAvatar=self.art[0],date='2024-03-02',tags=['Jazz','Soul'],canLike=True,likeKnown=True,likeBusy=False,liked=False)
  @Property('QVariantMap',notify=playbackChanged)
  def playback(self):return dict(playing=self.playing,seekable=True,index=self.currentLine,timed=True,lyricStatus='ready')
  @Property('QVariantList',notify=linesChanged)
@@ -152,11 +153,15 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
  incomingSpin=find('nowRecordPrintIncoming');assert incomingSpin
  assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.10)<.001
- c.at=1;c.changed.emit();QTest.qWait(90)
+ c.coverPending=True;c.at=1;c.changed.emit();QTest.qWait(90)
  assert incoming.isVisible() and page.property('recordTransitioning') and incoming.property('visualSession')==c.info['session']
+ assert not page.property('recordVisualTransitionRunning'), 'record fade waits while the incoming cover is loading'
  assert abs(incomingSpin.property('spinAngle')-spin.property('spinAngle'))<.01, 'old and new records share one rotation phase'
  c.at=2;c.changed.emit();QTest.qWait(90)
  assert incoming.property('visualSession')==c.info['session'], 'latest rapid song wins the incoming deck'
+ assert not page.property('recordVisualTransitionRunning'), 'rapid song updates do not reveal an unready cover'
+ c.coverPending=False;c.changed.emit();QTest.qWait(90)
+ assert page.property('recordVisualTransitionRunning'), 'record fade begins after the incoming cover is ready'
  armPage=find('nowPlayingPanel');armPlane=find('nowTonearmPlane')
  assert armPage.property('armTransitionRunning'), 'song change starts one tonearm transition'
  pose=armPlane.property('pose')

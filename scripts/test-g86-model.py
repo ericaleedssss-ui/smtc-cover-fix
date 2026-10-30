@@ -32,7 +32,7 @@ int main(int argc,char **argv){QCoreApplication app(argc,argv);Host host;MusicLi
  if(route=="/artist/detail")return {QJsonObject{{"data",QJsonObject{{"artist",QJsonObject{{"avatar","https://example.org/avatar"}}}}}},{}};
  assert(false);return {};};
  auto song=QJsonObject{{"kind","song"},{"provider","netease"},{"key","netease:song:1"},{"id","1"},{"title","First"},{"artist","Artist"},{"albumID","8"},{"album","Album"},{"cover","https://example.org/first"},{"artists",QJsonArray{QJsonObject{{"id","7"},{"name","Artist"}}}}};
- library.player.current=song;library.player.state={{"playing",true},{"seekable",true}};NowPlaying model(&library,&magazine);QSignalSpy actions(&model,&NowPlaying::navigate);QSignalSpy playbackEvents(&model,&NowPlaying::playbackChanged);QTest::qWait(80);
+ library.player.current=song;library.player.state={{"playing",true},{"seekable",true}};NowPlaying model(&library,&magazine);QSignalSpy actions(&model,&NowPlaying::navigate);QSignalSpy playbackEvents(&model,&NowPlaying::playbackChanged);assert(model.info()["coverLoading"].toBool());QTest::qWait(80);assert(!model.info()["coverLoading"].toBool());
  assert(model.info()["title"]=="First"&&model.info()["date"]=="2024-03-02");assert(model.info()["tags"].toList().size()==2);assert(model.playback()["playing"].toBool());
  library.player.changed();assert(playbackEvents.count()==0);
  const auto pixels=model.info()["coverPixels"].toString();const auto image=QImage::fromData(QByteArray::fromBase64(pixels.section(',',1).toLatin1()));assert(!image.isNull()&&image.size()==QSize(512,512)&&qAlpha(image.pixel(0,0))==0&&qAlpha(image.pixel(256,256))==255);

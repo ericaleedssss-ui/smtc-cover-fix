@@ -21,6 +21,7 @@ Item {
     property bool armObservedPlaying:false
     property bool armPlaybackResyncPending:false
     readonly property bool armTransitionRunning:armChangeAnimation.running
+    readonly property bool recordVisualTransitionRunning:recordChangeAnimation.running
     function syncArmPlayback(){
         var playing=!!playback.playing;
         if(!armPlaybackStateInitialized){armObservedPlaying=playing;armPlaybackStateInitialized=true;return;}
@@ -31,6 +32,12 @@ Item {
         armPlaybackResyncPending=false;
         armChangeAnimation.stop();
         armPlane.pose=armPlane.normalPose;
+    }
+    function startRecordVisualTransition(){
+        if(!recordTransitioning||recordChangeAnimation.running)return;
+        recordCoverWait.stop();
+        armChangeAnimation.start();
+        recordChangeAnimation.start();
     }
     function syncMotion(){
         for(var animation of [recordSpin,platterPulse]){
@@ -80,10 +87,13 @@ Item {
         transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
-        armChangeAnimation.stop();recordChangeAnimation.stop();armChangeAnimation.start();recordChangeAnimation.start();
+        armChangeAnimation.stop();recordChangeAnimation.stop();recordCoverWait.stop();
+        if(incomingRecord.artworkReady)startRecordVisualTransition();
+        else recordCoverWait.restart();
     }
     function finishRecordChange(){
         if(!recordTransitioning)return;
+        recordCoverWait.stop();
         displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
@@ -198,6 +208,7 @@ Item {
         property real visualOpacity:1
         property real phase:page.platterPhase
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
+        readonly property bool artworkReady:!(visualInfo&&visualInfo.coverLoading)&&(!(visualInfo&&visualInfo.coverPixels)||printArt.status===Image.Ready)
         width:page.discSize;height:width
         x:parent.width-width+38*page.unit
         y:(parent.height-height)/2-6*page.unit+transitionY
@@ -216,7 +227,7 @@ Item {
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:9;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:recordPrint;objectName:"nowRecordPrint"+nameSuffix;anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
                 opacity:rhine.state.dark?.82:.90;property real spinAngle:page.spinPhase*360
-                Image {id:printArt;objectName:"nowRecordArtwork"+nameSuffix;anchors.fill:parent;source:visualInfo.coverPixels||fallbackCover||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
+                Image {id:printArt;objectName:"nowRecordArtwork"+nameSuffix;anchors.fill:parent;source:visualInfo.coverPixels||fallbackCover||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true;retainWhileLoading:true
                     visible:GraphicsInfo.api===GraphicsInfo.Software;rotation:visible?recordPrint.spinAngle:0}
                 ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software
                     property variant artwork:printArt;property real phase:recordPrint.spinAngle/360;property real shadowOnly:2;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
@@ -245,7 +256,7 @@ Item {
                 ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
+        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1;onArtworkReadyChanged:if(artworkReady)page.startRecordVisualTransition()}
         RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:displayedFallbackCover;z:2}
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
@@ -283,6 +294,7 @@ Item {
             }
         }
     }
+    Timer {id:recordCoverWait;interval:1800;repeat:false;onTriggered:page.startRecordVisualTransition()}
     SequentialAnimation {id:armChangeAnimation
         PropertyAnimation {target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
         PauseAnimation {duration:rhine.state.reduced?0:730}

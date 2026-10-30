@@ -52,7 +52,7 @@ void NowPlaying::loadTags(){
 void NowPlaying::sync(){
     const auto song=m_music->player.current;const auto key=identity(song);const auto account=m_music->accountGeneration();
     if(key!=m_key||account!=m_account){
-        ++m_generation;m_key=key;m_account=account;m_track=song;m_status.clear();m_album={};m_tags=m_tagsCache.value(key);m_cover.clear();m_avatar.clear();m_artistID.clear();m_document={};
+        ++m_generation;m_key=key;m_account=account;m_track=song;m_status.clear();m_album={};m_tags=m_tagsCache.value(key);m_cover.clear();m_coverLoading=!song["cover"].toString().isEmpty();m_avatar.clear();m_artistID.clear();m_document={};
         if(m_images.size()>16)m_images.clear();
         emit changed();emit linesChanged();
         if(!key.isEmpty()){
@@ -95,7 +95,7 @@ void NowPlaying::syncLyrics(){
     if(current!=m_lastPlayback){m_lastPlayback=current;emit playbackChanged();}
 }
 QVariantMap NowPlaying::info()const{
-    auto info=m_track.toVariantMap();info["session"]=m_key;info["coverPixels"]=m_cover;info["artistAvatar"]=m_avatar;
+    auto info=m_track.toVariantMap();info["session"]=m_key;info["coverPixels"]=m_cover;info["coverLoading"]=m_coverLoading;info["artistAvatar"]=m_avatar;
     info["date"]=m_album["date"].toString(m_track["date"].toString());
     auto tags=m_tags;if(tags.isEmpty())tags=m_track["tags"].toArray();if(tags.isEmpty())tags=m_album["tags"].toArray();info["tags"]=tags.toVariantList();
     info["liked"]=m_liked;info["likeKnown"]=m_known;info["likeBusy"]=m_write;
@@ -142,14 +142,25 @@ void NowPlaying::operate(QString operation){
     }
 }
 void NowPlaying::pixels(QString url,QString role,bool fallback){
+    if(role=="cover")m_coverLoading=!url.isEmpty();
     if(url.isEmpty())return;const auto cacheKey=role+":"+url;
-    if(m_images.contains(cacheKey)){if(role=="cover")m_cover=m_images[cacheKey];else m_avatar=m_images[cacheKey];emit changed();return;}
+    if(m_images.contains(cacheKey)){
+        if(role=="cover"){m_cover=m_images[cacheKey];m_coverLoading=false;}else m_avatar=m_images[cacheKey];
+        emit changed();return;
+    }
     QPointer<NowPlaying> self(this);const auto generation=m_generation;const auto account=m_account;const int side=role=="cover"?512:96;
     m_music->host->loadCover(url,[self,generation,account,cacheKey,role,fallback,side](QString image){
         if(!self||self->m_generation!=generation||self->m_music->accountGeneration()!=account)return;
         const auto png=circularPNG(self->m_music->host->image(image),side);
-        if(png.isEmpty()){if(role=="avatar"&&!fallback)self->artist(true);return;}
-        self->m_images[cacheKey]=png;if(role=="cover")self->m_cover=png;else {self->m_avatar=png;if(self->m_artists.size()>32)self->m_artists.clear();self->m_artists[self->m_music->provider+":"+self->m_artistID]=png;}emit self->changed();
+        if(png.isEmpty()){
+            if(role=="cover"){self->m_coverLoading=false;emit self->changed();}
+            if(role=="avatar"&&!fallback)self->artist(true);
+            return;
+        }
+        self->m_images[cacheKey]=png;
+        if(role=="cover"){self->m_cover=png;self->m_coverLoading=false;}
+        else {self->m_avatar=png;if(self->m_artists.size()>32)self->m_artists.clear();self->m_artists[self->m_music->provider+":"+self->m_artistID]=png;}
+        emit self->changed();
     },side);
 }
 void NowPlaying::artist(bool fallback){
