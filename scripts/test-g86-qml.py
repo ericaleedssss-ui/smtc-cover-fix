@@ -148,7 +148,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  shortcut.setProperty('available',True)
  spin=find('nowRecordPrint');base=find('nowRecordBase');platter=find('nowRecordPlatter');edge=find('nowRecordContactEdge')
  assert base and platter and edge and find('nowRecordShadow')
- assert find('nowTonearm') is None and find('nowTonearmPlane') is None
+ assert find('nowTonearm') is not None and find('nowTonearmPlane') is not None and find('nowTonearmShadow') is not None
  assert abs(spin.width()-(page.property('discSize')-8*page.property('unit')))<.01 and base.width()>spin.width()*1.60
  assert edge.property('shadowOnly')==10
  assert base.findChild(QObject,'nowRecordTilt').property('angle')==38
