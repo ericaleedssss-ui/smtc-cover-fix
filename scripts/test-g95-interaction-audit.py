@@ -44,6 +44,7 @@ assert "wheelCarry-=whole;moveRecord(-whole);" in showcase, "large wheel deltas 
 assert "pendingMoves+step" in showcase, "navigation input during an animation must accumulate instead of overwrite"
 assert "Math.max(-6,Math.min(6,pendingMoves+step))" in showcase, "queued navigation must be bounded"
 assert "pendingUntil=Date.now()+5000" in showcase, "queued turns must survive a short sequence of animations"
+assert "pendingMoves=0;wheelCarry=0;pendingUntil=0" in showcase, "queued navigation must not leak into a different playlist"
 assert "if(!controller.songs.length)return;" in showcase, "song navigation must tolerate an empty playlist"
 
 queue = read("qml/PlayerQueueGlass.qml")
