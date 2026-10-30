@@ -43,6 +43,11 @@ showcase = read("qml/PlaylistShowcase.qml")
 assert "wheelCarry-=whole;moveRecord(-whole);" in showcase, "large wheel deltas must preserve every whole navigation step"
 assert "pendingMoves+step" in showcase, "navigation input during an animation must accumulate instead of overwrite"
 assert "Math.max(-6,Math.min(6,pendingMoves+step))" in showcase, "queued navigation must be bounded"
+assert "pendingUntil=Date.now()+5000" in showcase, "queued turns must survive a short sequence of animations"
 assert "if(!controller.songs.length)return;" in showcase, "song navigation must tolerate an empty playlist"
+
+queue = read("qml/PlayerQueueGlass.qml")
+assert "onPageStartChanged: syncRows()" in queue, "queue page changes must reset the list viewport even if row data is identical"
+assert "var pageChanged = syncedPage !== pageStart;" in queue and "if (!rowsChanged && !pageChanged) return;" in queue, "queue synchronization must compare page identity separately from row content"
 
 print("Interaction state audit regressions passed.")
