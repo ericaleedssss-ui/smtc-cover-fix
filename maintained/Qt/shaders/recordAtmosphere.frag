@@ -25,7 +25,7 @@ void main() {
     if(shadowOnly>8.5){
         // Five separated track boundaries across broad smooth clear-vinyl bands.
         vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
-        float seatOuter=phase+.036;
+        float seatOuter=phase+.044;
         float seat=smoothstep(phase-.003,phase+.002,r)*(1.0-smoothstep(seatOuter-.002,seatOuter+.002,r));
         float body=smoothstep(seatOuter-.002,seatOuter+.004,r)*(1.0-smoothstep(.493,.502,r));
         // Key light from the upper right: one broad soft bow-tie, fixed in place.
@@ -39,16 +39,17 @@ void main() {
         }
         vec3 pigment=mix(vec3(.93,.90,.85),vec3(.63,.67,.60),darkMode);
         pigment*=1.0+.05*lit;
-        pigment-=vec3(.20)*trackShade;
-        pigment+=vec3(.10)*trackLight+vec3(.08)*sweep;
-        float a=(.34+.05*sweep)*body+.10*seat;
+        float groove=.5+.5*sin(r*700.0);
+        pigment-=vec3(.28)*trackShade+vec3(.035)*groove;
+        pigment+=vec3(.12)*trackLight+vec3(.08)*sweep+vec3(.05)*groove*sweep;
+        float a=(.52+.06*sweep)*body+.10*seat;
         vec3 rgb=pigment*a;
         // A fine bright lip where the clear seat meets the milky body.
         float lip=exp(-pow((r-seatOuter)/.0016,2.0))*.50*(1.0-smoothstep(.49,.50,r));
         rgb=rgb*(1.0-lip)+vec3(1.0,.99,.96)*lip;a=a+lip*(1.0-a);
         // Outer contour: survives the left defocus so the disc still reads as a record.
         float leftEdge=1.0-smoothstep(-.40,.05,q.x);
-        float contour=exp(-pow((r-.489)/.0055,2.0))*(.16+.20*leftEdge);
+        float contour=exp(-pow((r-.489)/.0055,2.0))*(.24+.22*leftEdge);
         rgb=rgb*(1.0-contour)+vec3(.36,.31,.25)*contour;a=a+contour*(1.0-a);
         // Contact occlusion where the printed label sits on the vinyl.
         float ao=exp(-pow((r-phase-.004)/.010,2.0))*.24*smoothstep(phase-.004,phase,r);
@@ -66,8 +67,9 @@ void main() {
         colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.12;
         colour+=(texture(artwork,uv+dx+dy)+texture(artwork,uv+dx-dy)+texture(artwork,uv-dx+dy)+texture(artwork,uv-dx-dy))*.06;
         float lum=dot(colour.rgb,vec3(.299,.587,.114));
-        colour.rgb=mix(colour.rgb,vec3(lum),.10);
-        colour.rgb+=vec3(.034,.030,.024)*colour.a*(1.0-clamp(lum,0.0,1.0));
+        colour.rgb=mix(colour.rgb,vec3(lum),.16);
+        colour.rgb=mix(colour.rgb,vec3(.56,.53,.48)*colour.a,.08);
+        colour.rgb+=vec3(.05,.045,.036)*colour.a*(1.0-clamp(lum,0.0,1.0));
         vec2 sp=uv*vec2(phase,1.0);
         float key=1.0-smoothstep(.10,1.25,distance(sp,vec2(phase,0.0)));
         colour.rgb*=.95+.12*key;
@@ -95,7 +97,9 @@ void main() {
         vec2 uv=qt_TexCoord0;
         vec2 q=uv-.5;float r=length(q);
         float hole=smoothstep(.016,.0175,r);
-        vec4 colour=texture(artwork,uv)*hole;
+        vec4 colour=texture(artwork,uv)*hole+vec4(vec3(.16,.13,.10)*.88,.88)*(1.0-hole);
+        float holeLip=exp(-pow((r-.0185)/.0012,2.0))*.55*smoothstep(-.014,.014,q.y);
+        colour.rgb=colour.rgb*(1.0-holeLip)+vec3(1.0,.98,.94)*holeLip;colour.a=colour.a+holeLip*(1.0-colour.a);
         // Regular inner wall: upper interior is darker, lower lip catches light.
         // This is inside the aperture, rather than an irregular cast shadow.
         float wall=smoothstep(.016,.0175,r)*(1.0-smoothstep(.020,.022,r));
@@ -110,13 +114,13 @@ void main() {
         float sweep=pow(abs(cos(angle+.75)),6.0);
         float bands=0.0;
         for(int i=0;i<5;++i){
-            float track=mix(phase+.066,.474,float(i)/4.0);
+            float track=mix(phase+.074,.474,float(i)/4.0);
             // A recessed track and a neighboring thin reflection, not wire rings.
             bands+=exp(-pow((r-track-.002)/.0014,2.0))*(.07+.14*sweep);
         }
         float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.045;
         float rim=exp(-pow((r-.494)/.0018,2.0))*(.05+.08*sweep);
-        float vinylOnly=vinyl*smoothstep(phase+.034,phase+.040,r);
+        float vinylOnly=vinyl*smoothstep(phase+.042,phase+.048,r);
         float a=clamp((bands+.13*sweep+rim)*vinylOnly+band*(1.0-smoothstep(.47,.50,r)),0.0,.34);
         vec3 light=mix(vec3(1.0,.98,.93),vec3(.87,.92,.85),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;
