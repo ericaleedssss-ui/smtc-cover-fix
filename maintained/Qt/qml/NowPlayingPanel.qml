@@ -233,9 +233,25 @@ Item {
             readonly property real lift:Math.min(1,pose*2.4)
             readonly property real swing:-139.44+21*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
-                ShaderEffect {x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength;transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing};property variant artwork:armShadowArt;property real phase:armPlane.lift;property real shadowOnly:11;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+                ShaderEffect {
+                    x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
+                    transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
+                    property variant artwork:armShadowArt
+                    property real phase:armPlane.lift
+                    property real shadowOnly:11
+                    property real darkMode:rhine.state.dark?1:0
+                    fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                }
             }
-            ShaderEffect {objectName:"nowTonearm";x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength;transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing};property variant artwork:armShadowArt;property real phase:armPlane.lift;property real shadowOnly:12;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+            ShaderEffect {objectName:"nowTonearm"
+                x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
+                transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
+                property variant artwork:armShadowArt
+                property real phase:armPlane.lift
+                property real shadowOnly:12
+                property real darkMode:rhine.state.dark?1:0
+                fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+            }
         }
     }
     SequentialAnimation {id:recordChangeAnimation
@@ -250,7 +266,7 @@ Item {
         PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:155;easing.type:Easing.InOutCubic}
         ScriptAction {script:page.finishRecordChange()}
     }
-\r\n    Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
+    Row {anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;spacing:18*unit;height:18*unit
         Label {objectName:"nowDetails";height:18*unit;verticalAlignment:Text.AlignVCenter;text:"查看歌曲详情  →";font.pixelSize:10*unit;color:detailHit.containsMouse?page.ink:Qt.darker(page.muted,1.25)
             Rectangle {objectName:"nowDetailsChip";z:-1;x:-9*unit;y:-1*unit;width:parent.width+18*unit;height:parent.height+2*unit;radius:height/2;color:rhine.state.dark?"#b0303a2c":"#d6f7f4ec";border.width:.7*unit;border.color:rhine.state.dark?"#40fffdf3":"#ccfffdf6"}
             MouseArea {id:detailHit;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}}
