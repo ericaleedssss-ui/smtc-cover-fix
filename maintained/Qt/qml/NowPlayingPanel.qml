@@ -40,7 +40,7 @@ Item {
     property string visualFallbackCover:""
     property string displayedFallbackCover:""
     // Title etched in the clear seat ring. Rebuilt only when the song changes.
-    readonly property string etchText:(info.title||"")+"  路  "+(info.artist||"")+"  路  SIDE A  路  33鈪? 路  RHINE MUSIC DATABASE  路  "
+    readonly property string etchText:(info.title||"")+"  ·  "+(info.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
     function etchGlyphs(text,radius,px){
         var out=[],a=-Math.PI*.5,r=Math.max(1,radius);
         for(var i=0;i<text.length&&a<Math.PI*1.45;++i){var ch=text[i];var w=(ch.charCodeAt(0)>0x2e80?1.0:.6)*px;a+=w/2/r;out.push({c:ch,a:a});a+=w/2/r+.7/r;}
@@ -125,8 +125,8 @@ Item {
         opacity:enabled?1:.45
     }
     MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{var p=mapToItem(null,e.x,e.y);rhine.wheelInput(p.x/page.unit,p.y/page.unit,e.pixelDelta.y,e.angleDelta.y);e.accepted=true;}}
-    Label {x:26*unit;y:25*unit;width:page.textWidth;text:"NOW PLAYING / 姝ｅ湪鎾斁";font.pixelSize:11*unit;color:page.muted}
-    Label {id:songTitle;objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:implicitHeight;text:info.title||"姝ｅ湪鎾斁";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
+    Label {x:26*unit;y:25*unit;width:page.textWidth;text:"NOW PLAYING / 正在播放";font.pixelSize:11*unit;color:page.muted}
+    Label {id:songTitle;objectName:"nowPlayingTitle";x:26*unit;y:55*unit;width:page.textWidth;height:implicitHeight;text:info.title||"正在播放";font.pixelSize:27*unit;font.weight:Font.Bold;wrapMode:Text.Wrap;maximumLineCount:2
         color:titleHit.containsMouse?page.muted:page.ink
         MouseArea {id:titleHit;objectName:"nowPlayingTitleHit";anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:page.controller.operate("details")}
     }
@@ -156,18 +156,18 @@ Item {
             }
             MouseArea {id:hit;anchors.fill:parent;hoverEnabled:true;cursorShape:page.playback.timed&&page.playback.seekable?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{page.controller.seekLine(line.index,page.info.session);page.following=true;}}
         }
-        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"姝ｅ湪璇诲彇姝岃瘝鈥?:page.playback.lyricStatus==="error"?"姝岃瘝鏆備笉鍙敤":"鏆傛棤姝岃瘝";color:page.muted}
+        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词";color:page.muted}
     }
-    Label {objectName:"nowLyricsFollow";x:26*unit;y:421*unit;text:"鍥炲埌褰撳墠姝岃瘝";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
+    Label {objectName:"nowLyricsFollow";x:26*unit;y:421*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
     Row {x:26*unit;y:331*unit;spacing:14*unit;height:36*unit
-        Action {objectName:"nowLike";enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"宸插枩娆?:"鍠滄"):"璇诲彇涓?;subtitle:info.liked?"鐣欏湪鍠滄閲?:"鏀惰棌杩欓姝?;artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"鍙栨秷鍠滄":"鍠滄";onClicked:controller.operate("like")}
-        Action {objectName:"nowComments";symbol:"comment";text:"璇勮";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 鏉¤瘎璁?:"鏌ョ湅璇勮";onClicked:controller.operate("comments")}
-        Action {objectName:"nowShare";symbol:"share";text:"鍒嗕韩";subtitle:"鍒嗕韩杩欓姝?;Accessible.name:"鍒嗕韩";onClicked:controller.operate("share")}
-        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"鏇村鎿嶄綔"
+        Action {objectName:"nowLike";enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
+        Action {objectName:"nowComments";symbol:"comment";text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
+        Action {objectName:"nowShare";symbol:"share";text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
+        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
             contentItem:Item {Row {anchors.centerIn:parent;spacing:3.5*page.unit;Repeater {model:3;Rectangle {width:2.6*page.unit;height:width;radius:width/2;color:page.ink}}}}
             background:Item {Rectangle {objectName:"nowMoreSurface";anchors.centerIn:parent;width:28*page.unit;height:width;radius:width/2;color:parent.parent.hovered?(rhine.state.dark?"#50fffdf3":"#c8fffdf6"):(rhine.state.dark?"#30fffdf3":"#8cfffdf6");border.width:.8*page.unit;border.color:rhine.state.dark?"#70fffdf3":"#e6fffdf3"}}
             HoverHandler {cursorShape:Qt.PointingHandCursor}
-            Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"鏇村鎿嶄綔";Controls.ToolTip.delay:500
+            Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"更多操作";Controls.ToolTip.delay:500
             onClicked:{var p=mapToItem(page,0,height);more.x=Math.max(0,Math.min(page.width-more.implicitWidth,p.x));more.y=Math.min(page.height-more.implicitHeight,Math.max(0,p.y+6*page.unit));more.open();}
         }
     }
@@ -177,11 +177,11 @@ Item {
             RhineIcon {anchors.centerIn:parent;width:16*page.unit;height:width;name:"user";color:page.muted}
             Image {anchors.fill:parent;source:page.info.artistAvatar||"";fillMode:Image.PreserveAspectFit}
         }
-        ArtistMarquee {people:page.info.artists||[];fallback:page.info.artist||"鏈煡鑹轰汉";unit:page.unit;height:26*page.unit;width:Math.min(implicitWidth,Math.max(45*page.unit,metadata.width*.34));onPersonClicked:id=>page.controller.openArtist(id)}
-        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"鈹?;color:page.muted}
-        Label {id:date;objectName:"nowReleaseDate";height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:info.date||"鍙戣鏃ユ湡鏆傛棤";font.pixelSize:12*page.unit;color:page.muted}
-        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"鈹?;color:page.muted}
-        Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"鏇查鏆傛棤";font.pixelSize:12*page.unit;color:page.muted}
+        ArtistMarquee {people:page.info.artists||[];fallback:page.info.artist||"未知艺人";unit:page.unit;height:26*page.unit;width:Math.min(implicitWidth,Math.max(45*page.unit,metadata.width*.34));onPersonClicked:id=>page.controller.openArtist(id)}
+        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"│";color:page.muted}
+        Label {id:date;objectName:"nowReleaseDate";height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:info.date||"发行日期暂无";font.pixelSize:12*page.unit;color:page.muted}
+        Label {height:26*page.unit;verticalAlignment:Text.AlignVCenter;text:"│";color:page.muted}
+        Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
     }
     component RecordVisual: Item {
         required property var visualInfo
@@ -293,11 +293,11 @@ Item {
     }
     NumberAnimation {id:lyricFollowAnimation;target:lyrics;property:"contentY";duration:280;easing.type:Easing.OutCubic}
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
-        Controls.MenuItem {objectName:"nowCollect";text:"娣诲姞鍒版瓕鍗?;onTriggered:controller.operate("collect")}
-        Controls.MenuItem {text:"鏌ョ湅姝屾洸璇︽儏";onTriggered:controller.operate("details")}
-        Controls.MenuItem {text:"閲嶆柊璇诲彇姝岃瘝";onTriggered:controller.operate("retry-lyrics")}
-        Controls.MenuItem {text:"鍦ㄥ畼鏂瑰鎴风鎵撳紑";onTriggered:controller.operate("official")}
-        Controls.MenuItem {text:"杩斿洖娴忚淇℃伅";onTriggered:controller.operate("browse")}
+        Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}
+        Controls.MenuItem {text:"查看歌曲详情";onTriggered:controller.operate("details")}
+        Controls.MenuItem {text:"重新读取歌词";onTriggered:controller.operate("retry-lyrics")}
+        Controls.MenuItem {text:"在官方客户端打开";onTriggered:controller.operate("official")}
+        Controls.MenuItem {text:"返回浏览信息";onTriggered:controller.operate("browse")}
     }
 }
 
