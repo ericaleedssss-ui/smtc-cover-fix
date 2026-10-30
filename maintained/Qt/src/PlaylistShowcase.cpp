@@ -170,34 +170,35 @@ void PlaylistShowcase::retryIdentityAvatar(){
     if(m_avatarRetried)return;m_avatarRetried=true;m_identityAvatar.clear();loadIdentity(false);emit changed();
 }
 void PlaylistShowcase::loadIdentity(bool fallback){
-    if(m_identityPending)return;
     const bool album=m_item["kind"]=="album";const auto artist=m_item["artists"].toArray().isEmpty()?QJsonObject{}:m_item["artists"].toArray().first().toObject();
     const auto id=album?artist["id"].toString():m_item["creatorID"].toString();
     const auto cacheKey=m_music->provider+":"+(album?"artist:":"user:")+id;
+    if(cacheKey!=m_identityKey){m_identityKey=cacheKey;++m_identityRequest;m_identityPending=false;m_identityAvatar.clear();}
+    if(m_identityPending)return;
     const auto direct=album?artist["avatar"].toString():m_item["creatorAvatar"].toString();
     if(!fallback&&!m_avatarRetried&&!direct.isEmpty()&&!album){displayIdentity(direct,cacheKey,false);return;}
     if(!fallback&&!m_avatarRetried&&m_avatarCache.contains(cacheKey)){m_identityAvatar=m_avatarCache[cacheKey];return;}
     if(id.isEmpty()||id=="0"||m_music->provider!="netease")return;
-    const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
+    const auto token=m_token;const auto account=m_account;const auto request=++m_identityRequest;QPointer<PlaylistShowcase> self(this);
     const QString route=album?(fallback?"/artists":"/artist/detail"):"/user/detail";
     m_identityPending=true;
-    m_music->api.request(route,{{album?"id":"uid",id}},[self,album,fallback,cacheKey](MusicReply r){
-        if(!self)return;self->m_identityPending=false;const auto body=r.value.toObject();const auto person=album?(fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject()):body["profile"].toObject();
+    m_music->api.request(route,{{album?"id":"uid",id}},[self,album,fallback,cacheKey,request](MusicReply r){
+        if(!self||self->m_identityRequest!=request||self->m_identityKey!=cacheKey)return;self->m_identityPending=false;const auto body=r.value.toObject();const auto person=album?(fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject()):body["profile"].toObject();
         QString url;
         for(const auto &name:album?QStringList{"avatar","img1v1Url","picUrl","cover"}:QStringList{"avatarUrl"})if(!person[name].toString().isEmpty()){url=person[name].toString();break;}
         if(!r.ok()||url.isEmpty()){if(album&&!fallback)self->loadIdentity(true);return;}
         QUrl address(url);if(address.scheme()=="http")address.setScheme("https");
         self->displayIdentity(address.toString(),cacheKey,album&&!fallback);
-    },[self,token,account]{return self&&self->m_token==token&&self->m_music->accountGeneration()==account;});
+    },[self,token,account,request,cacheKey]{return self&&self->m_token==token&&self->m_identityRequest==request&&self->m_identityKey==cacheKey&&self->m_music->accountGeneration()==account;});
 }
 
 // Share the native image cache/network policy and publish decoded small pixels.
 // QML no longer downloads a second, full-size remote image through another manager.
 void PlaylistShowcase::displayIdentity(QString url,QString cacheKey,bool canFallback){
     m_identityPending=true;
-    const auto token=m_token;const auto account=m_account;QPointer<PlaylistShowcase> self(this);
-    m_music->host->loadCover(url,[self,token,account,cacheKey,canFallback](QString imageKey){
-        if(!self||self->m_token!=token||self->m_music->accountGeneration()!=account)return;
+    const auto token=m_token;const auto account=m_account;const auto request=++m_identityRequest;QPointer<PlaylistShowcase> self(this);
+    m_music->host->loadCover(url,[self,token,account,request,cacheKey,canFallback](QString imageKey){
+        if(!self||self->m_token!=token||self->m_identityRequest!=request||self->m_identityKey!=cacheKey||self->m_music->accountGeneration()!=account)return;
         self->m_identityPending=false;
         const auto image=self->m_music->host->image(imageKey);
         if(image.isNull()){if(canFallback)self->loadIdentity(true);return;}
