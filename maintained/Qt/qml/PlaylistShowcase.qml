@@ -56,7 +56,7 @@ Item {
     Shortcut {sequence:"Down";enabled:page.keysEnabled;onActivated:page.moveSong(1)}
     Shortcut {sequence:"Up";enabled:page.keysEnabled;onActivated:page.moveSong(-1)}
     function collect(){if(controller.busy)return;if(info.canSubscribe){if(info.subscribed){controller.operate("subscribe");cancelCollect.open();}else controller.operate("subscribe");}}
-    onInfoChanged:if(info.key!==session){session=info.key||"";songIndex=-1;showSongs=false;descriptionView.contentY=0;}
+    onInfoChanged:if(info.key!==session){session=info.key||"";songIndex=-1;showSongs=false;pendingMoves=0;wheelCarry=0;pendingUntil=0;descriptionView.contentY=0;}
     property string session:""
     component Label:Text {textFormat:Text.PlainText;color:page.ink;font.family:rhineFontFamily;font.pixelSize:16*page.unit;elide:Text.ElideRight}
     component Button:Controls.Button {
