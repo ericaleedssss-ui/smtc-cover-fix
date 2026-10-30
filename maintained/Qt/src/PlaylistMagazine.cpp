@@ -107,24 +107,25 @@ void PlaylistMagazine::loadAlbumArtist(bool fallback){
     if(!m_folder||m_folder->item["kind"]!="album"||m_music->provider!="netease")return;
     const auto people=m_folder->item["artists"].toArray();
     if(people.isEmpty())return;
-    const auto person=people.first().toObject();m_artistID=textID(person["id"]);
-    const auto cacheKey=m_music->provider+":"+m_artistID;
-    if(!fallback&&m_artistAvatars.contains(cacheKey)){m_artistAvatar=m_artistAvatars[cacheKey];emit changed();return;}
-    if(m_artistID.isEmpty()||m_artistID=="0")return;
-    QPointer<PlaylistMagazine> self(this);const auto token=m_artistToken,account=m_account;
-    m_music->api.request(fallback?"/artists":"/artist/detail",{{"id",m_artistID}},[self,fallback](MusicReply reply){
-        if(!self)return;
+    const auto person=people.first().toObject();const auto artistID=textID(person["id"]);
+    if(artistID!=m_artistID){m_artistID=artistID;++m_artistRequest;m_artistAvatar.clear();}
+    const auto cacheKey=m_music->provider+":"+artistID;
+    if(!fallback&&m_artistAvatars.contains(cacheKey)){++m_artistRequest;m_artistAvatar=m_artistAvatars[cacheKey];emit changed();return;}
+    if(artistID.isEmpty()||artistID=="0")return;
+    QPointer<PlaylistMagazine> self(this);const auto token=m_artistToken,account=m_account,request=++m_artistRequest;
+    m_music->api.request(fallback?"/artists":"/artist/detail",{{"id",artistID}},[self,fallback,artistID,request](MusicReply reply){
+        if(!self||self->m_artistID!=artistID||self->m_artistRequest!=request)return;
         const auto body=reply.value.toObject();const auto artist=fallback?body["artist"].toObject():body["data"].toObject()["artist"].toObject();
         QString url;for(const auto &name:{"avatar","img1v1Url","picUrl","cover"})if(!artist[name].toString().isEmpty()){url=artist[name].toString();break;}
         if(!reply.ok()||url.isEmpty()){if(!fallback)self->loadAlbumArtist(true);return;}
         QUrl address(url);if(address.scheme()=="http")address.setScheme("https");
         self->displayAlbumArtist(address.toString(),fallback);
-    },[self,token,account]{return self&&self->m_artistToken==token&&self->m_music->accountGeneration()==account;});
+    },[self,token,account,artistID,request]{return self&&self->m_artistToken==token&&self->m_artistID==artistID&&self->m_artistRequest==request&&self->m_music->accountGeneration()==account;});
 }
 void PlaylistMagazine::displayAlbumArtist(QString url,bool fallback){
-    QPointer<PlaylistMagazine> self(this);const auto token=m_artistToken,account=m_account;const auto cacheKey=m_music->provider+":"+m_artistID;
-    m_music->host->loadCover(url,[self,token,account,cacheKey,fallback](QString imageKey){
-        if(!self||self->m_artistToken!=token||self->m_music->accountGeneration()!=account)return;
+    QPointer<PlaylistMagazine> self(this);const auto token=m_artistToken,account=m_account;const auto artistID=m_artistID;const auto request=++m_artistRequest;const auto cacheKey=m_music->provider+":"+artistID;
+    m_music->host->loadCover(url,[self,token,account,artistID,request,cacheKey,fallback](QString imageKey){
+        if(!self||self->m_artistToken!=token||self->m_artistID!=artistID||self->m_artistRequest!=request||self->m_music->accountGeneration()!=account)return;
         const auto source=self->m_music->host->image(imageKey);
         if(source.isNull()){if(!fallback)self->loadAlbumArtist(true);return;}
         QImage avatar(96,96,QImage::Format_ARGB32_Premultiplied);avatar.fill(Qt::transparent);
