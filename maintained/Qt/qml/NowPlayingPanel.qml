@@ -12,7 +12,7 @@ Item {
     readonly property color ink:rhine.state.dark?"#eceee3":"#30372e"
     readonly property color muted:rhine.state.dark?"#b1b9a5":"#77806e"
     readonly property real discSize:Math.min(490*unit,width*.60)
-    readonly property real vinylInset:discSize*.25
+    readonly property real vinylInset:discSize*.31
     readonly property real textWidth:width*.50-42*unit
     readonly property bool motion:visible&&playback.playing&&!rhine.state.reduced&&(!Window.window||Window.window.visibility!==Window.Minimized)
     function syncMotion(){
@@ -25,6 +25,13 @@ Item {
     onMotionChanged:syncMotion()
     Component.onCompleted:syncMotion()
     property bool following:true
+    // Title etched in the clear seat ring. Rebuilt only when the song changes.
+    readonly property string etchText:(info.title||"")+"  ·  "+(info.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
+    function etchGlyphs(text,radius,px){
+        var out=[],a=-Math.PI*.5,r=Math.max(1,radius);
+        for(var i=0;i<text.length&&a<Math.PI*1.45;++i){var ch=text[i];var w=(ch.charCodeAt(0)>0x2e80?1.0:.6)*px;a+=w/2/r;out.push({c:ch,a:a});a+=w/2/r+.7/r;}
+        return out;
+    }
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
     function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Beginning);}
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
@@ -42,7 +49,7 @@ Item {
         padding:4*page.unit
         HoverHandler {cursorShape:Qt.PointingHandCursor;enabled:button.enabled}
         contentItem:Item {
-            Rectangle {x:0;anchors.verticalCenter:parent.verticalCenter;width:26*page.unit;height:width;radius:width/2;color:button.hovered?"#65fffdf3":"#40fffdf3"
+            Rectangle {x:0;anchors.verticalCenter:parent.verticalCenter;width:26*page.unit;height:width;radius:width/2;color:button.hovered?"#70fffdf3":"#48fffdf3";border.width:.7*page.unit;border.color:"#90fffdf3"
                 RhineIcon {anchors.centerIn:parent;width:15*page.unit;height:width;name:button.symbol;color:page.ink;visible:!!button.symbol&&!button.artwork}
                 Image {anchors.centerIn:parent;width:18*page.unit;height:width;source:button.artwork;visible:!!source;fillMode:Image.PreserveAspectFit;sourceSize:Qt.size(24,24)}
             }
@@ -51,7 +58,7 @@ Item {
                 Label {width:parent.width;text:button.subtitle;font.pixelSize:8*page.unit;color:page.muted;visible:!!text}
             }
         }
-        background:Rectangle {radius:height/2;color:button.hovered?"#42fffdf4":"#22fffdf4";border.width:.7*page.unit;border.color:"#55fffdf3";Behavior on color {ColorAnimation {duration:120}}}
+        background:Rectangle {radius:height/2;color:button.hovered?"#30fffdf4":"transparent";border.width:0;Behavior on color {ColorAnimation {duration:120}}}
         opacity:enabled?1:.45
     }
     MouseArea {anchors.fill:parent;onClicked:{} onWheel:e=>{var p=mapToItem(null,e.x,e.y);rhine.wheelInput(p.x/page.unit,p.y/page.unit,e.pixelDelta.y,e.angleDelta.y);e.accepted=true;}}
@@ -90,13 +97,13 @@ Item {
         Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词";color:page.muted}
     }
     Label {objectName:"nowLyricsFollow";x:26*unit;y:307*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
-    Row {x:26*unit;y:331*unit;spacing:7*unit;height:36*unit
+    Row {x:26*unit;y:331*unit;spacing:14*unit;height:36*unit
         Action {objectName:"nowLike";width:82*page.unit;enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
         Action {objectName:"nowComments";symbol:"comment";width:92*page.unit;text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
         Action {objectName:"nowShare";symbol:"share";width:82*page.unit;text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
         Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
             contentItem:Item {Row {anchors.centerIn:parent;spacing:3.5*page.unit;Repeater {model:3;Rectangle {width:2.6*page.unit;height:width;radius:width/2;color:page.ink}}}}
-            background:Rectangle {objectName:"nowMoreSurface";radius:height/2;color:parent.hovered?"#42fffdf4":"#22fffdf4";border.width:.7*page.unit;border.color:"#55fffdf3"}
+            background:Rectangle {objectName:"nowMoreSurface";anchors.centerIn:parent;width:26*page.unit;height:width;radius:width/2;color:parent.hovered?"#70fffdf3":"#48fffdf3";border.width:.7*page.unit;border.color:"#90fffdf3"}
             HoverHandler {cursorShape:Qt.PointingHandCursor}
             Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"更多操作";Controls.ToolTip.delay:500
             onClicked:{var p=mapToItem(page,0,height);more.x=Math.max(0,Math.min(page.width-more.implicitWidth,p.x));more.y=Math.min(page.height-more.implicitHeight,Math.max(0,p.y+6*page.unit));more.open();}
@@ -119,12 +126,12 @@ Item {
         // One composite owns the record, all reflections and bounce.
         // It alone applies screen-space focal fade and the exact glass boundary.
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
-        layer.effect:ShaderEffect {objectName:"nowRecordComposite";property variant artwork;property real phase:discField.width/Math.max(1,discField.height);property real shadowOnly:7;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+        layer.effect:ShaderEffect {objectName:"nowRecordComposite";property variant artwork;property real phase:discField.width/Math.max(1,discField.height);property real shadowOnly:7;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
         Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:3;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:haloPlane;x:record.x;y:record.y;width:record.width;height:record.height
-                transform:[Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+                transform:[Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
                 ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width
                     property variant artwork:shadowArt
                     property real phase:record.phase
@@ -142,9 +149,9 @@ Item {
         Item {id:plane;objectName:"nowRecordBase";anchors.fill:parent;anchors.margins:-page.vinylInset
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
-            transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:32},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
+            transform:[Rotation {objectName:"nowRecordTilt";origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             ShaderEffect {
-                objectName:"nowRecordShadow";opacity:.10;x:-parent.width*.32;y:-parent.height*.32+8*page.unit;width:parent.width*1.64;height:width
+                objectName:"nowRecordShadow";opacity:.24;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
                 property variant artwork:shadowArt
                 property real phase:0
                 property real shadowOnly:1
@@ -153,7 +160,7 @@ Item {
                 Image {id:shadowArt;visible:false;source:page.info.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
             // A narrow lower sidewall, not a bright outline or a filled shadow disc.
-            ShaderEffect {objectName:"nowRecordContactEdge";x:0;y:3*page.unit;width:parent.width;height:parent.height
+            ShaderEffect {objectName:"nowRecordContactEdge";x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
                 property variant artwork:printArt
                 property real phase:0
                 property real shadowOnly:10
@@ -168,7 +175,7 @@ Item {
                 fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
             }
             Item {id:recordPrint;objectName:"nowRecordPrint";anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
-                opacity:rhine.state.dark?.72:.64
+                opacity:rhine.state.dark?.82:.90
                 property real spinAngle:0
                 NumberAnimation on spinAngle {id:discSpin;from:0;to:360;duration:40000;loops:Animation.Infinite;running:false}
                 Image {id:printArt;objectName:"nowRecordArtwork";anchors.fill:parent;source:page.info.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
@@ -181,6 +188,17 @@ Item {
                     property real shadowOnly:2
                     property real darkMode:0
                     fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+                }
+            }
+            Item {id:etch;objectName:"nowRecordEtch";anchors.centerIn:parent;width:recordPrint.width+plane.width*.08;height:width
+                rotation:recordPrint.spinAngle
+                readonly property real radius:recordPrint.width/2+plane.width*.019
+                layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true
+                Repeater {model:page.etchGlyphs(page.etchText,etch.radius,6.5*page.unit)
+                    Text {required property var modelData;text:modelData.c;textFormat:Text.PlainText;font.family:rhineFontFamily;font.pixelSize:6.5*page.unit;font.letterSpacing:0
+                        color:rhine.state.dark?"#cfd3c4":"#6c6252";opacity:.55
+                        x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2
+                        rotation:modelData.a*180/Math.PI+90}
                 }
             }
             ShaderEffect {objectName:"nowRecordGloss";anchors.fill:parent
