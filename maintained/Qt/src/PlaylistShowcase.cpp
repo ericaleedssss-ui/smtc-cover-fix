@@ -159,15 +159,15 @@ void PlaylistShowcase::preview(int at){
 void PlaylistShowcase::playSong(int at){const auto tracks=queue();if(at>=0&&at<tracks.size()){m_music->archiveNowPlaying=true;m_music->archivePlayingDirectory=m_music->directory;m_music->archiveReturnItem=m_item;m_music->player.play(tracks[at].toObject(),tracks,at);m_music->changed();}}
 void PlaylistShowcase::subscribe(bool enabled){
     if(!info()["canSubscribe"].toBool()||m_music->writeLoading)return;
-    const auto item=m_item;const auto k=m_key;const int lane=item["kind"]=="album"?4:3;QPointer<PlaylistShowcase> self(this);
-    m_music->mutate(item["kind"]=="album"?"/album/sub":"/playlist/subscribe",{{"id",item["id"]},{"t",enabled?1:2}},[self,item,k,enabled,lane](QJsonObject){
-        if(!self)return;auto updated=item;updated["subscribed"]=enabled;self->m_music->details[k]=updated;
+    const auto item=m_item;const auto k=m_key;const auto account=m_account;const int lane=item["kind"]=="album"?4:3;QPointer<PlaylistShowcase> self(this);
+    m_music->mutate(item["kind"]=="album"?"/album/sub":"/playlist/subscribe",{{"id",item["id"]},{"t",enabled?1:2}},[self,item,k,enabled,lane,account](QJsonObject){
+        if(!self||account!=self->m_music->accountGeneration()||account!=self->m_account)return;auto updated=item;updated["subscribed"]=enabled;self->m_music->details[k]=updated;
         if(self->m_key==k)self->m_item=updated;
         if(key(self->m_music->current)==k)self->m_music->current["subscribed"]=enabled;
         if(enabled){self->m_music->subscriptions.insert(k);self->m_music->lists[lane]=MusicData::unique(self->m_music->lists[lane],{updated});}
         else{self->m_music->subscriptions.remove(k);QJsonArray kept;for(const auto &v:self->m_music->lists[lane])if(key(v.toObject())!=k)kept.append(v);self->m_music->lists[lane]=kept;}
         self->m_music->totals[lane]=self->m_music->lists[lane].size();
-    },[self,k,enabled](bool ok){if(self&&self->m_key==k){self->m_status=ok?(enabled?"已收藏":"已取消收藏"):"收藏失败，请重试";emit self->changed();}});
+    },[self,k,enabled,account](bool ok){if(self&&account==self->m_music->accountGeneration()&&account==self->m_account&&self->m_key==k){self->m_status=ok?(enabled?"已收藏":"已取消收藏"):"收藏失败，请重试";emit self->changed();}});
 }
 
 void PlaylistShowcase::openIdentity(QString id){
