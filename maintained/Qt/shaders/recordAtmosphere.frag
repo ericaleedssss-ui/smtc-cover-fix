@@ -9,7 +9,92 @@ layout(std140, binding = 0) uniform Params {
     float darkMode;
 };
 layout(binding = 1) uniform sampler2D artwork;
+// Tonearm helpers. The arm lives in the record's own inclined plane, so the
+// platter's perspective transform foreshortens it exactly like the disc.
+float armSeg(vec2 p, vec2 a, vec2 b){vec2 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);return length(pa-ba*h);}
+float armBox(vec2 p, vec2 c, vec2 hs, float r){vec2 q=abs(p-c)-hs+r;return length(max(q,vec2(0.0)))+min(max(q.x,q.y),0.0)-r;}
+vec4 armOver(vec4 dst, vec3 rgb, float a){return vec4(rgb*a,a)+dst*(1.0-a);}
+// Satin metal cylinder: n runs -1..1 across the part, la is the key light
+// component across it and lz its elevation.
+vec3 armMetal(float n, float la, float lz, float dark){
+    n=clamp(n,-1.0,1.0);
+    vec2 N=vec2(n,sqrt(max(0.0,1.0-n*n)));
+    vec2 Lv=normalize(vec2(la,lz));
+    float dif=max(dot(N,Lv),0.0);
+    float spe=pow(max(dot(N,normalize(Lv+vec2(0.0,1.0))),0.0),56.0);
+    vec3 lo=mix(vec3(.43,.42,.39),vec3(.29,.31,.28),dark);
+    vec3 hi=mix(vec3(.91,.90,.86),vec3(.70,.72,.67),dark);
+    vec3 c=mix(lo,hi,dif)+vec3(1.0,.99,.96)*spe*.70;
+    return c*(.80+.20*N.y);
+}
 void main() {
+    if(shadowOnly>10.5){
+        // Arm-local frame in units of effective length: pivot at the origin,
+        // stylus at (1,0). Fixed key light from the upper right of the glass.
+        vec2 p=vec2(qt_TexCoord0.x*1.34-.26,(qt_TexCoord0.y-.5)*.28);
+        float lift=phase;
+        vec2 J=vec2(.860,.0527);
+        vec2 td=normalize(J);
+        vec2 ht=vec2(.9363,-.3512),hn=vec2(.3512,.9363);
+        vec2 q=vec2(dot(p-J,ht),dot(p-J,hn));
+        if(shadowOnly<11.5){
+            // Cast shadow on the record: softer and lighter while lifted.
+            float d=armSeg(p,vec2(-.085,0.0),J)-.017;
+            d=min(d,armBox(p,vec2(-.140,0.0),vec2(.062,.046),.014));
+            d=min(d,length(p)-.060);
+            d=min(d,armBox(q,vec2(.085,0.0),vec2(.090,.034),.013));
+            float sw=.007+.020*lift+.012*(1.0-smoothstep(.20,.90,p.x));
+            float a=(1.0-smoothstep(-sw,sw,d))*mix(.34,.20,lift);
+            vec3 c=mix(vec3(.30,.24,.18),vec3(.05,.06,.05),darkMode);
+            fragColor=vec4(c*a,a)*qt_Opacity;return;
+        }
+        // Depth of field along the arm: the headshell shares the record's focus,
+        // the shaft softens toward the out-of-frame bearing; lifting adds blur.
+        float w=mix(.0016,.012,1.0-smoothstep(.68,.97,p.x))+.004*lift;
+        float la=.648,lz=.71;
+        vec4 o=vec4(0.0);
+        // Plinth and bearing housing.
+        float d=length(p)-.090;
+        o=armOver(o,mix(vec3(.52,.50,.46),vec3(.30,.31,.28),darkMode),1.0-smoothstep(-w,w,d));
+        d=length(p)-.060;
+        o=armOver(o,armMetal(dot(p/.060,vec2(.32,.947))*.9,.6,.8,darkMode),1.0-smoothstep(-w,w,d));
+        d=abs(length(p)-.038)-.0035;
+        o=armOver(o,mix(vec3(.38,.37,.34),vec3(.20,.21,.19),darkMode),(1.0-smoothstep(-w,w,d))*.55);
+        // Counterweight: knurled ring with a recessed seam.
+        d=armBox(p,vec2(-.140,0.0),vec2(.062,.046),.014);
+        vec3 cc=armMetal(p.y/.046,la,lz,darkMode)*(.92+.08*sin(p.x*620.0));
+        cc*=1.0-.45*exp(-pow((p.x+.104)/.0035,2.0));
+        o=armOver(o,cc,1.0-smoothstep(-w,w,d));
+        // Tapered shaft, passing through the bearing yoke.
+        float th=clamp(dot(p,td)/length(J),0.0,1.0);
+        float tr=mix(.0185,.0145,th);
+        d=armSeg(p,vec2(-.085,0.0),J)-tr;
+        float tn=(td.x*p.y-td.y*p.x)/tr;
+        o=armOver(o,armMetal(tn,la,lz,darkMode),1.0-smoothstep(-w,w,d));
+        // Gimbal cap over the pivot.
+        d=length(p)-.028;
+        o=armOver(o,armMetal(dot(p/.028,vec2(.32,.947))*.85,.6,.8,darkMode),1.0-smoothstep(-w,w,d));
+        // Collar where the shaft meets the offset headshell.
+        d=armSeg(p,J-td*.030,J)-.0215;
+        float cn=(td.x*(p.y-J.y)-td.y*(p.x-J.x))/.0215;
+        o=armOver(o,armMetal(cn,la,lz,darkMode)*.90,1.0-smoothstep(-w,w,d));
+        // Cartridge body, just visible ahead of the headshell.
+        d=armBox(q,vec2(.128,0.0),vec2(.050,.025),.006);
+        o=armOver(o,mix(vec3(.22,.21,.20),vec3(.10,.11,.10),darkMode)+vec3(.10)*max(q.y/.025,0.0),1.0-smoothstep(-w,w,d));
+        // Headshell plate: soft bevel lit on the outer edge, two mounting slots.
+        float hd=armBox(q,vec2(.078,0.0),vec2(.088,.034),.013);
+        vec3 hc=armMetal(q.y/.034*.55,.699,lz,darkMode);
+        float edge=exp(-pow((hd+.0045)/.0028,2.0));
+        hc+=vec3(.30)*edge*max(q.y/.034,0.0);
+        hc*=1.0-.28*edge*max(-q.y/.034,0.0);
+        float slot=min(armSeg(q,vec2(.044,.0135),vec2(.092,.0135)),armSeg(q,vec2(.044,-.0135),vec2(.092,-.0135)))-.0034;
+        hc*=1.0-.42*(1.0-smoothstep(-w,w,slot));
+        o=armOver(o,hc,1.0-smoothstep(-w,w,hd));
+        // Finger lift on the outer side.
+        d=armSeg(q,vec2(.150,.030),vec2(.118,.085))-.0050;
+        o=armOver(o,armMetal((q.x-.134)/.02,.4,lz,darkMode),1.0-smoothstep(-w,w,d));
+        fragColor=o*qt_Opacity;return;
+    }
     if(shadowOnly>9.5){
         // The offset lower rim is a narrow physical sidewall. No opaque disc
         // underneath the translucent material and no luminous thickness.
