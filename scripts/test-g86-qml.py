@@ -152,7 +152,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert find('nowTonearm') is not None and find('nowTonearmPlane') is not None and find('nowTonearmShadow') is not None
  incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
  incomingSpin=find('nowRecordPrintIncoming');assert incomingSpin
- assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-.96)<.001
+ assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-.98)<.001
  c.coverPending=True;c.at=1;c.changed.emit();QTest.qWait(90)
  assert incoming.isVisible() and page.property('recordTransitioning') and incoming.property('visualSession')==c.info['session']
  assert not page.property('recordVisualTransitionRunning'), 'record fade waits while the incoming cover is loading'
