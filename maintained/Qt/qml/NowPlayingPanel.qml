@@ -21,19 +21,49 @@ Item {
     property bool armObservedPlaying:false
     property bool armOutReady:false
     property bool recordCoverReady:false
-    readonly property bool armTransitionRunning:armChangeAnimation.running
+    property string armMotionMode:"idle"
+    readonly property bool armTransitionRunning:armMotionAnimation.running||armMotionMode==="changeOut"
     readonly property bool recordVisualTransitionRunning:recordChangeAnimation.running
     function stopArmAnimations(){
-        armChangeAnimation.stop();
-        armReturnAnimation.stop();
-        armPlaybackAnimation.stop();
+        armMotionAnimation.stop();
+        armMotionMode="idle";
     }
     function animateArmToPlaybackState(){
         if(!armPlane)return;
-        stopArmAnimations();
-        armPlaybackAnimation.to=armPlane.normalPose;
-        armPlaybackAnimation.duration=rhine.state.reduced?0:260;
-        armPlaybackAnimation.start();
+        armMotionAnimation.stop();
+        armMotionMode="playback";
+        armMotionAnimation.to=armPlane.normalPose;
+        armMotionAnimation.duration=rhine.state.reduced?0:260;
+        armMotionAnimation.start();
+    }
+    function startArmChangeOut(){
+        if(!recordTransitioning||!playback.playing)return;
+        armMotionAnimation.stop();
+        armMotionMode="changeOut";
+        armMotionAnimation.to=1;
+        armMotionAnimation.duration=rhine.state.reduced?0:360;
+        armMotionAnimation.start();
+    }
+    function startArmReturn(){
+        if(!armPlane)return;
+        armMotionAnimation.stop();
+        armMotionMode="changeReturn";
+        armMotionAnimation.to=armPlane.normalPose;
+        armMotionAnimation.duration=rhine.state.reduced?0:360;
+        armMotionAnimation.start();
+    }
+    function handleArmMotionFinished(){
+        var mode=armMotionMode;
+        armMotionMode="idle";
+        if(mode==="changeOut"){
+            armOutReady=true;
+            startRecordVisualTransition();
+        }else if(mode==="changeReturn"&&recordTransitioning){
+            armMotionMode="idle";
+        }else if(mode==="playback"&&recordTransitioning&&armPlane.pose>0.5){
+            armOutReady=true;
+            startRecordVisualTransition();
+        }
     }
     function syncArmPlayback(){
         var playing=!!playback.playing;
@@ -46,15 +76,13 @@ Item {
         if(playing===armObservedPlaying)return;
         armObservedPlaying=playing;
         if(!armPlane)return;
-        if(recordTransitioning){armOutReady=true;Qt.callLater(page.startRecordVisualTransition);}
-        // Playback changes have priority over a song-change gesture. Stop the
-        // old gesture before starting the one state animation for the new mode.
+        // One animation object owns pose. Playback changes interrupt the
+        // current song gesture and move to the actual playback state.
         animateArmToPlaybackState();
-    }
-    function startRecordVisualTransition(){
-        if(!recordTransitioning||recordChangeAnimation.running||!recordCoverReady||!armOutReady)return;
-        recordCoverWait.stop();
-        recordChangeAnimation.start();
+        if(recordTransitioning&&playing){
+            armOutReady=true;
+            Qt.callLater(page.startRecordVisualTransition);
+        }
     }
     function syncMotion(){
         for(var animation of [recordSpin,platterPulse]){
@@ -118,7 +146,7 @@ Item {
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
         stopArmAnimations();recordChangeAnimation.stop();recordCoverWait.stop();
         recordCoverReady=false;
-        if(playback.playing){armOutReady=false;armChangeAnimation.start();}
+        if(playback.playing){armOutReady=false;startArmChangeOut();}
         else {armPlane.pose=1;armOutReady=true;}
         if(incomingRecord.artworkReady){recordCoverReady=true;startRecordVisualTransition();}
         else recordCoverWait.restart();
@@ -130,11 +158,8 @@ Item {
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
         transitionInfo=null;recordTransitioning=false;recordCoverReady=false;armOutReady=false;
-        stopArmAnimations();
-        if(playback.playing){
-            armReturnAnimation.to=armPlane.normalPose;
-            armReturnAnimation.start();
-        }else armPlane.pose=1;
+        if(playback.playing)startArmReturn();
+        else {stopArmAnimations();armPlane.pose=1;}
     }
     onInfoChanged:{
         var next=info||({});
@@ -297,19 +322,19 @@ Item {
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
         // the glass is clipped by discField and its composite, like the record.
-        Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x;y:record.y;width:record.width;height:record.height;z:3
+        Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x;y:(parent.height-record.height)/2-6*page.unit;width:record.width;height:record.height;z:3
             visible:true
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            readonly property real armLength:width*.52
+            readonly property real armLength:width*.46
             // Keep the bearing outside the record while leaving a readable
             // section of shaft and headshell over the white outer groove.
-            readonly property real pivotX:width*.96
-            readonly property real pivotY:height*.68
+            readonly property real pivotX:width*.98
+            readonly property real pivotY:height*.72
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-112+8*pose
+            readonly property real swing:-116+8*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
@@ -334,11 +359,9 @@ Item {
         }
     }
     Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:{page.recordCoverReady=true;page.startRecordVisualTransition()}}
-    PropertyAnimation {id:armChangeAnimation;target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:360;easing.type:Easing.InOutCubic
-        onFinished:{page.armOutReady=true;page.startRecordVisualTransition()}
+    NumberAnimation {id:armMotionAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;easing.type:Easing.InOutCubic
+        onFinished:page.handleArmMotionFinished()
     }
-    NumberAnimation {id:armReturnAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:360;easing.type:Easing.InOutCubic}
-    NumberAnimation {id:armPlaybackAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:260;easing.type:Easing.InOutCubic}
     SequentialAnimation {id:recordChangeAnimation
         ParallelAnimation {
             PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
