@@ -96,8 +96,8 @@ Item {
     Connections {target:page.controller;function onPlaybackChanged(){
             page.follow();
             if(armPlane){
-                if(!page.playback.playing){page.armChangeAnimation.stop();page.armPlane.pose=1;}
-                else if(!page.recordTransitioning){page.armChangeAnimation.stop();page.armPlane.pose=0;}
+                if(!page.playback.playing){armChangeAnimation.stop();armPlane.pose=1;}
+                else if(!page.recordTransitioning){armChangeAnimation.stop();armPlane.pose=0;}
             }
         } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
@@ -139,7 +139,7 @@ Item {
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:ShaderEffect {property variant source;property size panelSize:Qt.size(lyrics.width,lyrics.height);property real topInset:0;property real fadePx:10*page.unit;property real fadeTop:1;property real bottomFadePx:10*page.unit;fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"}
         WheelHandler {target:null;onWheel:e=>{page.following=false;var dy=e.pixelDelta.y||e.angleDelta.y/120*55*page.unit;lyrics.contentY=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),lyrics.contentY-dy));e.accepted=true;}}
-        onDraggingChanged:if(dragging){page.following=false;page.lyricFollowAnimation.stop();}
+        onDraggingChanged:if(dragging){page.following=false;lyricFollowAnimation.stop();}
         delegate:Item {
             id:line
             required property var modelData
