@@ -130,8 +130,8 @@ Item {
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
         transitionInfo=null;recordTransitioning=false;recordCoverReady=false;armOutReady=false;
+        stopArmAnimations();
         if(playback.playing){
-            armReturnAnimation.stop();
             armReturnAnimation.to=armPlane.normalPose;
             armReturnAnimation.start();
         }else armPlane.pose=1;
