@@ -25,20 +25,32 @@ Item {
         }
     }
     onMotionChanged:syncMotion()
-    Component.onCompleted:syncMotion()
+    Component.onCompleted:{
+        frontDeck.visualInfo=mergeInfo({},info);
+        visualInitialized=true;
+        acceptInfo(info);
+        updatePlayback();
+        syncMotion();
+    }
     NumberAnimation on spinPhase {id:recordSpin;from:0;to:1;duration:40000;loops:Animation.Infinite;running:false}
     NumberAnimation on platterPhase {id:platterPulse;from:0;to:1;duration:6500;loops:Animation.Infinite;running:false}
     property bool following:true
-    // The text panel follows the real player immediately, while the record
-    // keeps its own old/new visual identities until a platter change settles.
-    property var displayedInfo: ({})
+    // Two persistent decks exchange roles instead of copying artwork at handoff.
+    // One preparation/swap flow owns the arm; metadata never restarts motion.
+    property bool primaryIsFront:true
+    readonly property var frontDeck:primaryIsFront?record:incomingRecord
+    readonly property var backDeck:primaryIsFront?incomingRecord:record
+    property string swapStage:"idle"
+    property real swapProgress:0
     property var pendingInfo: null
-    property var transitionInfo: null
+    property bool prepareTimedOut:false
+    property bool preparingDeck:false
+    property bool lastStablePlaying:false
+    property string lastStableSession:""
+    readonly property bool armResting:recordTransitioning||!(playback.loading?(lastStablePlaying&&lastStableSession===session):playback.playing)
     property bool lyricFollowPending:false
     property bool visualInitialized:false
-    property bool recordTransitioning:false
-    property string visualFallbackCover:""
-    property string displayedFallbackCover:""
+    readonly property bool recordTransitioning:swapStage!=="idle"
     // Title etched in the clear seat ring. Rebuilt only when the song changes.
     readonly property string etchText:(info.title||"")+"  ·  "+(info.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
     function etchGlyphs(text,radius,px){
@@ -52,6 +64,7 @@ Item {
         var item=lyrics.itemAtIndex(playback.index);
         if(!item){Qt.callLater(follow);return;}
         var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
+        if((lyricFollowAnimation.running&&Math.abs(lyricFollowAnimation.to-target)<.5)||Math.abs(lyrics.contentY-target)<.5)return;
         lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
         lyricFollowPending=false;
     }
@@ -61,45 +74,59 @@ Item {
     }
     function beginRecordChange(next){
         if(!next||!next.session)return;
-        displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
-        transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
-        record.transitionY=0;record.visualOpacity=1;
-        incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
-        armChangeAnimation.stop();recordChangeAnimation.stop();armChangeAnimation.start();recordChangeAnimation.start();
+        preparingDeck=true;
+        swapStage="preparing";prepareTimedOut=false;pendingInfo=null;
+        artworkDeadline.restart();
+        backDeck.visualInfo=mergeInfo({},next);
+        preparingDeck=false;
+        maybeStartSwap();
+    }
+    function maybeStartSwap(){
+        if(!visualInitialized||preparingDeck||swapStage!=="preparing"||!armPlane||armPlane.pose<.995)return;
+        if(!backDeck.artworkReady&&!prepareTimedOut)return;
+        artworkDeadline.stop();
+        swapStage="swapping";
+        recordChangeAnimation.start();
     }
     function finishRecordChange(){
-        if(!recordTransitioning)return;
-        displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
-        displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
-        incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        var queued=pendingInfo;pendingInfo=null;transitionInfo=null;recordTransitioning=false;
-        if(queued&&queued.session&&queued.session!==displayedInfo.session)Qt.callLater(function(){page.beginRecordChange(queued);});
+        if(swapStage!=="swapping")return;
+        primaryIsFront=!primaryIsFront;
+        swapProgress=0;
+        var queued=pendingInfo;pendingInfo=null;
+        if(queued&&queued.session!==frontDeck.visualSession){beginRecordChange(queued);return;}
+        if(queued)frontDeck.visualInfo=mergeInfo(frontDeck.visualInfo,queued);
+        swapStage="idle";
     }
-    onInfoChanged:{
-        var next=info||({});
-        if(!visualInitialized){displayedInfo=mergeInfo({},next);visualFallbackCover=next.coverPixels||"";displayedFallbackCover=visualFallbackCover;visualInitialized=true;}
-        else if(recordTransitioning){
-            if(next.session&&next.session!==((transitionInfo&&transitionInfo.session)||""))beginRecordChange(next);
-            else transitionInfo=mergeInfo(transitionInfo,next);
-        }else if(next.session!==displayedInfo.session){beginRecordChange(next);
+    function acceptInfo(next){
+        if(!visualInitialized)return;
+        next=next||({});
+        if(!next.session){
+            artworkDeadline.stop();recordChangeAnimation.stop();swapStage="idle";swapProgress=0;pendingInfo=null;
+            frontDeck.visualInfo=({});backDeck.visualInfo=({});
+        }else if(swapStage==="swapping"){
+            // Freeze both painted identities until this movement finishes.
+            pendingInfo=mergeInfo({},next);
+        }else if(swapStage==="preparing"){
+            if(next.session===frontDeck.visualSession){
+                artworkDeadline.stop();frontDeck.visualInfo=mergeInfo(frontDeck.visualInfo,next);swapStage="idle";
+            }else if(next.session!==backDeck.visualSession){beginRecordChange(next);}
+            else {backDeck.visualInfo=mergeInfo(backDeck.visualInfo,next);maybeStartSwap();}
+        }else if(next.session!==frontDeck.visualSession){
+            beginRecordChange(next);
+        }else{
+            frontDeck.visualInfo=mergeInfo(frontDeck.visualInfo,next);
         }
-        else displayedInfo=mergeInfo(displayedInfo,next);
-        if(next.coverPixels){visualFallbackCover=next.coverPixels;if(!recordTransitioning)displayedFallbackCover=next.coverPixels;}
         if(next.session!==session){session=next.session||"";following=true;lyricFollowPending=true;Qt.callLater(page.follow);}
     }
+    onInfoChanged:acceptInfo(info)
     property string session:""
-    function requestArmPose(target){
-        if(recordTransitioning)return;
-        armChangeAnimation.stop();
-        armPlane.pose=target;
+    function updatePlayback(){
+        if(!playback.loading){lastStablePlaying=!!playback.playing;lastStableSession=info.session||"";}
+        follow();
     }
-    Connections {target:page.controller;function onPlaybackChanged(){
-            page.follow();
-            if(armPlane){
-                if(!page.playback.playing){armChangeAnimation.stop();armPlane.pose=1;}
-                else if(!page.recordTransitioning){armChangeAnimation.stop();armPlane.pose=0;}
-            }
-        } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
+    Connections {target:page.controller;function onPlaybackChanged(){page.updatePlayback();}
+        function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
+    Timer {id:artworkDeadline;interval:1800;onTriggered:{page.prepareTimedOut=true;page.maybeStartSwap();}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
@@ -184,13 +211,19 @@ Item {
         Label {objectName:"nowGenres";height:26*page.unit;verticalAlignment:Text.AlignVCenter;width:Math.max(28*page.unit,metadata.width-x);text:(page.info.tags||[]).length?page.info.tags.join(" / "):"曲风暂无";font.pixelSize:12*page.unit;color:page.muted}
     }
     component RecordVisual: Item {
-        required property var visualInfo
-        property string nameSuffix:""
-        property string fallbackCover:""
-        property real transitionY:0
-        property real visualOpacity:1
+        property var visualInfo:({})
+        required property bool front
+        readonly property string nameSuffix:front?"":"Incoming"
+        readonly property real transitionY:front?-12*page.unit*page.swapProgress:16*page.unit*(1-page.swapProgress)
+        readonly property real visualOpacity:front?1-page.swapProgress:page.swapProgress
+        readonly property bool artworkReady:!!visualInfo.coverPixels&&printArt.status===Image.Ready&&printArt.source.toString()===visualInfo.coverPixels
+        readonly property string etchLabel:(visualInfo.title||"")+"  ·  "+(visualInfo.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
+        onArtworkReadyChanged:page.maybeStartSwap()
         property real phase:page.platterPhase
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
+        objectName:front?"nowRecord":"nowRecordIncoming"
+        visible:front||page.swapStage==="swapping"
+        z:front?2:1
         width:page.discSize;height:width
         x:parent.width-width+38*page.unit
         y:(parent.height-height)/2-6*page.unit+transitionY
@@ -201,7 +234,7 @@ Item {
             transform:[Rotation {objectName:"nowRecordTilt"+nameSuffix;origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
             ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
                 property variant artwork:shadowArt;property real phase:0;property real shadowOnly:1;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
-                Image {id:shadowArt;visible:false;source:visualInfo.coverPixels||fallbackCover||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+                Image {id:shadowArt;visible:false;source:visualInfo.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
             ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height
                 property variant artwork:printArt;property real phase:0;property real shadowOnly:10;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
@@ -209,14 +242,16 @@ Item {
                 property variant artwork:printArt;property real phase:recordPrint.width/(plane.width*2);property real shadowOnly:9;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             Item {id:recordPrint;objectName:"nowRecordPrint"+nameSuffix;anchors.fill:parent;anchors.margins:page.vinylInset+4*page.unit;transformOrigin:Item.Center
                 opacity:rhine.state.dark?.82:.90;property real spinAngle:page.spinPhase*360
-                Image {id:printArt;objectName:"nowRecordArtwork"+nameSuffix;anchors.fill:parent;source:visualInfo.coverPixels||fallbackCover||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true
-                    visible:GraphicsInfo.api===GraphicsInfo.Software;rotation:visible?recordPrint.spinAngle:0}
-                ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software
+                property real coverReveal:printArt.status===Image.Ready?1:0
+                Behavior on coverReveal {NumberAnimation {duration:rhine.state.reduced?0:180}}
+                Image {id:printArt;objectName:"nowRecordArtwork"+nameSuffix;anchors.fill:parent;source:visualInfo.coverPixels||"";fillMode:Image.PreserveAspectFit;asynchronous:true;cache:true;retainWhileLoading:true
+                    opacity:recordPrint.coverReveal;visible:GraphicsInfo.api===GraphicsInfo.Software;rotation:visible?recordPrint.spinAngle:0}
+                ShaderEffect {anchors.fill:parent;visible:GraphicsInfo.api!==GraphicsInfo.Software;opacity:recordPrint.coverReveal
                     property variant artwork:printArt;property real phase:recordPrint.spinAngle/360;property real shadowOnly:2;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
             Item {id:etch;objectName:"nowRecordEtch"+nameSuffix;anchors.centerIn:parent;width:recordPrint.width+plane.width*.10;height:width;rotation:recordPrint.spinAngle
                 readonly property real radius:recordPrint.width/2+plane.width*.022;layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true
-                Repeater {model:page.etchGlyphs((visualInfo.title||"")+"  \u8def  "+(visualInfo.artist||"")+"  \u8def  SIDE A  \u8def  33 1/3  \u8def  RHINE MUSIC DATABASE  \u8def  ",etch.radius,11*page.unit)
+                Repeater {model:page.etchGlyphs(etchLabel,etch.radius,11*page.unit)
                     Text {required property var modelData;text:modelData.c;textFormat:Text.PlainText;font.family:rhineFontFamily;font.pixelSize:11*page.unit;font.weight:Font.DemiBold;font.letterSpacing:0;color:rhine.state.dark?"#e6e8de":"#4a4034";opacity:.90
                         x:etch.width/2+Math.cos(modelData.a)*etch.radius-width/2;y:etch.height/2+Math.sin(modelData.a)*etch.radius-height/2;rotation:modelData.a*180/Math.PI+90}
                 }
@@ -233,14 +268,14 @@ Item {
         Item {objectName:"nowRecordRings";anchors.fill:parent;opacity:page.motion?1:0;Behavior on opacity {NumberAnimation {duration:240}}
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:3;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
-            Item {id:haloPlane;x:record.x;y:record.y;width:record.width;height:record.height
+            Item {id:haloPlane;x:page.frontDeck.x;y:(parent.height-page.discSize)/2-6*page.unit;width:page.discSize;height:width
                 transform:[Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:haloPlane.width/2;origin.y:haloPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
+                ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:page.platterPhase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
-        RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:displayedFallbackCover;z:2}
-        Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
+        RecordVisual {id:incomingRecord;front:!page.primaryIsFront}
+        RecordVisual {id:record;front:page.primaryIsFront}
+        Image {id:armShadowArt;visible:false;source:page.frontDeck.visualInfo.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
         // the glass is clipped by discField and its composite, like the record.
         Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:(parent.height-record.height)/2-6*page.unit-page.vinylInset;width:record.width+2*page.vinylInset;height:width;z:3
@@ -251,12 +286,13 @@ Item {
             // remains in the platter plane, so these proportions inherit the
             // same foreshortening as the record and never cross the etched
             // seat or the printed centre artwork.
-            readonly property real armLength:width*.52
-            readonly property real pivotX:width*1.13
-            readonly property real pivotY:height*.45
-            readonly property real normalPose:page.playback.playing?0:1
+            readonly property real armLength:width*.54
+            readonly property real pivotX:width*1.16
+            readonly property real pivotY:height*.405
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
-            property real pose:normalPose
+            property real pose:page.armResting?1:0
+            Behavior on pose {NumberAnimation {duration:rhine.state.reduced?0:500;easing.type:Easing.InOutSine}}
+            onPoseChanged:page.maybeStartSwap()
             readonly property real lift:Math.min(1,pose*2.4)
             readonly property real swing:-149+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
@@ -281,21 +317,7 @@ Item {
             }
         }
     }
-    SequentialAnimation {id:armChangeAnimation
-        PropertyAnimation {target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
-        PauseAnimation {duration:rhine.state.reduced?0:730}
-        PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
-    }
-    SequentialAnimation {id:recordChangeAnimation
-        ParallelAnimation {
-            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:rhine.state.reduced?0:570;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:rhine.state.reduced?0:570;easing.type:Easing.InOutCubic}
-        }
-        PauseAnimation {duration:rhine.state.reduced?0:60}
-        ScriptAction {script:page.finishRecordChange()}
-    }
+    NumberAnimation {id:recordChangeAnimation;target:page;property:"swapProgress";from:0;to:1;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutSine;onFinished:page.finishRecordChange()}
     NumberAnimation {id:lyricFollowAnimation;target:lyrics;property:"contentY";duration:280;easing.type:Easing.OutCubic}
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
         Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}

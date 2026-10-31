@@ -85,7 +85,7 @@ void NowPlaying::sync(){
     bool liked=false;const bool known=bool(m_music->likedIDs)&&song["provider"].toString()==m_music->provider;
     if(known)for(const auto &value:*m_music->likedIDs)if(id(value)==song["id"].toString()){liked=true;break;}
     if(m_known!=known||m_liked!=liked||m_write!=m_music->writeLoading){m_known=known;m_liked=liked;m_write=m_music->writeLoading;emit changed();}
-    syncLyrics();emit playbackChanged();
+    syncLyrics();
 }
 void NowPlaying::syncLyrics(){
     const auto &lyrics=m_music->player.lyrics;
@@ -102,7 +102,7 @@ QVariantMap NowPlaying::info()const{
 }
 QVariantMap NowPlaying::playback()const{
     const auto &player=m_music->player;const auto &lyrics=player.lyrics;
-    return {{"playing",!player.loading&&!player.failed&&player.state["playing"].toBool()},{"seekable",player.state["seekable"].toBool()},
+    return {{"playing",!player.loading&&!player.failed&&player.state["playing"].toBool()},{"loading",player.loading},{"seekable",player.state["seekable"].toBool()},
         {"index",m_document.isEmpty()?-1:lyrics.index},{"timed",!m_document.isEmpty()&&m_document["timing"]!="none"},
         {"lyricStatus",lyrics.currentKey==LyricsController::trackKey(player.current)?lyrics.status:QString("loading")}};
 }

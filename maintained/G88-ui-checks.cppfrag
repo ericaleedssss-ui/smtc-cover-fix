@@ -30,6 +30,58 @@
             check(std::abs(disc->width()-expected)<.01&&std::abs(disc->mapToItem(page,QPointF()).x()-(page->width()-expected+38*stageUnit))<.01,"G92 record restores exact G88 size and rightward placement without fitting its rim inward");
             check(std::abs(field->width()-page->width())<.01&&std::abs(field->height()-page->height())<.01,"G92 visual field has unchanged glass bounds");
         }
+        // Exercise intermediate arm poses through the actual player adapter,
+        // not just the final angle. Ordinary state notifications cannot rewind it.
+        if(page&&!backend.state().value("reduced").toBool()){
+            const auto savedState=music.player.state;
+            const bool savedLoading=music.player.loading,savedFailed=music.player.failed;
+            auto waitMotion=[&](auto predicate,int timeout=5000){
+                QElapsedTimer clock;clock.start();
+                while(!predicate()&&clock.elapsed()<timeout)settle(20);
+                return predicate();
+            };
+            check(waitMotion([&]{return !page->property("recordTransitioning").toBool();}),"G97 initial record preparation completes");
+            auto *arm=findVisual(window->contentItem(),"nowTonearmPlane");
+            music.player.loading=false;music.player.failed=false;music.player.state["playing"]=true;music.player.changed();settle(550);
+            check(arm&&arm->property("pose").toDouble()<.01,"G97 playing arm settles inward");
+            if(arm){
+                music.player.state["playing"]=false;music.player.changed();settle(140);
+                const double middle=arm->property("pose").toDouble();
+                check(middle>.02&&middle<.98,"G97 pause has visible intermediate motion");
+                bool monotonic=true;double prior=middle;
+                for(int tick=0;tick<12;++tick){
+                    music.player.changed();settle(30);
+                    const double current=arm->property("pose").toDouble();
+                    monotonic=monotonic&&current>=prior-.002;prior=current;
+                }
+                check(monotonic&&prior>.99,"G97 playback notifications never restart the pause animation");
+                music.player.state["playing"]=true;music.player.changed();settle(140);
+                const double inward=arm->property("pose").toDouble();
+                check(inward>.02&&inward<.98,"G97 resume has visible intermediate motion");
+                music.player.state["playing"]=false;music.player.changed();
+                check(std::abs(arm->property("pose").toDouble()-inward)<.02,"G97 reversal starts at the current pose");
+                settle(550);
+                music.player.state["playing"]=true;music.player.changed();settle(550);
+                music.player.loading=true;music.player.changed();settle(500);
+                check(arm->property("pose").toDouble()<.01,"G97 buffering does not pose as user pause");
+                music.player.loading=false;music.player.changed();
+                auto nextSong=currentSong;nextSong["id"]="9911101";nextSong["key"]="netease:song:9911101";
+                music.player.current=nextSong;music.player.changed();settle(120);
+                const double lifting=arm->property("pose").toDouble();
+                nextSong["id"]="9911102";nextSong["key"]="netease:song:9911102";
+                music.player.current=nextSong;music.player.changed();
+                check(std::abs(arm->property("pose").toDouble()-lifting)<.02,"G97 rapid track selection never resets the arm");
+                check(waitMotion([&]{return page->property("swapStage").toString()=="swapping";}),"G97 prepared artwork starts the record swap");
+                check(arm->property("pose").toDouble()>.99,"G97 arm clears before records move");
+                check(waitMotion([&]{return !page->property("recordTransitioning").toBool();}),"G97 latest rapid track completes its swap");
+                auto *front=findVisual(window->contentItem(),"nowRecord");
+                check(front&&front->property("visualSession").toString()==MusicPlayer::identity(nextSong),"G97 latest track owns the displayed record");
+                settle(550);
+                check(arm->property("pose").toDouble()<.01,"G97 arm returns smoothly after the swap");
+            }
+            music.player.state=savedState;music.player.loading=savedLoading;music.player.failed=savedFailed;
+            music.player.current=currentSong;music.player.changed();
+        }
         hud.openModal("player");refresh();entry=findVisual(window->contentItem(),"globalNowPlaying");
         check(entry&&!entry->isEnabled(),"G88 queue modal blocks the now-playing shortcut with all other background controls");
         backend.action("queue-close");refresh();
