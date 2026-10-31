@@ -161,13 +161,13 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert incoming.property('visualSession')==c.info['session'], 'latest rapid song wins the incoming deck'
  assert not page.property('recordVisualTransitionRunning'), 'rapid song updates do not reveal an unready cover'
  c.coverPending=False;c.changed.emit();QTest.qWait(90)
- assert page.property('recordVisualTransitionRunning'), 'record fade begins after the incoming cover is ready'
+ assert not page.property('recordVisualTransitionRunning'), 'record fade waits for the arm to clear'
+ QTest.qWait(320);assert page.property('recordVisualTransitionRunning'), 'record fade begins after the arm clears'
  armPage=find('nowPlayingPanel');armPlane=find('nowTonearmPlane')
- assert armPage.property('armTransitionRunning'), 'song change starts one tonearm transition'
- pose=armPlane.property('pose')
+ assert not armPage.property('armTransitionRunning'), 'the arm holds clear while the record handoff runs'
+ assert armPlane.property('pose')>.95, 'the arm is clear before the record handoff'
  for _ in range(4):c.playbackChanged.emit();QTest.qWait(30)
- assert armPage.property('armTransitionRunning'), 'routine playback notifications must not cancel the tonearm transition'
- assert armPlane.property('pose')>pose, 'tonearm motion must continue through routine playback notifications'
+ assert not armPage.property('armTransitionRunning'), 'routine playback notifications do not start a second arm animation'
  c.playing=False;c.playbackChanged.emit();QTest.qWait(100)
  assert not armPage.property('armTransitionRunning'), 'pause takes ownership of the tonearm immediately'
  assert armPlane.property('pose')>.1, 'pause moves the tonearm toward its lifted pose'
