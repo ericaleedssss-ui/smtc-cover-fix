@@ -19,6 +19,8 @@ Item {
     property real platterPhase:0
     property bool armPlaybackStateInitialized:false
     property bool armObservedPlaying:false
+    property bool armOutReady:false
+    property bool recordCoverReady:false
     readonly property bool armTransitionRunning:armChangeAnimation.running
     readonly property bool recordVisualTransitionRunning:recordChangeAnimation.running
     function stopArmAnimations(){
@@ -44,12 +46,13 @@ Item {
         if(playing===armObservedPlaying)return;
         armObservedPlaying=playing;
         if(!armPlane)return;
+        if(recordTransitioning){armOutReady=true;Qt.callLater(page.startRecordVisualTransition);}
         // Playback changes have priority over a song-change gesture. Stop the
         // old gesture before starting the one state animation for the new mode.
         animateArmToPlaybackState();
     }
     function startRecordVisualTransition(){
-        if(!recordTransitioning||recordChangeAnimation.running)return;
+        if(!recordTransitioning||recordChangeAnimation.running||!recordCoverReady||!armOutReady)return;
         recordCoverWait.stop();
         recordChangeAnimation.start();
     }
@@ -114,9 +117,10 @@ Item {
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
         stopArmAnimations();recordChangeAnimation.stop();recordCoverWait.stop();
-        if(playback.playing)armChangeAnimation.start();
-        else armPlane.pose=1;
-        if(incomingRecord.artworkReady)startRecordVisualTransition();
+        recordCoverReady=false;
+        if(playback.playing){armOutReady=false;armChangeAnimation.start();}
+        else {armPlane.pose=1;armOutReady=true;}
+        if(incomingRecord.artworkReady){recordCoverReady=true;startRecordVisualTransition();}
         else recordCoverWait.restart();
     }
     function finishRecordChange(){
@@ -125,7 +129,7 @@ Item {
         displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        transitionInfo=null;recordTransitioning=false;
+        transitionInfo=null;recordTransitioning=false;recordCoverReady=false;armOutReady=false;
         if(playback.playing){
             armReturnAnimation.stop();
             armReturnAnimation.to=armPlane.normalPose;
@@ -288,7 +292,7 @@ Item {
                 ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1;onArtworkReadyChanged:if(artworkReady)page.startRecordVisualTransition()}
+        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1;onArtworkReadyChanged:if(artworkReady){page.recordCoverReady=true;page.startRecordVisualTransition()}}
         RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:displayedFallbackCover;z:2}
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
@@ -330,7 +334,9 @@ Item {
         }
     }
     Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:page.startRecordVisualTransition()}
-    PropertyAnimation {id:armChangeAnimation;target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:360;easing.type:Easing.InOutCubic}
+    PropertyAnimation {id:armChangeAnimation;target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:360;easing.type:Easing.InOutCubic
+        onFinished:{page.armOutReady=true;page.startRecordVisualTransition()}
+    }
     NumberAnimation {id:armReturnAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:360;easing.type:Easing.InOutCubic}
     NumberAnimation {id:armPlaybackAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:260;easing.type:Easing.InOutCubic}
     SequentialAnimation {id:recordChangeAnimation
