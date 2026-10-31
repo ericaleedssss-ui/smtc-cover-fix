@@ -33,6 +33,8 @@ Item {
     // keeps its own old/new visual identities until a platter change settles.
     property var displayedInfo: ({})
     property var pendingInfo: null
+    property var transitionInfo: null
+    property bool lyricFollowPending:false
     property bool visualInitialized:false
     property bool recordTransitioning:false
     property string visualFallbackCover:""
@@ -45,7 +47,14 @@ Item {
         return out;
     }
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
-    function follow(){if(following&&playback.index>=0)lyrics.positionViewAtIndex(playback.index,ListView.Beginning);}
+    function follow(){
+        if(!following||playback.index<0||!lyrics.count)return;
+        var item=lyrics.itemAtIndex(playback.index);
+        if(!item){Qt.callLater(follow);return;}
+        var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
+        lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
+        lyricFollowPending=false;
+    }
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
     function mergeInfo(base,next){
         var merged=Object.assign({},base||{});if(next)for(var key in next)merged[key]=next[key];return merged;
@@ -53,34 +62,44 @@ Item {
     function beginRecordChange(next){
         if(!next||!next.session)return;
         displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
-        pendingInfo=mergeInfo({},next);recordTransitioning=true;
+        transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
-        armPoseAnimation.stop();recordChangeAnimation.stop();recordChangeAnimation.start();
+        armChangeAnimation.stop();recordChangeAnimation.stop();armChangeAnimation.start();recordChangeAnimation.start();
     }
     function finishRecordChange(){
         if(!recordTransitioning)return;
-        displayedInfo=mergeInfo({},pendingInfo||info);record.transitionY=0;record.visualOpacity=1;
+        displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        pendingInfo=null;recordTransitioning=false;
+        var queued=pendingInfo;pendingInfo=null;transitionInfo=null;recordTransitioning=false;
+        if(queued&&queued.session&&queued.session!==displayedInfo.session)Qt.callLater(function(){page.beginRecordChange(queued);});
     }
     onInfoChanged:{
         var next=info||({});
         if(!visualInitialized){displayedInfo=mergeInfo({},next);visualFallbackCover=next.coverPixels||"";displayedFallbackCover=visualFallbackCover;visualInitialized=true;}
-        else if(next.session!==displayedInfo.session){
-            if(recordTransitioning)pendingInfo=mergeInfo(pendingInfo,next);else beginRecordChange(next);
-        }else if(recordTransitioning){pendingInfo=mergeInfo(pendingInfo,next);}
+        else if(recordTransitioning){
+            if(next.session&&next.session!==((transitionInfo&&transitionInfo.session)||""))beginRecordChange(next);
+            else transitionInfo=mergeInfo(transitionInfo,next);
+        }else if(next.session!==displayedInfo.session){beginRecordChange(next);
+        }
         else displayedInfo=mergeInfo(displayedInfo,next);
         if(next.coverPixels){visualFallbackCover=next.coverPixels;if(!recordTransitioning)displayedFallbackCover=next.coverPixels;}
-        if(next.session!==session){session=next.session||"";following=true;lyrics.contentY=0;}
+        if(next.session!==session){session=next.session||"";following=true;lyricFollowPending=true;Qt.callLater(page.follow);}
     }
     property string session:""
     function requestArmPose(target){
         if(recordTransitioning)return;
-        armPoseAnimation.stop();armPoseAnimation.to=target;armPoseAnimation.duration=rhine.state.reduced?0:900;armPoseAnimation.start();
+        armChangeAnimation.stop();
+        armPlane.pose=target;
     }
-    Connections {target:page.controller;function onPlaybackChanged(){page.follow();if(!page.recordTransitioning&&armPlane)page.requestArmPose(armPlane.normalPose);} function onLinesChanged(){Qt.callLater(page.follow);}}
+    Connections {target:page.controller;function onPlaybackChanged(){
+            page.follow();
+            if(armPlane){
+                if(!page.playback.playing){page.armChangeAnimation.stop();page.armPlane.pose=1;}
+                else if(!page.recordTransitioning){page.armChangeAnimation.stop();page.armPlane.pose=0;}
+            }
+        } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
@@ -120,8 +139,7 @@ Item {
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:ShaderEffect {property variant source;property size panelSize:Qt.size(lyrics.width,lyrics.height);property real topInset:0;property real fadePx:10*page.unit;property real fadeTop:1;property real bottomFadePx:10*page.unit;fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"}
         WheelHandler {target:null;onWheel:e=>{page.following=false;var dy=e.pixelDelta.y||e.angleDelta.y/120*55*page.unit;lyrics.contentY=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),lyrics.contentY-dy));e.accepted=true;}}
-        Behavior on contentY {enabled:page.following&&!rhine.state.reduced&&!lyrics.dragging;NumberAnimation {duration:240;easing.type:Easing.OutCubic}}
-        onDraggingChanged:if(dragging)page.following=false
+        onDraggingChanged:if(dragging){page.following=false;page.lyricFollowAnimation.stop();}
         delegate:Item {
             id:line
             required property var modelData
@@ -138,7 +156,7 @@ Item {
             }
             MouseArea {id:hit;anchors.fill:parent;hoverEnabled:true;cursorShape:page.playback.timed&&page.playback.seekable?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{page.controller.seekLine(line.index,page.info.session);page.following=true;}}
         }
-        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词";color:page.muted}
+        Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":(page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词");color:page.muted}
     }
     Label {objectName:"nowLyricsFollow";x:26*unit;y:421*unit;text:"回到当前歌词";font.pixelSize:10*unit;color:page.muted;visible:!page.following&&lyrics.count>0;MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.following=true;page.follow();}}}
     Row {x:26*unit;y:331*unit;spacing:14*unit;height:36*unit
@@ -220,7 +238,7 @@ Item {
                 ShaderEffect {objectName:"nowRippleShader";x:-parent.width*.45;y:x;width:parent.width*1.90;height:width;property variant artwork:armShadowArt;property real phase:record.phase;property real shadowOnly:0;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             }
         }
-        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:pendingInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
+        RecordVisual {id:incomingRecord;objectName:"nowRecordIncoming";nameSuffix:"Incoming";visualInfo:transitionInfo||displayedInfo;fallbackCover:displayedFallbackCover;visible:false;visualOpacity:0;transitionY:16*page.unit;z:1}
         RecordVisual {id:record;objectName:"nowRecord";nameSuffix:"";visualInfo:displayedInfo;fallbackCover:displayedFallbackCover;z:2}
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
@@ -228,14 +246,19 @@ Item {
         Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:(parent.height-record.height)/2-6*page.unit-page.vinylInset;width:record.width+2*page.vinylInset;height:width;z:3
             visible:GraphicsInfo.api!==GraphicsInfo.Software
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            readonly property real armLength:width*.60
-            readonly property real pivotX:width*1.108
-            readonly property real pivotY:height*.5566
+            // Keep the bearing outside the cropped platter and let the
+            // headshell settle on the broad outer groove band.  The arm
+            // remains in the platter plane, so these proportions inherit the
+            // same foreshortening as the record and never cross the etched
+            // seat or the printed centre artwork.
+            readonly property real armLength:width*.50
+            readonly property real pivotX:width*1.10
+            readonly property real pivotY:height*.50
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-145+18*pose
+            readonly property real swing:-146+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
@@ -258,19 +281,22 @@ Item {
             }
         }
     }
-    PropertyAnimation {id:armPoseAnimation;target:armPlane;property:"pose";duration:900;easing.type:Easing.InOutCubic}
-    SequentialAnimation {id:recordChangeAnimation
+    SequentialAnimation {id:armChangeAnimation
         PropertyAnimation {target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
-        ParallelAnimation {
-            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:rhine.state.reduced?0:620;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:rhine.state.reduced?0:650;easing.type:Easing.InOutCubic}
-            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:rhine.state.reduced?0:620;easing.type:Easing.InOutCubic}
-        }
-        PauseAnimation {duration:rhine.state.reduced?0:80}
+        PauseAnimation {duration:rhine.state.reduced?0:730}
         PropertyAnimation {target:armPlane;property:"pose";to:armPlane.normalPose;duration:rhine.state.reduced?0:420;easing.type:Easing.InOutCubic}
+    }
+    SequentialAnimation {id:recordChangeAnimation
+        ParallelAnimation {
+            PropertyAnimation {target:record;property:"transitionY";to:-12*page.unit;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:record;property:"visualOpacity";to:0;duration:rhine.state.reduced?0:570;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"transitionY";to:0;duration:rhine.state.reduced?0:600;easing.type:Easing.InOutCubic}
+            PropertyAnimation {target:incomingRecord;property:"visualOpacity";to:1;duration:rhine.state.reduced?0:570;easing.type:Easing.InOutCubic}
+        }
+        PauseAnimation {duration:rhine.state.reduced?0:60}
         ScriptAction {script:page.finishRecordChange()}
     }
+    NumberAnimation {id:lyricFollowAnimation;target:lyrics;property:"contentY";duration:280;easing.type:Easing.OutCubic}
     Controls.Menu {id:more;parent:page;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink
         Controls.MenuItem {objectName:"nowCollect";text:"添加到歌单";onTriggered:controller.operate("collect")}
         Controls.MenuItem {text:"查看歌曲详情";onTriggered:controller.operate("details")}
