@@ -43,7 +43,12 @@ Item {
     }
     function tryGroup(){
         if(groupStage!==1||(!groupTarget.cover&&groupTarget.loading))return;
-        for(var i=0;i<Math.min(1,groupPreload.count);++i){var img=groupPreload.itemAt(i);if(img&&img.source.toString()&&(img.status===Image.Loading||img.status===Image.Null))return;}
+        for(var i=0;i<groupPreload.count;++i){
+            var img=groupPreload.itemAt(i);
+            if(!img)return;
+            if(img.source.toString()&&(img.status===Image.Loading||img.status===Image.Null))return;
+            // Image.Error is terminal: allow the transition to continue with its fallback.
+        }
         groupStage=2;groupOut.start();
     }
     function commitGroup(){

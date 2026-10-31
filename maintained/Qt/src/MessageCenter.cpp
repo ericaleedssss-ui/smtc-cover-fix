@@ -124,7 +124,10 @@ void MessageCenter::loadHistory(bool reset){
             const auto a=b["msgs"].toArray();QVariantList incoming;for(const auto &v:a)incoming.append(normalize(v.toObject(),0,true,m_uid));
             // Refresh merges newest messages; previously paged history remains available.
             merge(c.rows,incoming);std::stable_sort(c.rows.begin(),c.rows.end(),[](const auto &a,const auto &b){return a.toMap()["time"].toLongLong()<b.toMap()["time"].toLongLong();});
-            if(!reset||c.before==0){c.more=b["more"].toBool(b["hasMore"].toBool(false))&&!a.isEmpty();if(!a.isEmpty())c.before=a.last().toObject()["time"].toInteger();}
+            // A refresh starts a new pagination window. Always replace the
+            // cursor with the oldest message in the returned newest page.
+            c.more=b["more"].toBool(b["hasMore"].toBool(false))&&!a.isEmpty();
+            if(!a.isEmpty())c.before=a.last().toObject()["time"].toInteger();
         }}if(m_peer==peer){emit historyChanged();emit changed();}counts();
     });
 }

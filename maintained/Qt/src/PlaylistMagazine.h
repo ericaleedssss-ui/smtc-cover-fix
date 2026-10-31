@@ -99,7 +99,7 @@ private:
     QString m_artistID,m_artistAvatar;
     QHash<QString,QString> m_artistAvatars;
     bool m_artistRequested=false;
-    quint64 m_artistToken=0;
+    quint64 m_artistToken=0,m_artistRequest=0;
     QString m_status, m_pending, m_modelQuery, m_modelFilter;
     QJsonArray m_likedSnapshot;
     bool m_downloading=false;

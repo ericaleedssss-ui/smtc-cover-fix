@@ -171,6 +171,9 @@ jobs:
       if: always()
     - name: Run offline regressions
       run: npm test
+    - name: Run maintained interaction-state audit regressions
+      shell: bash
+      run: python "$RUNNER_TEMP/rhine-maintained/scripts/test-g95-interaction-audit.py" --source "$RUNNER_TEMP/rhine-maintained/maintained/Qt"
     - name: Create distribution ZIP
       run: npm run share
     - name: Label the test build

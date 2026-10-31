@@ -61,9 +61,7 @@ Item {
     // The text panel follows the real player immediately, while the record
     // keeps its own old/new visual identities until a platter change settles.
     property var displayedInfo: ({})
-    property var pendingInfo: null
     property var transitionInfo: null
-    property bool lyricFollowPending:false
     property bool visualInitialized:false
     property bool recordTransitioning:false
     property string visualFallbackCover:""
@@ -76,13 +74,27 @@ Item {
         return out;
     }
     function dismissTopOverlay(){if(more.visible){more.close();return true;}return false;}
+    property bool lyricFollowRetryScheduled:false
     function follow(){
-        if(!following||playback.index<0||!lyrics.count)return;
+        if(!following||playback.index<0||playback.index>=lyrics.count||!lyrics.count)return;
         var item=lyrics.itemAtIndex(playback.index);
-        if(!item){Qt.callLater(follow);return;}
+        if(!item){
+            // Ask the virtualized ListView to instantiate the target delegate.
+            // Retry once after layout; never spin an unbounded callLater loop.
+            if(!lyricFollowRetryScheduled){
+                lyricFollowRetryScheduled=true;
+                lyrics.positionViewAtIndex(playback.index,ListView.Contain);
+                Qt.callLater(function(){
+                    page.lyricFollowRetryScheduled=false;
+                    // If layout still has not produced the delegate, stop here.
+                    // A later playback/lyrics notification can request another attempt.
+                    if(lyrics.itemAtIndex(page.playback.index))page.follow();
+                });
+            }
+            return;
+        }
         var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
         lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
-        lyricFollowPending=false;
     }
     function stamp(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
     function mergeInfo(base,next){
@@ -91,7 +103,7 @@ Item {
     function beginRecordChange(next){
         if(!next||!next.session)return;
         displayedFallbackCover=displayedInfo.coverPixels||displayedFallbackCover||visualFallbackCover;
-        transitionInfo=mergeInfo({},next);pendingInfo=null;recordTransitioning=true;
+        transitionInfo=mergeInfo({},next);recordTransitioning=true;
         record.transitionY=0;record.visualOpacity=1;
         incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;incomingRecord.visible=true;
         armChangeAnimation.stop();armPlaybackAnimation.stop();recordChangeAnimation.stop();recordCoverWait.stop();
@@ -104,8 +116,7 @@ Item {
         displayedInfo=mergeInfo({},transitionInfo||info);record.transitionY=0;record.visualOpacity=1;
         displayedFallbackCover=displayedInfo.coverPixels||visualFallbackCover||displayedFallbackCover;
         incomingRecord.visible=false;incomingRecord.transitionY=16*unit;incomingRecord.visualOpacity=0;
-        var queued=pendingInfo;pendingInfo=null;transitionInfo=null;recordTransitioning=false;
-        if(queued&&queued.session&&queued.session!==displayedInfo.session)Qt.callLater(function(){page.beginRecordChange(queued);});
+        transitionInfo=null;recordTransitioning=false;
     }
     onInfoChanged:{
         var next=info||({});
@@ -117,13 +128,13 @@ Item {
         }
         else displayedInfo=mergeInfo(displayedInfo,next);
         if(next.coverPixels){visualFallbackCover=next.coverPixels;if(!recordTransitioning)displayedFallbackCover=next.coverPixels;}
-        if(next.session!==session){session=next.session||"";following=true;lyricFollowPending=true;Qt.callLater(page.follow);}
+        if(next.session!==session){session=next.session||"";following=true;Qt.callLater(page.follow);}
     }
     property string session:""
     Connections {target:page.controller;function onPlaybackChanged(){
             page.follow();
             page.syncArmPlayback();
-        } function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
+        } function onLinesChanged(){Qt.callLater(page.follow);}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button

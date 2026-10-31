@@ -23,24 +23,27 @@ Item {
     function syncRows() {
         var rows = incomingRows || [];
         var signature = JSON.stringify(rows);
-        if (signature === syncedRows) return;
-        syncedRows = signature;
         var pageChanged = syncedPage !== pageStart;
+        var rowsChanged = signature !== syncedRows;
+        if (!rowsChanged && !pageChanged) return;
+        syncedRows = signature;
         syncedPage = pageStart;
         // Update in place: artwork arriving or a removed song must not jump
         // the viewport to the top or destroy a hovered delegate every frame.
-        while (stableQueueRows.count > rows.length) stableQueueRows.remove(stableQueueRows.count - 1);
-        for (var i = 0; i < rows.length; ++i) {
-            var song = rows[i] || {};
-            var entry = {trackTitle: String(song.title || "未知歌曲"),
-                trackArtist: String(song.artist || "未知歌手"),
-                trackIndex: Number(song.index), trackId: String(song.id || ""),
-                trackKey: String(song.key || ""), trackCover: String(song.cover || ""),
-                trackDuration: String(song.durationLabel || "—"),
-                trackSource: String(song.sourceTitle || ""),
-                sourceLink: song.sourceLink === true};
-            if (i < stableQueueRows.count) stableQueueRows.set(i, entry);
-            else stableQueueRows.append(entry);
+        if (rowsChanged) {
+            while (stableQueueRows.count > rows.length) stableQueueRows.remove(stableQueueRows.count - 1);
+            for (var i = 0; i < rows.length; ++i) {
+                var song = rows[i] || {};
+                var entry = {trackTitle: String(song.title || "未知歌曲"),
+                    trackArtist: String(song.artist || "未知歌手"),
+                    trackIndex: Number(song.index), trackId: String(song.id || ""),
+                    trackKey: String(song.key || ""), trackCover: String(song.cover || ""),
+                    trackDuration: String(song.durationLabel || "—"),
+                    trackSource: String(song.sourceTitle || ""),
+                    sourceLink: song.sourceLink === true};
+                if (i < stableQueueRows.count) stableQueueRows.set(i, entry);
+                else stableQueueRows.append(entry);
+            }
         }
         if (pageChanged && songList) songList.positionViewAtBeginning();
     }
@@ -48,6 +51,7 @@ Item {
         rhine.action("player:" + operation + ":" + index + ":" + encodeURIComponent(key));
     }
     onIncomingRowsChanged: syncRows()
+    onPageStartChanged: syncRows()
     Component.onCompleted: syncRows()
 
     component QueueIcon: Item {

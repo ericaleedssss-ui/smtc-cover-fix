@@ -55,6 +55,11 @@ Item {
         objectName: "titlePingPongAnimation"
         running: viewport.overflows && !rhine.state.reduced
         loops: Animation.Infinite
+        onRunningChanged: {
+            // Stopping the animation (for example when reduced motion is enabled)
+            // must not leave the title stranded at an intermediate offset.
+            if (!running) viewport.shift = 0
+        }
         PauseAnimation { duration: 1300 }
         NumberAnimation {
             target: viewport
