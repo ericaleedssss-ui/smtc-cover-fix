@@ -333,7 +333,7 @@ Item {
             RecordTonearm {objectName:"nowTonearmSoftwareFallback";anchors.fill:parent;visible:GraphicsInfo.api===GraphicsInfo.Software;playing:armPlane.pose<.5;reduced:rhine.state.reduced;dark:rhine.state.dark}
         }
     }
-    Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:page.startRecordVisualTransition()}
+    Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:{page.recordCoverReady=true;page.startRecordVisualTransition()}}
     PropertyAnimation {id:armChangeAnimation;target:armPlane;property:"pose";to:1;duration:rhine.state.reduced?0:360;easing.type:Easing.InOutCubic
         onFinished:{page.armOutReady=true;page.startRecordVisualTransition()}
     }
