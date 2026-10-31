@@ -1,0 +1,81 @@
+{
+  "repo": "C:\\Users\\ADMINI~1.DES\\AppData\\Local\\Temp\\rhine-motion-qa\\record-rim-v1\\baseline",
+  "present_ms": {
+    "steady": {
+      "n": 383,
+      "median": 6.251,
+      "p95": 7.688,
+      "p99": 8.086,
+      "max": 8.588,
+      "over25": 0,
+      "over50": 0
+    },
+    "pause_play": {
+      "n": 187,
+      "median": 6.236,
+      "p95": 7.81,
+      "p99": 8.681,
+      "max": 106.354,
+      "over25": 1,
+      "over50": 1
+    },
+    "switching": {
+      "n": 1567,
+      "median": 6.214,
+      "p95": 8.548,
+      "p99": 8.857,
+      "max": 12.82,
+      "over25": 0,
+      "over50": 0
+    },
+    "dark_switching": {
+      "n": 790,
+      "median": 6.207,
+      "p95": 8.502,
+      "p99": 8.693,
+      "max": 10.453,
+      "over25": 0,
+      "over50": 0
+    }
+  },
+  "render_submit_ms": {
+    "steady": {
+      "n": 384,
+      "median": 0.166,
+      "p95": 0.238,
+      "p99": 0.333,
+      "max": 0.374,
+      "over25": 0,
+      "over50": 0
+    },
+    "pause_play": {
+      "n": 187,
+      "median": 0.159,
+      "p95": 0.226,
+      "p99": 0.279,
+      "max": 0.346,
+      "over25": 0,
+      "over50": 0
+    },
+    "switching": {
+      "n": 1568,
+      "median": 0.198,
+      "p95": 0.334,
+      "p99": 0.451,
+      "max": 2.301,
+      "over25": 0,
+      "over50": 0
+    },
+    "dark_switching": {
+      "n": 789,
+      "median": 0.204,
+      "p95": 0.334,
+      "p99": 0.493,
+      "max": 0.809,
+      "over25": 0,
+      "over50": 0
+    }
+  },
+  "errors": [],
+  "finalStage": "idle"
+}

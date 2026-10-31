@@ -312,7 +312,9 @@ Item {
             onPoseChanged:page.maybeStartSwap()
             readonly property real lift:Math.min(1,pose*2.4)
             readonly property real swing:-149+18*pose
-            Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
+            // The fixed upper-right key casts down-left in the record plane.
+            // Keep the existing lift distance and animation ownership.
+            Item {objectName:"nowTonearmShadow";x:-(5+8*armPlane.lift)*page.unit;y:(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.16*armPlane.armLength;width:1.42*armPlane.armLength;height:.32*armPlane.armLength
                     transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.16*armPlane.armLength;angle:armPlane.swing}

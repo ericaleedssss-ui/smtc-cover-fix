@@ -9,6 +9,10 @@ layout(std140, binding = 0) uniform Params {
     float darkMode;
 };
 layout(binding = 1) uniform sampler2D artwork;
+// Selected material B; constants preserve the existing ShaderEffect interface.
+const float rimWidth=.038;
+const float opaqueSeat=1.0;
+const float studyMaterial=1.0;
 // Tonearm helpers. The arm lives in the record's own inclined plane, so the
 // platter's perspective transform foreshortens it exactly like the disc.
 float armSeg(vec2 p, vec2 a, vec2 b){vec2 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);return length(pa-ba*h);}
@@ -39,6 +43,19 @@ vec3 shellSatin(float n, float dark){
     vec3 hi=mix(vec3(.89,.87,.78),vec3(.69,.73,.64),dark);
     return mix(lo,hi,dif)+vec3(.98,.97,.90)*spe*.11;
 }
+
+float materialNoise(vec2 uv){
+    vec2 c=floor(uv),f=fract(uv);f=f*f*(3.0-2.0*f);
+    vec4 v=vec4(dot(c,vec2(127.1,311.7)),dot(c+vec2(1,0),vec2(127.1,311.7)),
+                dot(c+vec2(0,1),vec2(127.1,311.7)),dot(c+vec2(1,1),vec2(127.1,311.7)));
+    vec4 h=fract(sin(v)*43758.5453);
+    return mix(mix(h.x,h.y,f.x),mix(h.z,h.w,f.x),f.y)-.5;
+}
+float vinylTwinReflection(float angle){
+    // Tangential microgrooves form two opposite reflection fans.
+    float axis=cos(angle+.60);
+    return pow(abs(axis),8.0)*mix(.88,1.0,smoothstep(-.08,.08,axis));
+}
 void main() {
     if(shadowOnly>10.5){
         // Arm-local frame in units of effective length: pivot at the origin,
@@ -63,8 +80,19 @@ void main() {
             d=min(d,armSeg(q,vec2(.134,-.018),vec2(.177,-.031))-.0027);
             d=min(d,armBox(q,vec2(.184,-.034),vec2(.008,.005),.0025));
             float sw=.007+.020*lift+.012*(1.0-smoothstep(.20,.90,p.x));
+
             float a=(1.0-smoothstep(-sw,sw,d))*mix(.25,.15,lift);
+            if(studyMaterial>.5){
+                // A darker contact core near the stylus and a broad low
+                // opacity penumbra. Lifting widens and weakens both.
+                float contact=(1.0-smoothstep(-.002,.003+.004*lift,d))
+                             *smoothstep(.64,.96,p.x)*(1.0-.75*lift);
+                float penumbra=1.0-smoothstep(-sw*.7,sw*1.5,d);
+                a=clamp(penumbra*mix(.24,.12,lift)+contact*.16,0.0,.42);
+            }
             vec3 c=mix(vec3(.30,.24,.18),vec3(.05,.06,.05),darkMode);
+            if(studyMaterial>.5)c=mix(vec3(.14,.13,.105),vec3(.035,.045,.035),darkMode);
+
             fragColor=vec4(c*a,a)*qt_Opacity;return;
         }
         // Depth of field along the arm: the headshell shares the record's focus,
@@ -134,11 +162,19 @@ void main() {
         lip=max(lip,leftSide*smoothstep(.470,.480,r)*(1.0-smoothstep(.497,.501,r)));
         float a=lip*mix(.16,.43,max(underside,leftSide*.65));
         vec3 material=mix(vec3(.66,.62,.55),vec3(.39,.42,.36),darkMode)*mix(1.0,.74,max(underside,leftSide*.7));
+        if(rimWidth>0.0001){
+            material=vec3(.07,.075,.07)*mix(1.1,.5,max(underside,leftSide*.7));
+            a=lip*mix(.40,.78,max(underside,leftSide*.65));
+        }
         fragColor=vec4(material*a,a)*qt_Opacity;return;
     }
     if(shadowOnly>8.5){
         // Five separated track boundaries across broad smooth clear-vinyl bands.
         vec2 q=qt_TexCoord0-.5;float r=length(q),angle=atan(q.y,q.x);
+        // Derivatives precede spatial branches so edge filtering stays stable.
+        float radiusPx=fwidth(r);vec2 surfacePx=fwidth(q);
+        // The printed cover hides the centre; skip all material noise there.
+        if(r<phase-.02||r>.507){fragColor=vec4(0.0);return;}
         float seatOuter=phase+.044;
         float seat=smoothstep(phase-.003,phase+.002,r)*(1.0-smoothstep(seatOuter-.002,seatOuter+.002,r));
         float body=smoothstep(seatOuter-.002,seatOuter+.004,r)*(1.0-smoothstep(.493,.502,r));
@@ -174,8 +210,61 @@ void main() {
         pigment+=vec3(.22,.225,.19)*satin*(.65+.35*fineGroove);
         pigment-=vec3(.10)*trackShade;
         pigment+=vec3(.97,.98,.91)*(lobe*.34+reflected*.20)*( .55+.45*groove);
+
+        if(studyMaterial>.5){
+            float twin=vinylTwinReflection(angle);
+            float gp=r*4100.0;
+            float grooves=sin(gp)*(1.0-smoothstep(.7,3.0,fwidth(gp)));
+            float density=materialNoise(vec2(r*540.0,angle*28.0));
+            vec3 base=mix(vec3(.77,.765,.70),vec3(.39,.44,.37),darkMode);
+            pigment=base*(.98+.045*lit);
+            pigment+=vec3(.24,.245,.22)*twin;
+            pigment+=vec3(.015,.015,.012)*grooves*(.30+.70*twin);
+            pigment+=vec3(.023,.021,.017)*density;
+            pigment-=vec3(.070,.068,.057)*trackShade;
+            pigment+=vec3(.025)*trackLight*twin;
+        }
         float a=(.72+.12*sweep)*body+.12*seat;
         vec3 rgb=pigment*a;
+        // A solid warm-ivory stamped seat, using the centre label's palette.
+        // Opacity belongs to the material here; the original scene-wide depth
+        // of field and glass-boundary fade remain downstream and unchanged.
+        if(opaqueSeat>.5&&r>phase-.002&&r<seatOuter+.003){
+            float mask=smoothstep(phase-.001,phase+.001,r)
+                      *(1.0-smoothstep(seatOuter-.001,seatOuter+.002,r));
+            float seatLight=dot(q,vec2(.707,-.707))/max(phase+.022,.001);
+            vec3 ivory=mix(vec3(.89,.86,.76),vec3(.63,.66,.57),darkMode);
+            ivory*=.96+.065*seatLight;
+            float innerPress=exp(-pow((r-phase-.0025)/.0015,2.0));
+            float outerPress=exp(-pow((r-seatOuter+.0025)/.0018,2.0));
+            ivory*=1.0-.19*innerPress-.10*outerPress;
+            float rolledLip=exp(-pow((r-seatOuter+.006)/.0025,2.0));
+            ivory+=vec3(.10,.095,.075)*rolledLip*(.35+.65*max(lit,0.0));
+            // Restrained warm-silver sheen across a solid, finely brushed
+            // insert. Broad room reflections leave the etched text legible.
+            vec2 radialSeat=normalize(q+vec2(1e-5));
+            float shoulderN=clamp((r-phase-.022)/.025,-.85,.85);
+            vec3 seatN=normalize(vec3(radialSeat*shoulderN,sqrt(1.0-shoulderN*shoulderN)));
+            vec3 seatH=normalize(normalize(vec3(.54,-.54,.70))+normalize(vec3(0,-.38,.92)));
+            float metalReflection=pow(max(dot(seatN,seatH),0.0),22.0);
+            float windowReflection=exp(-pow((q.x*.84+q.y*.54-.10)/.065,2.0));
+            ivory=mix(ivory,vec3(.72,.72,.66)*(.90+.10*seatLight),.36);
+            ivory+=vec3(.16,.16,.145)*metalReflection;
+            ivory+=vec3(.10,.105,.10)*windowReflection;
+            ivory-=vec3(.035)*pow(max(cos(angle-.45),0.0),10.0);
+            // Tiny cast-metal pits and a weak circular brush pattern become
+            // visible in the light, without a flat screen-space noise layer.
+            vec2 grainUV=q*1150.0;
+            float filtered=1.0-smoothstep(.7,2.0,max(surfacePx.x,surfacePx.y)*1150.0);
+            float pits=materialNoise(grainUV);
+            float fine=materialNoise(q*1900.0);
+            ivory+=(pits*.075+fine*.020)*filtered*(.45+.55*metalReflection);
+            float brushPhase=r*4800.0;
+            ivory+=sin(brushPhase)*.009*(1.0-smoothstep(.7,3.0,radiusPx*4800.0));
+            rgb=mix(rgb,ivory,mask);
+            a=mix(a,1.0,mask);
+        }
+
         // A fine bright lip where the clear seat meets the milky body.
         float lip=exp(-pow((r-seatOuter)/.0016,2.0))*.50*(1.0-smoothstep(.49,.50,r));
         rgb=rgb*(1.0-lip)+vec3(1.0,.99,.96)*lip;a=a+lip*(1.0-a);
@@ -189,6 +278,63 @@ void main() {
         // Contact occlusion where the printed label sits on the vinyl.
         float ao=exp(-pow((r-phase-.004)/.005,2.0))*.12*smoothstep(phase-.004,phase,r);
         rgb=rgb*(1.0-ao)+vec3(.28,.22,.16)*ao;a=a+ao*(1.0-a);
+
+        // Rounded charcoal-PVC outer band. Same physical
+        // radius, plane, light and focal fade as the existing milky vinyl.
+        if(rimWidth>0.0001&&r>.498-rimWidth-2.0*radiusPx){
+            float start=.498-rimWidth;
+            float aa=max(radiusPx,.00045);
+            float band=smoothstep(start-aa,start+aa,r)
+                       *(1.0-smoothstep(.498-aa,.501+aa,r));
+            float across=clamp((r-start)/rimWidth,0.0,1.0);
+            // A rolled cross section: the inner shoulder faces inward,
+            // the satin crown faces up, the outer bevel rolls down to a wall.
+            float nr=clamp((across-.46)*2.0,-.92,.98);
+            float nz=sqrt(max(0.0,1.0-nr*nr));
+            vec2 radial=normalize(q+vec2(1e-5));
+            vec3 normal=normalize(vec3(radial*nr,nz));
+            vec3 L=normalize(vec3(.54,-.54,.70));
+            vec3 V=normalize(vec3(.0,-.38,.92));
+            vec3 H=normalize(L+V);
+            float diffuse=max(dot(normal,L),0.0);
+            float specular=pow(max(dot(normal,H),0.0),24.0);
+            float broad=pow(max(dot(normal,H),0.0),5.0);
+            float fresnel=pow(1.0-max(dot(normal,V),0.0),4.0);
+            // Graphite resin, warm room reflection, no pure-black outline.
+            vec3 carbon=vec3(.034,.038,.036)+vec3(.065,.068,.062)*diffuse;
+            carbon+=vec3(.115,.120,.108)*broad;
+            carbon+=vec3(.32,.31,.27)*specular*.40;
+            carbon+=vec3(.11,.12,.115)*fresnel;
+            // Recessed attachment seam and a small inner shoulder catchlight.
+            float seam=exp(-pow((across-.07)/.055,2.0));
+            carbon*=1.0-.55*seam;
+            float shoulder=exp(-pow((across-.18)/.055,2.0));
+            carbon+=vec3(.10,.10,.085)*shoulder*(.18+.82*max(lit,0.0));
+            float groovePhase=r*3700.0;
+            float micro=sin(groovePhase)*(1.0-smoothstep(.7,3.0,radiusPx*3700.0));
+            float twin=vinylTwinReflection(angle);
+            carbon+=vec3(.20,.205,.19)*twin*(.35+.65*nz);
+            carbon+=vec3(.014)*micro*(.30+.70*twin);
+            float grooveMedium=sin(r*1900.0+.30*sin(angle*13.0));
+            carbon+=vec3(.009)*grooveMedium*(.25+.75*twin)
+                   *(1.0-smoothstep(.7,3.0,radiusPx*1900.0));
+            // Fine irregular PVC grain, softly lit rather than a flat fill.
+            vec2 grainUV=q*850.0;
+            vec2 cell=floor(grainUV),f=fract(grainUV);
+            f=f*f*(3.0-2.0*f);
+            float h00=fract(sin(dot(cell,vec2(127.1,311.7)))*43758.5453);
+            float h10=fract(sin(dot(cell+vec2(1,0),vec2(127.1,311.7)))*43758.5453);
+            float h01=fract(sin(dot(cell+vec2(0,1),vec2(127.1,311.7)))*43758.5453);
+            float h11=fract(sin(dot(cell+vec2(1,1),vec2(127.1,311.7)))*43758.5453);
+            float grain=mix(mix(h00,h10,f.x),mix(h01,h11,f.x),f.y)-.5;
+            float filterGrain=1.0-smoothstep(.7,2.0,max(surfacePx.x,surfacePx.y)*850.0);
+            carbon+=vec3(.040)*grain*filterGrain*(.35+.65*diffuse);
+            float pores=materialNoise(q*1600.0);
+            carbon-=vec3(.014)*smoothstep(.10,.40,pores)*filterGrain;
+            carbon*=1.0-.26*smoothstep(.88,1.0,across);
+            rgb=mix(rgb,carbon,band*.98);
+            a=mix(a,1.0,band*.98);
+        }
         fragColor=vec4(rgb,a)*qt_Opacity;return;
     }
     if(shadowOnly>6.5){
@@ -275,6 +421,16 @@ void main() {
         // A softer second window, independent of the primary bow-tie reflection.
         float fill=exp(-pow((q.x*.39-q.y*.92+.19)/.115,2.0));
         float a=clamp((bands+.26*sweep+rim+softbox*.30+arc*.24+fill*.085)*vinylOnly+band*(1.0-smoothstep(.47,.50,r)),0.0,.60);
+        if(studyMaterial>.5){
+            float twin=vinylTwinReflection(angle);
+            float wideFan=pow(abs(cos(angle+.60)),4.0);
+            float gp=r*4100.0;
+            float grooves=sin(gp)*(1.0-smoothstep(.7,3.0,fwidth(gp)));
+            a=(.22*twin+.035*wideFan+.018*grooves*twin)*vinylOnly;
+            float outerBevel=exp(-pow((r-.493)/.0018,2.0));
+            a+=outerBevel*.025;
+        }
+        if(rimWidth>0.0001)a*=1.0-.90*smoothstep(.498-rimWidth-.001,.498-rimWidth+.001,r);
         vec3 light=mix(vec3(1.0,.98,.93),vec3(.87,.92,.85),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;
     }

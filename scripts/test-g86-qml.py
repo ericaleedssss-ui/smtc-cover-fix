@@ -274,19 +274,29 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   probe.setParentItem(None);probe.deleteLater();backdrop.setParentItem(None);backdrop.deleteLater();QTest.qWait(80)
   rings=find('nowRecordRings');record=find('nowRecord');rings.setOpacity(1)
   page.setProperty('platterPhase',.03);QTest.qWait(80);first=w.grabWindow();first.save(str(output/'g89-ripples-a.png'))
+  sourceGrab=rings.grabToImage();QTest.qWait(80);sourceFirst=sourceGrab.image();assert not sourceFirst.isNull()
   page.setProperty('platterPhase',.18);QTest.qWait(80);second=w.grabWindow();second.save(str(output/'g89-ripples-b.png'))
+  sourceGrab=rings.grabToImage();QTest.qWait(80);sourceSecond=sourceGrab.image();assert not sourceSecond.isNull()
   field=find('nowDiscField');origin=field.mapToScene(QPointF());maximum=0;total=0
   ratio=first.devicePixelRatio()
   for py in range(int(origin.y()*ratio),int((origin.y()+field.height())*ratio),3):
    for px in range(int(origin.x()*ratio),int((origin.x()+field.width())*ratio),3):
     aa=first.pixelColor(px,py);bb=second.pixelColor(px,py);delta=max(abs(aa.red()-bb.red()),abs(aa.green()-bb.green()),abs(aa.blue()-bb.blue()));maximum=max(maximum,delta);total+=delta
-  assert maximum>=8 and total>1500,('ripple not visibly moving',maximum,total)
+  # Solid seat / charcoal PVC correctly occlude more of the underlying sheets.
+  # Check their actual source alpha independently, then require motion to remain
+  # visible through the assembled material. Keep the separate lyric-area limit.
+  sourceMaximum=0;sourceTotal=0
+  for py in range(0,sourceFirst.height(),3):
+   for px in range(0,sourceFirst.width(),3):
+    delta=abs(sourceFirst.pixelColor(px,py).alpha()-sourceSecond.pixelColor(px,py).alpha());sourceMaximum=max(sourceMaximum,delta);sourceTotal+=delta
+  assert sourceMaximum>=8 and sourceTotal>1500,('ripple source stopped moving',sourceMaximum,sourceTotal)
+  assert maximum>=3 and total>1500,('ripple hidden by assembled material',maximum,total)
   listing=find('nowPlayingLyrics');origin=listing.mapToScene(QPointF());leftMaximum=0
   for py in range(int(origin.y()*ratio),int((origin.y()+listing.height())*ratio),3):
    for px in range(int(origin.x()*ratio),int((origin.x()+listing.width())*ratio),3):
     aa=first.pixelColor(px,py);bb=second.pixelColor(px,py);leftMaximum=max(leftMaximum,abs(aa.red()-bb.red()),abs(aa.green()-bb.green()),abs(aa.blue()-bb.blue()))
   assert leftMaximum<=48,('ripple overwhelms lyrics',leftMaximum)
-  print('G89 actual ripple pixel motion:',maximum,total,'lyric-area maximum change:',leftMaximum)
+  print('G89 actual ripple pixel motion:',maximum,total,'source alpha motion:',sourceMaximum,sourceTotal,'lyric-area maximum change:',leftMaximum)
   rings.setOpacity(0)
  # Four orientations must change the printed artwork, never the fixed rim/plane.
  points=[QPointF(0,0),QPointF(base.width(),0),QPointF(0,base.height()),QPointF(base.width(),base.height())]
