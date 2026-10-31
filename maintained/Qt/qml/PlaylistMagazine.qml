@@ -16,15 +16,19 @@ Item {
     readonly property real contentLeft:Math.max(84*unit,width*.072)
     readonly property real contentRight:34*unit
     readonly property real heroHeight:Math.max(228,328*unit)
-    readonly property real rowHeight:Math.max(58,65*unit)
+    readonly property real rowHeight:Math.max(58,62*unit)
     readonly property string session:controller.session
     property bool restoring:true
     property bool selecting:false
     property string activeRowMenu:""
     readonly property bool sticky:listing.contentY-listing.startY>heroHeight
-    function titleX(){return 78*page.unit+Math.max(40,44*page.unit);}
-    function secondaryWidth(w){var room=Math.max(20*page.unit,w*.35-188*page.unit);return page.info.kind==="album"?Math.min(110*page.u,room):room;}
-    function secondaryCenter(w){return page.info.kind==="album"?((w*.42+(w*.23-22*page.unit)/2)+(w-180*page.unit+16*page.u))/2:w*.65+(w*.35-188*page.unit)/2;}
+    // Headers and delegates share the same responsive columns.
+    function titleX(){return 74*page.unit+Math.max(40,42*page.unit);}
+    function artistX(w){return w*.44;}
+    function artistWidth(w){return w*.23-20*page.unit;}
+    function secondaryX(w){return w*.67;}
+    function secondaryWidth(w){return Math.max(24*page.unit,w-secondaryX(w)-188*page.unit);}
+    function secondaryCenter(w){return secondaryX(w)+secondaryWidth(w)/2;}
     function toggleSubscription(){
         if(page.info.subscribed){unsubscribeDialog.collectionKey=page.session;unsubscribeDialog.open();}
         else page.controller.setSubscribed(page.session,true);
@@ -149,9 +153,9 @@ Item {
             Item {y:parent.height-48*page.u;width:parent.width;height:48*page.u;visible:page.controller.tab==="songs"
                 Rectangle {width:parent.width;height:1;y:2;color:page.dark?"#306a7c60":"#1973805f"}
                 Label {objectName:"magazineHeaderIndex";x:10*page.unit;width:35*page.unit;horizontalAlignment:Text.AlignHCenter;text:page.selecting?"选择":"#";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {objectName:"magazineHeaderTitle";x:page.titleX();width:parent.width*.42-x-22*page.unit;horizontalAlignment:Text.AlignHCenter;text:"标题";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {objectName:"magazineHeaderArtist";x:parent.width*.42;width:parent.width*.23-22*page.unit;horizontalAlignment:Text.AlignHCenter;text:"艺术家";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
-                Label {objectName:"magazineHeaderSecondary";width:page.secondaryWidth(parent.width);x:page.secondaryCenter(parent.width)-width/2;horizontalAlignment:Text.AlignHCenter;text:page.info.kind==="album"?"热度":"专辑";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderTitle";x:page.titleX();width:page.artistX(parent.width)-x-20*page.unit;horizontalAlignment:Text.AlignLeft;text:"标题";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderArtist";x:page.artistX(parent.width);width:page.artistWidth(parent.width);horizontalAlignment:Text.AlignLeft;text:"艺术家";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
+                Label {objectName:"magazineHeaderSecondary";width:page.secondaryWidth(parent.width);x:page.secondaryCenter(parent.width)-width/2;horizontalAlignment:page.info.kind==="album"?Text.AlignHCenter:Text.AlignLeft;text:page.info.kind==="album"?"热度":"专辑";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {objectName:"magazineHeaderHeart";x:parent.width-180*page.unit;width:32*page.u;horizontalAlignment:Text.AlignHCenter;text:"喜欢";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
                 Label {objectName:"magazineHeaderDuration";x:parent.width-104*page.unit;width:52*page.unit;horizontalAlignment:Text.AlignHCenter;text:"时长";height:parent.height;color:page.muted;font.pixelSize:12*page.u}
             }
@@ -185,30 +189,30 @@ Item {
                 }
                 Item {anchors.fill:parent;visible:page.controller.tab==="songs"
                     Label {x:10*page.unit;width:35*page.unit;horizontalAlignment:Text.AlignHCenter;height:parent.height;text:page.selecting?(rowLoader.chosen?"✓":"○"):String(rowLoader.songIndex+1).padStart(2,"0");font.pixelSize:12*page.u;color:page.muted}
-                    Rectangle {id:art;x:60*page.unit;anchors.verticalCenter:parent.verticalCenter;width:Math.max(40,44*page.unit);height:width;radius:3;color:page.dark?"#3a4433":"#dce1d1"
+                    Rectangle {id:art;x:60*page.unit;anchors.verticalCenter:parent.verticalCenter;width:Math.max(40,42*page.unit);height:width;radius:3;color:page.dark?"#3a4433":"#dce1d1"
                         Image {anchors.fill:parent;source:rowLoader.song.cover||"";asynchronous:true;sourceSize.width:96;sourceSize.height:96;fillMode:Image.PreserveAspectCrop}
                         Rectangle {anchors.fill:parent;color:"#52000000";visible:coverMouse.containsMouse}
                         RhineIcon {anchors.centerIn:parent;width:18*page.u;height:width;name:"play";color:"#ffffff";visible:coverMouse.containsMouse}
                         MouseArea {id:coverMouse;objectName:"magazineCoverPlay_"+rowLoader.songIndex;anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor
                             onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"play",rowLoader.song.identity);}}
                     }
-                    Label {objectName:"magazineTitle_"+rowLoader.songIndex;horizontalAlignment:Text.AlignHCenter;x:art.x+art.width+18*page.unit;width:parent.width*.42-x-22*page.unit;height:parent.height;text:rowLoader.song.title||"";font.pixelSize:17*page.u;font.weight:Font.Medium;color:rowLoader.song.unavailable?page.muted:page.ink
+                    Label {objectName:"magazineTitle_"+rowLoader.songIndex;horizontalAlignment:Text.AlignLeft;x:page.titleX();width:page.artistX(parent.width)-x-20*page.unit;height:parent.height;text:rowLoader.song.title||"";font.pixelSize:15*page.u;font.weight:Font.Medium;color:rowLoader.song.unavailable?page.muted:page.ink
                         MouseArea {objectName:"magazineTitleHit_"+rowLoader.songIndex;anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else if(page.selecting)page.controller.rowAction("select",rowLoader.song.identity);}onDoubleClicked:function(mouse){if(mouse.button===Qt.LeftButton&&!page.selecting)page.controller.rowAction("play",rowLoader.song.identity);}}
                     }
-                    Item {id:artistArea;objectName:"magazineArtist_"+rowLoader.songIndex;x:parent.width*.42;width:parent.width*.23-22*page.unit;height:parent.height;clip:true
-                        Label {anchors.fill:parent;horizontalAlignment:Text.AlignHCenter;visible:!(rowLoader.song.artists||[]).length;text:rowLoader.song.artist||"";color:page.muted;font.pixelSize:14*page.u}
-                        Row {anchors.horizontalCenter:parent.horizontalCenter;height:parent.height
+                    Item {id:artistArea;objectName:"magazineArtist_"+rowLoader.songIndex;x:page.artistX(parent.width);width:page.artistWidth(parent.width);height:parent.height;clip:true
+                        Label {anchors.fill:parent;horizontalAlignment:Text.AlignLeft;visible:!(rowLoader.song.artists||[]).length;text:rowLoader.song.artist||"";color:page.muted;font.pixelSize:14*page.u}
+                        Row {anchors.left:parent.left;height:parent.height
                             Repeater {model:rowLoader.song.artists||[]
                                 delegate:Label {required property var modelData;required property int index
                                     width:Math.min(implicitWidth+6*page.unit,artistArea.width/Math.max(1,(rowLoader.song.artists||[]).length));height:artistArea.height
-                                    horizontalAlignment:Text.AlignHCenter;text:(index?" / ":"")+(modelData.name||"");color:page.muted;font.pixelSize:14*page.u
+                                    horizontalAlignment:Text.AlignLeft;text:(index?" / ":"")+(modelData.name||"");color:page.muted;font.pixelSize:14*page.u
                                     MouseArea {anchors.fill:parent;enabled:!!parent.modelData.id;cursorShape:Qt.PointingHandCursor;acceptedButtons:Qt.LeftButton|Qt.RightButton
                                         onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"artist:"+parent.index,rowLoader.song.identity);}}
                                 }
                             }
                         }
                     }
-                    Label {objectName:"magazineAlbum_"+rowLoader.songIndex;horizontalAlignment:Text.AlignHCenter;visible:page.info.kind!=="album";x:parent.width*.65;width:parent.width*.35-188*page.unit;height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
+                    Label {objectName:"magazineAlbum_"+rowLoader.songIndex;horizontalAlignment:Text.AlignLeft;visible:page.info.kind!=="album";x:page.secondaryX(parent.width);width:page.secondaryWidth(parent.width);height:parent.height;text:rowLoader.song.album||"";color:page.muted;font.pixelSize:14*page.u
                         MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor;enabled:!!rowLoader.song.albumID;onClicked:function(mouse){if(mouse.button===Qt.RightButton)page.menuFor(this,rowLoader.songIndex,rowLoader.song.identity,mouse);else page.controller.rowAction(page.selecting?"select":"album",rowLoader.song.identity);}}
                     }
                     Item {objectName:"magazineHeat_"+rowLoader.songIndex;visible:page.info.kind==="album";width:page.secondaryWidth(parent.width);x:page.secondaryCenter(parent.width)-width/2;height:parent.height

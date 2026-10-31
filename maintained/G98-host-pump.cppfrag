@@ -1,0 +1,34 @@
+void Host::pump() {
+    // Bounded metadata concurrency: one slow encyclopedia response must not
+    // hold the playlist/heart state behind it. Starts remain spaced, deduped
+    // and subject to the existing service cooldown.
+    if(stopped||pumpScheduled||active.size()>=3||queue.isEmpty())return;
+    pumpScheduled=true;
+    const int wait=int(qMax<qint64>(0,interval-(QDateTime::currentMSecsSinceEpoch()-lastStart)));
+    QTimer::singleShot(wait,Qt::PreciseTimer,this,[this]{
+        pumpScheduled=false;
+        if(stopped||active.size()>=3||queue.isEmpty())return;
+        // Select at dispatch time so a new user interaction can pass a wiki
+        // that was waiting for its rate-limit slot. Equal priorities are FIFO.
+        const auto priority=[](const QString &route){
+            if(route=="/song/url"||route=="/song/url/v1")return -1;
+            if(route.endsWith("/detail")||route.endsWith("/likedIDs")||route=="/album")return 0;
+            if(route.endsWith("/wiki")||route=="/song/wiki/summary")return 2;
+            return 1;
+        };
+        int selected=0;
+        for(int i=1;i<queue.size();++i)
+            if(priority(flights.value(queue.at(i)).route)<priority(flights.value(queue.at(selected)).route))selected=i;
+        const auto key=queue.takeAt(selected);
+        if(!flights.contains(key)){pump();return;}
+        active.insert(key);
+        const auto service=routeProvider(flights.value(key).route);
+        if(blockedUntil[service]>QDateTime::currentMSecsSinceEpoch()){
+            finish(key,{},QStringLiteral("音乐服务提示访问频繁，已暂停该平台的新请求；缓存仍可浏览"));
+        }else{
+            lastStart=QDateTime::currentMSecsSinceEpoch();
+            send(key);
+        }
+        pump();
+    });
+}

@@ -1,0 +1,46 @@
+    // Hold three service responses open. The fourth must wait for a slot,
+    // and dispatch starts must still obey the minimum interval.
+    QVector<qint64> starts;
+    QElapsedTimer dispatchClock;dispatchClock.start();
+    int depth=0,maximumDepth=0,completed=0;
+    bool bounded=true;
+    host.interval=25;
+    host.fixture=[&](QString,QJsonObject parameters){
+        starts.append(dispatchClock.elapsed());
+        ++depth;maximumDepth=qMax(maximumDepth,depth);
+        const int serial=parameters["id"].toInt();
+        if(serial==0){
+            for(int i=1;i<4;++i)host.requestJson("/album",{{"id",i}},[&](QJsonObject,QString error){ok&=error.isEmpty();++completed;});
+        }
+        if(serial<3){
+            QEventLoop hold;
+            QTimer::singleShot(serial==2?100:350,&hold,&QEventLoop::quit);
+            hold.exec();
+            if(serial==2)bounded&=starts.size()==3;
+        }
+        --depth;
+        return QJsonObject{{"body",QJsonObject{{"code",200}}}};
+    };
+    host.requestJson("/album",{{"id",0}},[&](QJsonObject,QString error){ok&=error.isEmpty();++completed;});
+    ok &= waitFor([&]{return completed==4;})&&maximumDepth==3&&bounded&&starts.size()==4;
+    for(int i=1;i<starts.size();++i)ok&=starts[i]-starts[i-1]>=24;
+
+    // Selection is made when dispatch becomes possible. Detail passes wiki;
+    // equal-priority detail work retains its original order.
+    QStringList order;
+    completed=0;
+    host.fixture=[&](QString route,QJsonObject parameters){order.append(route+parameters["id"].toString());return QJsonObject{{"body",QJsonObject{{"code",200}}}};};
+    const auto receivePriority=[&](QJsonObject,QString error){ok&=error.isEmpty();++completed;};
+    host.requestJson("/song/wiki/summary",{{"id","g98-priority"}},receivePriority);
+    host.requestJson("/album",{{"id","g98-first"}},receivePriority);
+    host.requestJson("/album",{{"id","g98-second"}},receivePriority);
+    ok &= waitFor([&]{return completed==3;})&&order==QStringList{"/albumg98-first","/albumg98-second","/song/wiki/summaryg98-priority"};
+    host.interval=0;
+    host.fixture={};
+    bool failedReleased=false;
+    host.requestJson("/album",{{"id","g98-fail"}},[&](QJsonObject,QString error){failedReleased=!error.isEmpty();});
+    ok &= waitFor([&]{return failedReleased;});
+    bool recovered=false;
+    host.fixture=[](QString,QJsonObject){return QJsonObject{{"body",QJsonObject{{"code",200}}}};};
+    host.requestJson("/album",{{"id","g98-recover"}},[&](QJsonObject,QString error){recovered=error.isEmpty();});
+    ok &= waitFor([&]{return recovered;});

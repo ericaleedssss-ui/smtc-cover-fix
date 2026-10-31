@@ -165,7 +165,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
  incomingSpin=find('nowRecordPrintIncoming');assert incomingSpin
  arm=find('nowTonearmPlane')
- assert abs(arm.property('pivotX')/arm.width()-1.16)<.001 and abs(arm.property('pivotY')/arm.height()-.405)<.001
+ assert abs(arm.property('pivotX')/arm.width()-1.154)<.001 and abs(arm.property('pivotY')/arm.height()-.370)<.001
  # Entire shaft/headshell sweep stays outside the printed label and etched ring.
  import math
  etch_outer=(find('nowRecordEtch').property('radius')+14*page.property('unit'))/arm.width()
@@ -176,6 +176,15 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
    x=arm.property('pivotX')/arm.width()+math.cos(angle)*distance-.5
    y=arm.property('pivotY')/arm.height()+math.sin(angle)*distance-.5
    assert math.hypot(x,y)>etch_outer+.025,'arm sweep must clear the title ring'
+  # Sample the enlarged head assembly's conservative local bounding box,
+  # including its stylus/finger lift, rather than only the shaft centerline.
+  for qx in [-.018+i*.213/24 for i in range(25)]:
+   for qy in [-.05,.08]:
+    px=.860+1.26*(.9363*qx+.3512*qy);py=.0527+1.26*(-.3512*qx+.9363*qy)
+    scale=arm.property('armLength')/arm.width()
+    x=arm.property('pivotX')/arm.width()+scale*(px*math.cos(angle)-py*math.sin(angle))-.5
+    y=arm.property('pivotY')/arm.height()+scale*(px*math.sin(angle)+py*math.cos(angle))-.5
+    assert math.hypot(x,y)>etch_outer+.006,'enlarged head must clear etched ring throughout swing'
  # Check intermediate frames, not merely the final pose. Repeated backend
  # heartbeats must not restart a movement; reversal begins at the current pose.
  c.playing=False;c.playbackChanged.emit();QTest.qWait(130)
@@ -294,7 +303,20 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  click(find('nowAlbumHit'));assert c.actions[-1]==('album',)
  assert find('nowLike').x()<find('nowComments').x()<find('nowShare').x()<find('nowMore').x() and find('nowMoreSurface')
  assert find('nowMore').height()==36*page.property('unit')
- assert find('nowLyric_2').height()>=78*page.property('unit')
+ assert 38*page.property('unit')<=find('nowLyric_2').height()<78*page.property('unit')
+ # With compact bilingual entries, adjacent lyrics must fit intact.
+ c.currentLine=2;c.playbackChanged.emit();QTest.qWait(360)
+ listing=find('nowPlayingLyrics')
+ for n in (2,3):
+  row=find('nowLyric_'+str(n));top=row.y()-listing.property('contentY')
+  assert top>=-.5 and top+row.height()<=listing.height()+.5,('clipped adjacent lyric',n,top,row.height(),listing.height())
+ previous=find('nowLyric_1');top=previous.y()-listing.property('contentY')
+ assert top>=-.5 or previous.opacity()==0,'partial previous entry must be hidden'
+ # The equalizer's painted bounds, not just its content item, are centered.
+ bars=[find('nowPlayingBar_'+str(i)) for i in range(4)]
+ left=bars[0].mapToScene(QPointF()).x();right=bars[-1].mapToScene(QPointF(bars[-1].width(),0)).x()
+ assert abs((left+right)/2-shortcut.mapToScene(shortcut.boundingRect().center()).x())<.1
+ c.currentLine=1;c.playbackChanged.emit();QTest.qWait(360)
  listing=find('nowPlayingLyrics');old=listing.property('contentY');pos=listing.mapToScene(listing.boundingRect().center());event=QWheelEvent(pos,QPointF(w.mapToGlobal(pos.toPoint())),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False);QCoreApplication.sendEvent(w,event);QTest.qWait(80);assert listing.property('contentY')>old and not page.property('following') and not a.actions
  QTest.qWait(300);before=listing.property('contentY');c.currentLine=2;c.playbackChanged.emit();QTest.qWait(70);assert listing.property('contentY')==before
  click(find('nowLyricsFollow'));click(find('nowLyric_2'));assert c.actions[-1]==('seek',2,'netease:1')

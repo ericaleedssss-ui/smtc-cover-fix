@@ -31,7 +31,7 @@ Controls.Button {
         Repeater {model:4
             Rectangle {required property int index
                 objectName:"nowPlayingBar_"+index
-                width:2*button.unit;radius:width/2;x:(3+index*5)*button.unit;anchors.verticalCenter:parent.verticalCenter
+                width:2*button.unit;radius:width/2;x:(parent.width-17*button.unit)/2+index*5*button.unit;anchors.verticalCenter:parent.verticalCenter
                 height:(button.playing&&!button.reduced?8+9*(.5+.5*Math.sin(button.phase*Math.PI*2+index*1.5)):9+index%2*4)*button.unit
                 color:button.dark?"#b8c7a6":"#738063"
             }

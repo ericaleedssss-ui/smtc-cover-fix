@@ -2,6 +2,8 @@
 #include "MusicLibrary.h"
 #include "PlaylistMagazine.h"
 #include <QObject>
+#include <QImage>
+#include <QSet>
 #include <QVariantMap>
 
 // Content for the existing archive reading surface; transport remains MusicPlayer.
@@ -31,10 +33,13 @@ private:
     QString m_key,m_cover,m_avatar,m_artistID,m_status;
     quint64 m_generation=0,m_account=0;
     bool m_known=false,m_liked=false,m_write=false;
-    QHash<QString,QString> m_images,m_artists;
+    bool m_tagsLoading=false,m_tagsFailed=false;
+    QHash<QString,QString> m_images,m_artists,m_pixelKeys;
     QHash<QString,QJsonObject> m_albums;
     QJsonArray m_tags;
     QHash<QString,QJsonArray> m_tagsCache;
+    QSet<QString> m_imageFlights;
+    void preparePixels(QImage image,QString cacheKey,QString role,quint64 generation,quint64 account,int side,bool fallback);
     void sync();
     void syncLyrics();
     void loadTags();

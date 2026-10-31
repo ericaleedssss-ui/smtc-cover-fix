@@ -45,6 +45,7 @@ Item {
     property var pendingInfo: null
     property bool prepareTimedOut:false
     property bool preparingDeck:false
+    property int preparedFrames:0
     property bool lastStablePlaying:false
     property string lastStableSession:""
     readonly property bool armResting:recordTransitioning||!(playback.loading?(lastStablePlaying&&lastStableSession===session):playback.playing)
@@ -63,7 +64,14 @@ Item {
         if(!following||playback.index<0||!lyrics.count)return;
         var item=lyrics.itemAtIndex(playback.index);
         if(!item){Qt.callLater(follow);return;}
-        var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),item.y-(lyrics.height-item.height)/2));
+        var previous=lyrics.itemAtIndex(Math.max(0,playback.index-1));
+        var next=lyrics.itemAtIndex(Math.min(lyrics.count-1,playback.index+1));
+        var start=previous?previous.y:item.y;
+        var end=next?next.y+next.height:item.y+item.height;
+        // Fit three complete entries when possible. For long bilingual lines,
+        // show current + next intact instead of two clipped half-entries.
+        var desired=end-start<=lyrics.height?start-(lyrics.height-(end-start))/2:item.y-6*unit;
+        var target=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),desired));
         if((lyricFollowAnimation.running&&Math.abs(lyricFollowAnimation.to-target)<.5)||Math.abs(lyrics.contentY-target)<.5)return;
         lyricFollowAnimation.stop();lyricFollowAnimation.to=target;lyricFollowAnimation.duration=rhine.state.reduced?0:280;lyricFollowAnimation.start();
         lyricFollowPending=false;
@@ -75,7 +83,7 @@ Item {
     function beginRecordChange(next){
         if(!next||!next.session)return;
         preparingDeck=true;
-        swapStage="preparing";prepareTimedOut=false;pendingInfo=null;
+        swapStage="preparing";prepareTimedOut=false;pendingInfo=null;preparedFrames=0;
         artworkDeadline.restart();
         backDeck.visualInfo=mergeInfo({},next);
         preparingDeck=false;
@@ -84,6 +92,7 @@ Item {
     function maybeStartSwap(){
         if(!visualInitialized||preparingDeck||swapStage!=="preparing"||!armPlane||armPlane.pose<.995)return;
         if(!backDeck.artworkReady&&!prepareTimedOut)return;
+        if(!rhine.state.reduced&&preparedFrames<2)return;
         artworkDeadline.stop();
         swapStage="swapping";
         recordChangeAnimation.start();
@@ -127,6 +136,7 @@ Item {
     Connections {target:page.controller;function onPlaybackChanged(){page.updatePlayback();}
         function onLinesChanged(){page.lyricFollowPending=true;Qt.callLater(page.follow);}}
     Timer {id:artworkDeadline;interval:1800;onTriggered:{page.prepareTimedOut=true;page.maybeStartSwap();}}
+    FrameAnimation {running:page.visible&&page.swapStage==="preparing"&&(page.backDeck.artworkReady||page.prepareTimedOut);onTriggered:{page.preparedFrames++;page.maybeStartSwap();}}
     component Label:Text {textFormat:Text.PlainText;font.family:rhineFontFamily;color:page.ink;font.pixelSize:13*page.unit;elide:Text.ElideRight}
     component Action:Controls.Button {
         id:button
@@ -135,7 +145,7 @@ Item {
         property string subtitle:""
         focusPolicy:Qt.NoFocus;hoverEnabled:true
         implicitWidth:88*page.unit;implicitHeight:36*page.unit
-        padding:4*page.unit
+        leftPadding:4*page.unit;rightPadding:4*page.unit;topPadding:4*page.unit;bottomPadding:4*page.unit
         HoverHandler {cursorShape:Qt.PointingHandCursor;enabled:button.enabled}
         contentItem:Item {
             Rectangle {objectName:"nowActionIcon";x:0;anchors.verticalCenter:parent.verticalCenter;width:28*page.unit;height:width;radius:width/2;color:button.hovered?(rhine.state.dark?"#50fffdf3":"#c8fffdf6"):(rhine.state.dark?"#30fffdf3":"#8cfffdf6");border.width:.8*page.unit;border.color:rhine.state.dark?"#70fffdf3":"#e6fffdf3"
@@ -162,7 +172,10 @@ Item {
     }
     ListView {
         id:lyrics;objectName:"nowPlayingLyrics";x:24*unit;y:146*unit;width:page.textWidth+4*unit;height:161*unit
-        model:page.controller.lines;clip:true;boundsBehavior:Flickable.StopAtBounds;spacing:5*unit
+        model:page.controller.lines;clip:true;boundsBehavior:Flickable.StopAtBounds;spacing:8*unit;cacheBuffer:height
+        onWidthChanged:Qt.callLater(page.follow)
+        onHeightChanged:Qt.callLater(page.follow)
+        onContentHeightChanged:Qt.callLater(page.follow)
         layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software
         layer.effect:ShaderEffect {property variant source;property size panelSize:Qt.size(lyrics.width,lyrics.height);property real topInset:0;property real fadePx:10*page.unit;property real fadeTop:1;property real bottomFadePx:10*page.unit;fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"}
         WheelHandler {target:null;onWheel:e=>{page.following=false;var dy=e.pixelDelta.y||e.angleDelta.y/120*55*page.unit;lyrics.contentY=Math.max(lyrics.originY,Math.min(lyrics.originY+Math.max(0,lyrics.contentHeight-lyrics.height),lyrics.contentY-dy));e.accepted=true;}}
@@ -173,15 +186,19 @@ Item {
             required property int index
             objectName:"nowLyric_"+index
             property bool current:index===page.playback.index
-            width:lyrics.width;height:Math.max(78*page.unit,words.implicitHeight+18*page.unit)
-            opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(1,Math.max(0,(y-lyrics.contentY+height/2)/(10*page.unit)),Math.max(0,(lyrics.height-y+lyrics.contentY-height/2)/(10*page.unit))):1
+            width:lyrics.width;height:Math.max(38*page.unit,words.implicitHeight+8*page.unit)
+            // At rest, never leave a half sentence at either edge. Manual
+            // scrolling still exposes the complete lyric history naturally.
+            opacity:page.following&&(y-lyrics.contentY<-.5||y-lyrics.contentY+height>lyrics.height+.5)?0:1
             Rectangle {anchors.fill:parent;radius:5*page.unit;color:hit.containsMouse?"#186f845e":"transparent";Behavior on color {ColorAnimation {duration:120}}}
-            Label {x:2*page.unit;anchors.verticalCenter:parent.verticalCenter;width:34*page.unit;text:page.stamp(line.modelData.startMs||0);font.pixelSize:9*page.unit;color:page.muted;visible:hit.containsMouse&&page.playback.timed}
-            Column {id:words;x:33*page.unit;y:9*page.unit;width:parent.width-x-5*page.unit;spacing:4*page.unit
-                Label {width:parent.width;text:line.modelData.text||"";wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:22*page.unit;font.weight:line.current?Font.DemiBold:Font.Medium;maximumLineCount:2;color:line.current||hit.containsMouse?page.ink:(rhine.state.dark?Qt.lighter(page.muted,1.12):Qt.darker(page.muted,1.18));opacity:line.current||hit.containsMouse?1:.92}
-                Label {width:parent.width;text:line.modelData.translation||"";visible:!!text;wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:12.5*page.unit;color:page.ink;opacity:.64;maximumLineCount:2}
+            Column {id:words;x:2*page.unit;y:4*page.unit;width:parent.width-x-6*page.unit;spacing:4*page.unit
+                Label {width:parent.width;text:line.modelData.text||"";wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:20*page.unit;font.weight:Font.Medium;lineHeight:1.12;color:line.current||hit.containsMouse?page.ink:(rhine.state.dark?Qt.lighter(page.muted,1.12):Qt.darker(page.muted,1.18));opacity:line.current||hit.containsMouse?1:.78}
+                Label {width:parent.width;text:line.modelData.translation||"";visible:!!text;wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:11.5*page.unit;lineHeight:1.12;color:page.ink;opacity:line.current?.65:.48}
             }
             MouseArea {id:hit;anchors.fill:parent;hoverEnabled:true;cursorShape:page.playback.timed&&page.playback.seekable?Qt.PointingHandCursor:Qt.ArrowCursor;onClicked:{page.controller.seekLine(line.index,page.info.session);page.following=true;}}
+            Controls.ToolTip.visible:hit.containsMouse&&page.playback.timed
+            Controls.ToolTip.text:page.stamp(line.modelData.startMs||0)+" · 点击跳转"
+            Controls.ToolTip.delay:450
         }
         Label {anchors.centerIn:parent;visible:lyrics.count===0;text:page.playback.lyricStatus==="loading"?"正在读取歌词…":(page.playback.lyricStatus==="error"?"歌词暂不可用":"暂无歌词");color:page.muted}
     }
@@ -190,7 +207,7 @@ Item {
         Action {objectName:"nowLike";enabled:info.canLike&&info.likeKnown&&!info.likeBusy;text:info.likeKnown?(info.liked?"已喜欢":"喜欢"):"读取中";subtitle:info.liked?"留在喜欢里":"收藏这首歌";artwork:page.info.likeKnown?(page.info.liked?"qrc:/icons/song-like-on.png":"qrc:/icons/song-like-off.png"):"";Accessible.name:info.liked?"取消喜欢":"喜欢";onClicked:controller.operate("like")}
         Action {objectName:"nowComments";symbol:"comment";text:"评论";subtitle:rhine.state.socialSongID===page.info.id&&rhine.state.socialCommentCount>=0?String(rhine.state.socialCommentCount)+" 条评论":"查看评论";onClicked:controller.operate("comments")}
         Action {objectName:"nowShare";symbol:"share";text:"分享";subtitle:"分享这首歌";Accessible.name:"分享";onClicked:controller.operate("share")}
-        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
+        Controls.Button {objectName:"nowMore";width:36*page.unit;height:36*page.unit;padding:0;leftPadding:0;rightPadding:0;topPadding:0;bottomPadding:0;focusPolicy:Qt.NoFocus;hoverEnabled:true;Accessible.name:"更多操作"
             contentItem:Item {Row {anchors.centerIn:parent;spacing:3.5*page.unit;Repeater {model:3;Rectangle {width:2.6*page.unit;height:width;radius:width/2;color:page.ink}}}}
             background:Item {Rectangle {objectName:"nowMoreSurface";anchors.centerIn:parent;width:28*page.unit;height:width;radius:width/2;color:parent.parent.hovered?(rhine.state.dark?"#50fffdf3":"#c8fffdf6"):(rhine.state.dark?"#30fffdf3":"#8cfffdf6");border.width:.8*page.unit;border.color:rhine.state.dark?"#70fffdf3":"#e6fffdf3"}}
             HoverHandler {cursorShape:Qt.PointingHandCursor}
@@ -215,14 +232,14 @@ Item {
         required property bool front
         readonly property string nameSuffix:front?"":"Incoming"
         readonly property real transitionY:front?-12*page.unit*page.swapProgress:16*page.unit*(1-page.swapProgress)
-        readonly property real visualOpacity:front?1-page.swapProgress:page.swapProgress
+        readonly property real visualOpacity:front?1-page.swapProgress:page.swapStage==="preparing"?.001:page.swapProgress
         readonly property bool artworkReady:!!visualInfo.coverPixels&&printArt.status===Image.Ready&&printArt.source.toString()===visualInfo.coverPixels
         readonly property string etchLabel:(visualInfo.title||"")+"  ·  "+(visualInfo.artist||"")+"  ·  SIDE A  ·  33⅓  ·  RHINE MUSIC DATABASE  ·  "
         onArtworkReadyChanged:page.maybeStartSwap()
         property real phase:page.platterPhase
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
         objectName:front?"nowRecord":"nowRecordIncoming"
-        visible:front||page.swapStage==="swapping"
+        visible:front||page.swapStage!=="idle"
         z:front?2:1
         width:page.discSize;height:width
         x:parent.width-width+38*page.unit
@@ -287,8 +304,8 @@ Item {
             // same foreshortening as the record and never cross the etched
             // seat or the printed centre artwork.
             readonly property real armLength:width*.54
-            readonly property real pivotX:width*1.16
-            readonly property real pivotY:height*.405
+            readonly property real pivotX:width*1.154
+            readonly property real pivotY:height*.370
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:page.armResting?1:0
             Behavior on pose {NumberAnimation {duration:rhine.state.reduced?0:500;easing.type:Easing.InOutSine}}
@@ -297,8 +314,8 @@ Item {
             readonly property real swing:-149+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
-                    x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
-                    transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
+                    x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.16*armPlane.armLength;width:1.42*armPlane.armLength;height:.32*armPlane.armLength
+                    transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.16*armPlane.armLength;angle:armPlane.swing}
                     property variant artwork:armShadowArt
                     property real phase:armPlane.lift
                     property real shadowOnly:11
@@ -307,8 +324,8 @@ Item {
                 }
             }
             ShaderEffect {objectName:"nowTonearm"
-                x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
-                transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.14*armPlane.armLength;angle:armPlane.swing}
+                x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.16*armPlane.armLength;width:1.42*armPlane.armLength;height:.32*armPlane.armLength
+                transform:Rotation {origin.x:.26*armPlane.armLength;origin.y:.16*armPlane.armLength;angle:armPlane.swing}
                 property variant artwork:armShadowArt
                 property real phase:armPlane.lift
                 property real shadowOnly:12

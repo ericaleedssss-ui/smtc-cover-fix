@@ -1,0 +1,13 @@
+# G98 — playback queue and visual polish
+
+The tonearm head is enlarged locally by 26%, with its shader domain expanded to avoid cutting off the head. Its pivot moves slightly upper-left to expose more of the head (1.154w / .370h). The record, printed cover and original glass retain their existing size and placement. GPU regression checks include the enlarged head's swept bounds outside the etched ring.
+
+Circular artwork cropping, scaling and PNG encoding now run on the thread pool. Stale track/account/cover results cannot replace the current artwork. Incoming record layers are rendered almost transparent for two frames before the swap begins. Existing persistent decks and single-owner arm animation remain in place. These changes target identifiable work at song changes; they do not establish zero hitches in live playback.
+
+Leaving heart mode restores the original playlist without restarting the audible song. If the current recommendation is outside that playlist, the next song resumes after the original seed. Queue edits, pending-response cancellation, end-of-list, new playlists, stop and FM suspension are covered by added native checks.
+
+Metadata scheduling changes from global serial execution with 1200 ms start spacing to at most three concurrent requests with 250 ms spacing. Playback URLs and interactive detail/like requests precede encyclopedia work; equal priorities retain FIFO order. Existing deduplication, caches, account isolation and service cooldown remain. Account restoration warms shared like IDs; genre requests start immediately and cache successful empty responses. Native regressions exercise overlap, dispatch limits, spacing, priority, failure release and shutdown. Live provider latency still needs user feedback.
+
+Lyrics use adaptive complete rows, stable typography and hover timestamps. Following favors complete current/next entries when three bilingual entries will not fit; manual scrolling and seeking remain. Playlist/album columns share left-aligned geometry. Footer transport/control spacing and separate shuffle drawing are synchronized with hit areas; the now-playing equalizer uses its actual painted center.
+
+Local production QML tests passed on software rendering and RTX 3080 Ti D3D11, including motion reversals, rapid song changes, bounded missing artwork, persistent deck identity, four layouts, glass masks, lyric follow/scroll/seek, shared actions and icon centering. Playlist/album description regressions passed at four sizes. Complete Qt 6.12/MSVC native compilation, integrated UI checks and packaging run in CI. Broader real-account performance and subjective UI acceptance remain separate from fixture checks.

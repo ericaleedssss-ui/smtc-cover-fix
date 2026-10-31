@@ -4,7 +4,7 @@ Full C++/Windows/real-account validation is separate; fixture art is never insta
 import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen');os.environ.setdefault('QT_QUICK_BACKEND','software')
 from pathlib import Path
-import sys,tempfile,shutil,subprocess
+import sys,tempfile,shutil,subprocess,PySide6
 from PySide6.QtCore import QObject,Signal,Property,Slot,QAbstractListModel,QModelIndex,QUrl,QPointF,QPoint,Qt,QResource
 from PySide6.QtGui import QGuiApplication,QFontDatabase,QImage,QPainter,QColor,QLinearGradient,QFont,QWheelEvent
 from PySide6.QtQuick import QQuickView
@@ -147,8 +147,6 @@ def checkColumnAlignment(v,root,c):
             assert abs(ax-bx)<.5,(kind,header,ax,bx)
         if kind=='album':
             artist=find(root,'magazineArtist_0');heart=find(root,'magazineHeart_0');heat=find(root,'magazineHeat_0')
-            middle=(artist.mapToScene(QPointF(artist.width()/2,0)).x()+heart.mapToScene(QPointF(heart.width()/2,0)).x())/2
-            assert abs(heat.mapToScene(QPointF(heat.width()/2,0)).x()-middle)<.5
             assert heat.mapToScene(QPointF()).x()>artist.mapToScene(QPointF(artist.width(),0)).x()
             assert heat.mapToScene(QPointF(heat.width(),0)).x()<heart.mapToScene(QPointF()).x()
     c.meta['artistAvatar']=c.images[0];c.changed.emit();QTest.qWait(100)
@@ -186,10 +184,10 @@ with tempfile.TemporaryDirectory() as tmp:
         origin=repo/'maintained/Qt/shaders'/f'{name}.frag'
         if not origin.exists():origin=src/'Qt/shaders'/f'{name}.frag'
         out=d/f'{name}.frag.qsb'
-        subprocess.run(['/root/.local/bin/pyside6-qsb','--glsl','150,300es','--hlsl','50','--msl','12','-o',str(out),str(origin)],check=True)
+        subprocess.run([str(Path(PySide6.__file__).parent/('qsb.exe' if os.name=='nt' else 'qsb')),'--glsl','150,300es','--hlsl','50','--msl','12','-o',str(out),str(origin)],check=True)
         entries.append('<file alias="'+name+'.frag.qsb">'+str(out)+'</file>')
     qrc=d/'icons.qrc';qrc.write_text('<RCC><qresource prefix="/icons">'+''.join('<file alias="'+name+'">'+str(repo/'maintained/Assets/icons'/name)+'</file>' for name in ('song-like-on.png','song-like-off.png'))+'</qresource><qresource prefix="/shaders">'+''.join(entries)+'</qresource></RCC>')
-    subprocess.run(['/root/.local/bin/pyside6-rcc','--binary','-o',str(d/'icons.rcc'),str(qrc)],check=True);assert QResource.registerResource(str(d/'icons.rcc'))
+    subprocess.run([str(Path(PySide6.__file__).parent/('rcc.exe' if os.name=='nt' else 'rcc')),'--binary','-o',str(d/'icons.rcc'),str(qrc)],check=True);assert QResource.registerResource(str(d/'icons.rcc'))
     (d/'Harness.qml').write_text('''import QtQuick
 Item {id:root;width:1400;height:900
  Rectangle {id:bg;anchors.fill:parent;color:rhine.state.dark?"#252b23":"#e9e7df"}

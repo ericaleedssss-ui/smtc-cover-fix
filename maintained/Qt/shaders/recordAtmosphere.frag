@@ -31,12 +31,14 @@ void main() {
     if(shadowOnly>10.5){
         // Arm-local frame in units of effective length: pivot at the origin,
         // stylus at (1,0). Fixed key light from the upper right of the glass.
-        vec2 p=vec2(qt_TexCoord0.x*1.34-.26,(qt_TexCoord0.y-.5)*.28);
+        vec2 p=vec2(qt_TexCoord0.x*1.42-.26,(qt_TexCoord0.y-.5)*.32);
         float lift=phase;
         vec2 J=vec2(.860,.0527);
         vec2 td=normalize(J);
         vec2 ht=vec2(.9363,-.3512),hn=vec2(.3512,.9363);
-        vec2 q=vec2(dot(p-J,ht),dot(p-J,hn));
+        // Enlarge only the cartridge assembly; retain shaft length and its
+        // physical connection. Apply the same geometry to the cast shadow.
+        vec2 q=vec2(dot(p-J,ht),dot(p-J,hn))/1.26;
         if(shadowOnly<11.5){
             // Cast shadow on the record: softer and lighter while lifted.
             vec2 bend=vec2(.34,.018);

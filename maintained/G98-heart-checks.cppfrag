@@ -1,0 +1,32 @@
+        // Exit helper simulates hearing a recommendation outside the source.
+        const auto exitFrom=[&](int seed){
+            player.leaveHeart();
+            player.current=ordered.at(seed).toObject();player.queue=ordered;player.index=seed;player.mode="shuffle";
+            player.startHeart("42",[]{return true;});settle(500);
+            player.current=player.queue.last().toObject();player.index=player.queue.size()-1;
+            player.leaveHeart();
+        };
+        exitFrom(1);const auto atEnd=player.current;
+        player.next();
+        check(player.current==atEnd&&player.index==-1&&player.queue==ordered,
+              "G98 source end does not replay its final song after leaving heart");
+        exitFrom(0);player.remove(0);player.next();
+        check(player.current["id"]==second["id"]&&player.index==0,
+              "G98 deleting the resume seed keeps the next original song");
+        exitFrom(0);auto inserted=song;inserted["id"]="g98-inserted";player.enqueue(inserted,true);player.next();
+        check(player.current["id"]=="g98-inserted"&&player.index==1,
+              "G98 play-next insertion uses restored source position");
+        exitFrom(0);const auto keepOnly=player.current;player.clearUpcoming();
+        check(player.queue==QJsonArray{keepOnly}&&player.index==0,
+              "G98 clear-upcoming clears the detached source resume position");
+        exitFrom(0);const auto detached=player.current;
+        player.startRoam("42",[]{return true;});player.leaveRoam(true);
+        check(player.queue==ordered&&player.current==detached&&player.index==-1,
+              "G98 FM preserves a restored source with an out-of-source current song");
+        player.next();check(player.current["id"]==second["id"],"G98 FM return preserves the original resume position");
+        exitFrom(0);const QJsonArray newSource{inserted};player.play(inserted,newSource);
+        player.leaveHeart();
+        check(player.queue==newSource&&player.current["id"]=="g98-inserted",
+              "G98 explicit new playlist discards old heart context");
+        player.stop();player.leaveHeart();
+        check(player.queue.isEmpty()&&player.current.isEmpty(),"G98 stopping cannot resurrect a heart source queue");

@@ -19,7 +19,7 @@ struct MusicApi {using Valid=std::function<bool()>;QString provider="netease";st
  void complete(int i,MusicReply reply){auto r=requests.at(i);if(r.valid())r.cb(reply);}
 };
 struct MusicPlayer:QObject {
- MusicApi *m_api;QJsonArray queue,m_roamSavedQueue;QJsonObject current,m_roamSavedCurrent,state;int index=-1,m_roamSavedIndex=-1;QString mode="all",status,roamStatus,m_roamUid,m_roamSavedMode;bool heartPending=false,m_restoringRoamContext=false,roamActive=false,roamLoading=false,m_roamSavedPaused=false,m_roamInternalPlay=false,m_resumePaused=false;quint64 m_roamGeneration=0,m_generation=0;double m_roamSavedPosition=0,m_resumePosition=0;MusicApi::Valid m_roamAccountValid;int changes=0,starts=0,plays=0,stops=0;
+ MusicApi *m_api;QJsonArray queue,m_roamSavedQueue,m_heartSavedQueue;int m_heartSavedIndex=-1;std::optional<int> m_heartResumeIndex,m_roamSavedHeartResumeIndex;bool m_heartHasContext=false;QJsonObject current,m_roamSavedCurrent,state;int index=-1,m_roamSavedIndex=-1;QString mode="all",status,roamStatus,m_roamUid,m_roamSavedMode;bool heartPending=false,m_restoringRoamContext=false,roamActive=false,roamLoading=false,m_roamSavedPaused=false,m_roamInternalPlay=false,m_resumePaused=false;quint64 m_roamGeneration=0,m_generation=0;double m_roamSavedPosition=0,m_resumePosition=0;MusicApi::Valid m_roamAccountValid;int changes=0,starts=0,plays=0,stops=0;
  explicit MusicPlayer(MusicApi *api):m_api(api){}
  void changed(){++changes;}void roamSongStarted(){++starts;}void setPaused(bool p){state["playing"]=!p;}
  void stop(){++stops;++m_generation;queue={};current={};index=-1;mode="all";state["playing"]=false;}
