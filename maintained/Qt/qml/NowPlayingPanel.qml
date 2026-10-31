@@ -300,16 +300,16 @@ Item {
         Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x;y:record.y;width:record.width;height:record.height;z:3
             visible:true
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            readonly property real armLength:width*.48
-            // The pivot stays just beyond the record edge; the visible tip
-            // remains on the white outer groove instead of crossing the print.
-            readonly property real pivotX:width*1.02
-            readonly property real pivotY:height*.60
+            readonly property real armLength:width*.52
+            // Keep the bearing outside the record while leaving a readable
+            // section of shaft and headshell over the white outer groove.
+            readonly property real pivotX:width*.96
+            readonly property real pivotY:height*.68
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-108+8*pose
+            readonly property real swing:-112+8*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
