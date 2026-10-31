@@ -153,7 +153,7 @@ edit('Qt/tests/UiChecks.cpp','''        const auto heartQueue = player.queue;'''
               "G98 exiting heart restores original queue and keeps current audio");
         player.mode="shuffle";player.startHeart("42", []{return true;});settle(500);''')
 edit('Qt/tests/UiChecks.cpp','''        player.cancelHeart(); player.current = previousCurrent; player.queue = previousQueue;''','''        player.leaveHeart();
-        auto second=song;second["id"]="g98-next";
+        auto second=MusicData::item("song","g98-next","Next original song");
         const QJsonArray ordered{song,second};
         player.current=song;player.queue=ordered;player.index=0;player.mode="shuffle";
         player.startHeart("42",[]{return true;});settle(500);
@@ -172,3 +172,43 @@ edit('Qt/tests/UiChecks.cpp','''        player.cancelHeart(); player.current = p
         player.cancelHeart(); player.current = previousCurrent; player.queue = previousQueue;''')
 edit('Qt/tests/UiChecks.cpp','        player.cancelHeart(); player.current = previousCurrent; player.queue = previousQueue;',
      (root/'maintained/G98-heart-checks.cppfrag').read_text(encoding='utf-8')+'\n        player.cancelHeart(); player.current = previousCurrent; player.queue = previousQueue;')
+
+# Exercise the production player and its synchronous UI observer on a separate
+# offline domain. play/stop also change media, lyrics, requests and browse state;
+# restoring only four public fields leaks those effects into later GUI checks.
+edit('Qt/tests/UiChecks.cpp','''        auto previousFixture = backend.host.fixture;
+        auto &player = music.player;
+        const auto previousCurrent = player.current;
+        const auto previousQueue = player.queue;
+        const auto previousMode = player.mode;
+        const auto previousIndex = player.index;
+        bool rejectHeart = false;
+        backend.host.fixture = [&](QString route, QJsonObject) {''','''        Host heartHost(backend.host.root,true);
+        MusicLibrary heartMusic(&heartHost,{});
+        heartMusic.provider=heartMusic.api.provider="netease";
+        PlaylistShowcase heartShowcase(&heartMusic,&hud);
+        auto &player=heartMusic.player;
+        bool rejectHeart = false;
+        heartHost.fixture = [&](QString route, QJsonObject) {''')
+edit('Qt/tests/UiChecks.cpp','''        player.cancelHeart(); player.current = previousCurrent; player.queue = previousQueue;
+        player.index = previousIndex; player.mode = previousMode;
+        backend.host.fixture = previousFixture;''','''        player.stop();''')
+
+# Pre-baked QSB shaders can render while status remains Uncompiled (0).
+# Verify actual shader output as well as the resource and diagnostic state.
+edit('Qt/tests/UiChecks.cpp','#include <QQuickWindow>','#include <QQuickWindow>\n#include <QQuickItemGrabResult>')
+edit('Qt/tests/UiChecks.cpp','''        check(edge && edge->property("status").toInt() == 1,
+              "spatial lyric blur shader compiles and renders on the packaged Windows backend");''','''        QImage lyricShaderPixels;
+        const auto capture=edge?edge->grabToImage():QSharedPointer<QQuickItemGrabResult>{};
+        if(capture){
+            QElapsedTimer renderWait;renderWait.start();
+            while(capture->image().isNull()&&renderWait.elapsed()<3000)settle(20);
+            lyricShaderPixels=capture->image();
+        }
+        int lyricInk=0;
+        for(int y=0;y<lyricShaderPixels.height();++y)for(int x=0;x<lyricShaderPixels.width();++x)
+            lyricInk+=qAlpha(lyricShaderPixels.pixel(x,y))>8;
+        if(edge)qInfo()<<"Lyric shader status/log/painted pixels"<<edge->property("status")<<edge->property("log")<<lyricInk;
+        check(edge && edge->property("status").toInt()!=2 && edge->property("log").toString().isEmpty() &&
+              QFile::exists(":/shaders/lyricsEdge.frag.qsb") && lyricInk>50,
+              "spatial lyric blur shader compiles and renders on the packaged Windows backend");''')

@@ -1,6 +1,7 @@
         // Exit helper simulates hearing a recommendation outside the source.
         const auto exitFrom=[&](int seed){
-            player.leaveHeart();
+            // Each scenario starts a new session, including its private resume anchor.
+            player.stop();
             player.current=ordered.at(seed).toObject();player.queue=ordered;player.index=seed;player.mode="shuffle";
             player.startHeart("42",[]{return true;});settle(500);
             player.current=player.queue.last().toObject();player.index=player.queue.size()-1;
@@ -13,7 +14,7 @@
         exitFrom(0);player.remove(0);player.next();
         check(player.current["id"]==second["id"]&&player.index==0,
               "G98 deleting the resume seed keeps the next original song");
-        exitFrom(0);auto inserted=song;inserted["id"]="g98-inserted";player.enqueue(inserted,true);player.next();
+        exitFrom(0);auto inserted=MusicData::item("song","g98-inserted","Inserted song");player.enqueue(inserted,true);player.next();
         check(player.current["id"]=="g98-inserted"&&player.index==1,
               "G98 play-next insertion uses restored source position");
         exitFrom(0);const auto keepOnly=player.current;player.clearUpcoming();

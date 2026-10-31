@@ -16,7 +16,7 @@ PlaylistShowcase::PlaylistShowcase(MusicLibrary *music,NativeHud *hud,QObject *p
 }
 void PlaylistShowcase::syncHeart(){
     const auto heart=m_music->provider+":"+m_music->uid+":"+key(m_music->player.current)+":"+QString::number(m_music->accountGeneration());
-    if(heart!=m_heartQuery){m_heartQuery=heart;if(m_music->player.current["kind"]=="song"&&!m_music->likedIDs&&m_music->provider=="netease"&&!m_music->uid.isEmpty())m_music->ensureLikedIDs();}
+    if(heart!=m_heartQuery){m_heartQuery=heart;if(m_music->player.current.value("kind")=="song"&&!m_music->likedIDs&&m_music->provider=="netease"&&!m_music->uid.isEmpty())m_music->ensureLikedIDs();}
 }
 void PlaylistShowcase::sync(){
     syncHeart();

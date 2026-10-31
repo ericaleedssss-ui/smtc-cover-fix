@@ -1,4 +1,20 @@
-# G98 工作交接：未完成，先读本文再继续
+# G98 工作交接：构建回归修复，先读最新状态
+
+## 最新状态（2026-10-31，优先于下方历史调查）
+
+- G98 已在 `6ee5dfdb67aab47589fc50ee9df0b163cbd433f5` 提交并推送至 `rhine-g95-unified-record`。下方“未提交”“未应用”等均为此前调查的历史状态。
+- 用户报告的失败运行：<https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41198449420>，job `124529271414`。Qt 6.12/MSVC 编译、部署、源码保护和仓库边界检查通过；失败在界面回归，打包尚未运行。
+- 六项失败：删除心动 resume seed、stop 后空歌曲、进度 hover/时间/副歌比例三项、旧歌词 ShaderEffect status 断言。其余新增心动边界和 G88 布局检查通过。
+- 本轮修复：`PlaylistShowcase::syncHeart` 改用 `.value("kind")`，防止读取不存在字段时将空 current 写成 `{kind:null}`；stop 断言继续保留且使用真实同步观察者。
+- 心动用例 `exitFrom` 原只 leaveHeart，再直接替换 public queue/current，会保留上一用例私有 resume anchor（末尾用例留下1，下一用例想从0开始）。每个场景改用 stop 重置。测试歌曲用 MusicData::item 创建，避免换 id 却保留旧 key。
+- 整组心动检查改用独立 offline Host + MusicLibrary + PlaylistShowcase，仍执行生产代码；避免 play/stop 清歌词、媒体 state、加载和异步请求后仅恢复四个 public 字段，污染后续 GUI。未删除功能断言。
+- 单独运行生产 `LyricsReading.qml`、原 `lyricsEdge.frag`，本地 Windows D3D11 实际渲染成功，status 却为0。旧 `status==1` 不适用于这种预编译 QSB；改为资源存在、无Error/无log以及抓取 shader 输出有实际非透明像素。临时英文 Shader regression 只在 TEMP 测试窗口，不进产品。
+- 已从134个固定上游文件重建 `%TEMP%/rhine-motion-qa/g98-ci-fix`，完整 G53 + apply-maintained 成功；唱头位置和动画未再修改。最终 MSVC、集成检查、offline regressions、打包仍需新CI核验。
+- 日志无需重新全文读取：上一轮 functions store `g98logtext` 有完整日志；极大，筛选输出，不要整段打印。旧日志的 sccache/Node 警告不是此次失败根因。
+
+---
+
+以下为此前排查记录，保留供追溯；状态以上述最新记录为准。
 
 更新时间：2026-10-31。本文件记录当前调查结果与未完成改动，防止压缩后重复排查。
 
