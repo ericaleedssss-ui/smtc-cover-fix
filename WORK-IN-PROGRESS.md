@@ -2,6 +2,10 @@
 
 ## 最新状态（2026-10-31，优先于下方历史调查）
 
+- 第二次构建 `41200398052` / 提交 `6e449e5`：编译、部署及**全部界面检查已通过**；之后 `npm test` 的七个 CTest 中只有 `qt_offline` 失败，输出定位为 Native Host 检查。其余六项通过，尚未打包。
+- 已复现 Host 新调度检查的真实计时缺陷：offline send 多一次0ms事件循环投递，但 lastStart 在该投递前记录；Windows事件循环下25ms要求实际首两次只有9–13ms。用同一 Windows PySide6 Qt 事件循环模拟生产 pump，修改前12/12次失败（最大并发3和排队边界通过），修复后12/12次全部>=25ms。
+- 本轮改为 QElapsedTimer 单调计时，offline 在真正 service entry 更新并继续 pump，live 仍在 send 边界更新；dispatch 再核对最小间隔。非调度直达请求不重置 metadata 计时。保留 max3并发/优先级/缓存/去重/cooldown；增加具名诊断，未跳过离线检查。最终 C++ 集成仍需下一次CI验证。
+
 - G98 已在 `6ee5dfdb67aab47589fc50ee9df0b163cbd433f5` 提交并推送至 `rhine-g95-unified-record`。下方“未提交”“未应用”等均为此前调查的历史状态。
 - 用户报告的失败运行：<https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41198449420>，job `124529271414`。Qt 6.12/MSVC 编译、部署、源码保护和仓库边界检查通过；失败在界面回归，打包尚未运行。
 - 六项失败：删除心动 resume seed、stop 后空歌曲、进度 hover/时间/副歌比例三项、旧歌词 ShaderEffect status 断言。其余新增心动边界和 G88 布局检查通过。

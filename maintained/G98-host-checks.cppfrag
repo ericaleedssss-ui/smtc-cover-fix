@@ -22,8 +22,11 @@
         return QJsonObject{{"body",QJsonObject{{"code",200}}}};
     };
     host.requestJson("/album",{{"id",0}},[&](QJsonObject,QString error){ok&=error.isEmpty();++completed;});
-    ok &= waitFor([&]{return completed==4;})&&maximumDepth==3&&bounded&&starts.size()==4;
-    for(int i=1;i<starts.size();++i)ok&=starts[i]-starts[i-1]>=24;
+    const bool overlap=waitFor([&]{return completed==4;})&&maximumDepth==3&&bounded&&starts.size()==4;
+    bool spaced=true;
+    for(int i=1;i<starts.size();++i)spaced&=starts[i]-starts[i-1]>=25;
+    qInfo()<<"G98 metadata overlap / spacing / starts"<<overlap<<spaced<<starts;
+    ok &= overlap&&spaced;
 
     // Selection is made when dispatch becomes possible. Detail passes wiki;
     // equal-priority detail work retains its original order.
@@ -34,7 +37,9 @@
     host.requestJson("/song/wiki/summary",{{"id","g98-priority"}},receivePriority);
     host.requestJson("/album",{{"id","g98-first"}},receivePriority);
     host.requestJson("/album",{{"id","g98-second"}},receivePriority);
-    ok &= waitFor([&]{return completed==3;})&&order==QStringList{"/albumg98-first","/albumg98-second","/song/wiki/summaryg98-priority"};
+    const bool prioritized=waitFor([&]{return completed==3;})&&order==QStringList{"/albumg98-first","/albumg98-second","/song/wiki/summaryg98-priority"};
+    qInfo()<<"G98 metadata priority"<<prioritized<<order;
+    ok &= prioritized;
     host.interval=0;
     host.fixture={};
     bool failedReleased=false;

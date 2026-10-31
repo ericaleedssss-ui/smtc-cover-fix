@@ -4,10 +4,11 @@ void Host::pump() {
     // and subject to the existing service cooldown.
     if(stopped||pumpScheduled||active.size()>=3||queue.isEmpty())return;
     pumpScheduled=true;
-    const int wait=int(qMax<qint64>(0,interval-(QDateTime::currentMSecsSinceEpoch()-lastStart)));
+    const int wait=lastStart.isValid()?int(qMax<qint64>(0,interval-lastStart.elapsed())):0;
     QTimer::singleShot(wait,Qt::PreciseTimer,this,[this]{
         pumpScheduled=false;
         if(stopped||active.size()>=3||queue.isEmpty())return;
+        if(lastStart.isValid()&&lastStart.elapsed()<interval){pump();return;}
         // Select at dispatch time so a new user interaction can pass a wiki
         // that was waiting for its rate-limit slot. Equal priorities are FIFO.
         const auto priority=[](const QString &route){
@@ -26,9 +27,11 @@ void Host::pump() {
         if(blockedUntil[service]>QDateTime::currentMSecsSinceEpoch()){
             finish(key,{},QStringLiteral("音乐服务提示访问频繁，已暂停该平台的新请求；缓存仍可浏览"));
         }else{
-            lastStart=QDateTime::currentMSecsSinceEpoch();
+            if(!offline)lastStart.start();
             send(key);
         }
-        pump();
+        // Offline delivery has its own event-loop hop. Start its next slot
+        // from actual service entry, just as live send starts at this boundary.
+        if(!offline)pump();
     });
 }

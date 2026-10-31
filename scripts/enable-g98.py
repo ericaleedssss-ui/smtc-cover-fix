@@ -104,9 +104,10 @@ edit('Qt/qml/Main.qml','x:root.width-98*root.stageScale;y:1011*root.stageScale',
 edit('Qt/qml/Main.qml','x:root.width/2-168*root.stageScale;y:1017*root.stageScale','x:root.width/2-156*root.stageScale;y:1017*root.stageScale')
 print('G98: heart queue restoration, account-time likes and balanced footer installed.')
 
-edit('Qt/src/Host.h','#include <QQueue>','#include <QQueue>\n#include <QSet>')
+edit('Qt/src/Host.h','#include <QQueue>','#include <QQueue>\n#include <QSet>\n#include <QElapsedTimer>')
 edit('Qt/src/Host.h','    int interval = 1200;','    int interval = 250;')
 edit('Qt/src/Host.h','    QString active;','    QSet<QString> active;\n    bool pumpScheduled=false;')
+edit('Qt/src/Host.h','    qint64 lastStart = 0;','    QElapsedTimer lastStart;')
 p=Path('Qt/src/Host.cpp');s=p.read_text(encoding='utf-8')
 a=s.index('void Host::pump() {');b=s.index('void Host::send(',a)
 s=s[:a]+(root/'maintained/G98-host-pump.cppfrag').read_text(encoding='utf-8')+'\n'+s[b:]
@@ -118,6 +119,12 @@ assert s.count(old)==1,'G98 Host finish anchor changed'
 s=s.replace(old,'''    active.remove(key);
     pump();''',1)
 p.write_text(s,encoding='utf-8')
+edit('Qt/src/Host.cpp','''            if (fixture) {
+                finish(key, fixture(work.route, work.params));''','''            // Measure dispatch spacing with the same monotonic clock as the
+            // live scheduler, at service entry rather than timer submission.
+            if(active.contains(key)){lastStart.start();pump();}
+            if (fixture) {
+                finish(key, fixture(work.route, work.params));''')
 edit('Qt/src/Host.cpp','    queue.clear();','    queue.clear();active.clear();pumpScheduled=false;')
 
 edit('Qt/tests/NativeHostChecks.cpp','#include <QElapsedTimer>','#include <QElapsedTimer>\n#include <QEventLoop>\n#include <QPointer>\n#include <QVector>')
@@ -142,7 +149,9 @@ edit('Qt/tests/NativeHostChecks.cpp','''    const auto originalEpoch = host.epoc
         return QJsonObject{{"body",QJsonObject{{"code",200}}}};
     };
     host.requestJson("/song/wiki/summary",{{"id","g98-slow"}},[&](QJsonObject,QString error){wikiFinished=error.isEmpty();});
-    ok &= waitFor([&]{return wikiFinished&&detailFinished;})&&detailOvertookWiki;
+    const bool overtook=waitFor([&]{return wikiFinished&&detailFinished;})&&detailOvertookWiki;
+    qInfo()<<"G98 metadata detail overtakes slow wiki"<<overtook;
+    ok &= overtook;
     host.fixture=[&](QString,QJsonObject parameters){++requests;return QJsonObject{{"body",QJsonObject{{"code",200},{"query",parameters["keywords"]}}}};};
 
     const auto originalEpoch = host.epoch;''')
