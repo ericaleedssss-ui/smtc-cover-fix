@@ -269,7 +269,7 @@ Item {
         property real visualOpacity:1
         property real phase:page.platterPhase
         readonly property string visualSession:(visualInfo&&visualInfo.session)||""
-        readonly property bool artworkReady:!(visualInfo&&visualInfo.coverLoading)&&(!(visualInfo&&visualInfo.coverPixels)||printArt.status===Image.Ready)
+        readonly property bool artworkReady:!(visualInfo&&visualInfo.coverLoading)&&(!(visualInfo&&visualInfo.coverPixels)||printArt.status===Image.Ready||printArt.status===Image.Error)
         width:page.discSize;height:width
         x:parent.width-width+38*page.unit
         y:(parent.height-height)/2-6*page.unit+transitionY
@@ -358,7 +358,7 @@ Item {
             RecordTonearm {objectName:"nowTonearmSoftwareFallback";anchors.fill:parent;visible:GraphicsInfo.api===GraphicsInfo.Software;playing:armPlane.pose<.5;reduced:rhine.state.reduced;dark:rhine.state.dark}
         }
     }
-    Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:{page.recordCoverReady=true;page.startRecordVisualTransition()}}
+    Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:{if(!page.recordTransitioning)return;if(incomingRecord.artworkReady){page.recordCoverReady=true;page.startRecordVisualTransition();}else page.recordCoverWait.restart()}}
     NumberAnimation {id:armMotionAnimation;target:armPlane;property:"pose";to:armPlane.normalPose;easing.type:Easing.InOutCubic
         onFinished:page.handleArmMotionFinished()
     }
