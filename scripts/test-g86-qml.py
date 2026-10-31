@@ -152,7 +152,7 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert find('nowTonearm') is not None and find('nowTonearmPlane') is not None and find('nowTonearmShadow') is not None
  incoming=find('nowRecordIncoming');assert incoming and not incoming.isVisible()
  incomingSpin=find('nowRecordPrintIncoming');assert incomingSpin
- assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.10)<.001
+ assert abs(find('nowTonearmPlane').property('pivotX')/find('nowTonearmPlane').width-1.02)<.001
  c.coverPending=True;c.at=1;c.changed.emit();QTest.qWait(90)
  assert incoming.isVisible() and page.property('recordTransitioning') and incoming.property('visualSession')==c.info['session']
  assert not page.property('recordVisualTransitionRunning'), 'record fade waits while the incoming cover is loading'
@@ -169,10 +169,12 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert armPage.property('armTransitionRunning'), 'routine playback notifications must not cancel the tonearm transition'
  assert armPlane.property('pose')>pose, 'tonearm motion must continue through routine playback notifications'
  c.playing=False;c.playbackChanged.emit();QTest.qWait(100)
- assert armPage.property('armTransitionRunning'), 'pause during a record transition must not cancel the arm sequence'
+ assert not armPage.property('armTransitionRunning'), 'pause takes ownership of the tonearm immediately'
+ assert armPlane.property('pose')>.1, 'pause moves the tonearm toward its lifted pose'
  c.playing=True;c.playbackChanged.emit();QTest.qWait(100)
- assert armPage.property('armTransitionRunning'), 'resume during a record transition must not cancel the arm sequence'
- QTest.qWait(1450);assert not incoming.isVisible() and not page.property('recordTransitioning')
+ assert not armPage.property('armTransitionRunning'), 'resume uses the playback controller, not the record gesture'
+ assert armPlane.property('pose')<.9, 'resume moves the tonearm back toward playback'
+ QTest.qWait(500);assert not incoming.isVisible() and not page.property('recordTransitioning')
  assert find('nowRecord').property('visualSession')==c.info['session'] and find('nowTonearmPlane').property('pose')<.1
  # Pause/resume outside a track change must animate through intermediate poses,
  # rather than snapping directly to normalPose.
