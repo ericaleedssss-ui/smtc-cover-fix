@@ -251,14 +251,14 @@ Item {
             // remains in the platter plane, so these proportions inherit the
             // same foreshortening as the record and never cross the etched
             // seat or the printed centre artwork.
-            readonly property real armLength:width*.50
-            readonly property real pivotX:width*1.10
-            readonly property real pivotY:height*.50
+            readonly property real armLength:width*.52
+            readonly property real pivotX:width*1.13
+            readonly property real pivotY:height*.45
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-146+18*pose
+            readonly property real swing:-149+18*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
