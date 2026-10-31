@@ -197,7 +197,9 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
  assert .03<middle<.97,'play must visibly animate back'
  c.playing=False;c.playbackChanged.emit();assert abs(arm.property('pose')-middle)<.02
  wait_until(lambda:arm.property('pose')>middle+.005)
- c.playing=True;c.playbackChanged.emit();QTest.qWait(500);assert arm.property('pose')<.001
+ # Completion is delivered on a render/event-loop tick after the 500ms
+ # animation boundary. Keep a bounded deadline instead of sampling that edge.
+ c.playing=True;c.playbackChanged.emit();wait_until(lambda:arm.property('pose')<.001,900)
  c.loading=True;c.playbackChanged.emit();QTest.qWait(500);assert arm.property('pose')<.001,'buffering is not an explicit pause'
  c.loading=False;c.playbackChanged.emit()
  old_front=find('nowRecord');c.at=1;c.changed.emit();QTest.qWait(110)
@@ -263,7 +265,9 @@ ArchiveReading {id:reading;dark:rhine.state.dark;background:bg;materialLayer:bas
   def alpha(x,y=.25):
    point=page.mapToScene(QPointF(page.width()*x,page.height()*y));ratio=mask.devicePixelRatio();return mask.pixelColor(round(point.x()*ratio),round(point.y()*ratio)).red()
   # Subpixel antialiasing at the outer edge differs between 1x OpenGL and 2x D3D.
-  assert 80<alpha(.35)<140 and 150<alpha(.5)<210 and alpha(.74)>245 and 170<alpha(.99)<235,('assembled fade',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
+  # The material study deliberately retains more of the left record surface.
+  # Preserve a progressive fade and strict rounded clipping for every layer.
+  assert 120<alpha(.35)<145 and 185<alpha(.5)<205 and alpha(.74)>245 and 170<alpha(.99)<235,('assembled fade',[(x,alpha(x)) for x in (.35,.5,.74,.99)])
   assert alpha(.995,.005)==0 and alpha(.995,.995)==0,('gloss/shadow must not escape rounded glass corners',alpha(.995,.005),alpha(.995,.995))
   mask.save(str(output/'g92-assembled-mask.png'))
   print('G94 continuous assembled mask brightness on black:',[(x,alpha(x)) for x in (.35,.5,.74,.99)])

@@ -22,10 +22,22 @@ vec3 armMetal(float n, float la, float lz, float dark){
     vec2 Lv=normalize(vec2(la,lz));
     float dif=max(dot(N,Lv),0.0);
     float spe=pow(max(dot(N,normalize(Lv+vec2(0.0,1.0))),0.0),56.0);
-    vec3 lo=mix(vec3(.43,.41,.37),vec3(.27,.29,.27),dark);
+    vec3 lo=mix(vec3(.25,.26,.23),vec3(.16,.19,.17),dark);
     vec3 hi=mix(vec3(.96,.94,.87),vec3(.70,.73,.68),dark);
-    vec3 c=mix(lo,hi,dif)+vec3(1.0,.98,.90)*spe*.62;
+    vec3 c=mix(lo,hi,dif)+vec3(1.0,.98,.90)*spe*.55;
     return c*(.82+.18*N.y);
+}
+// Warm satin headshell: the same cream light as the vinyl, with a broad,
+// restrained reflection instead of the shaft's sharper polished highlight.
+vec3 shellSatin(float n, float dark){
+    n=clamp(n,-1.0,1.0);
+    vec2 N=vec2(n,sqrt(max(0.0,1.0-n*n)));
+    vec2 light=normalize(vec2(.74,.67));
+    float dif=max(dot(N,light),0.0);
+    float spe=pow(max(dot(N,normalize(light+vec2(0.0,1.0))),0.0),22.0);
+    vec3 lo=mix(vec3(.53,.52,.46),vec3(.29,.33,.28),dark);
+    vec3 hi=mix(vec3(.89,.87,.78),vec3(.69,.73,.64),dark);
+    return mix(lo,hi,dif)+vec3(.98,.97,.90)*spe*.11;
 }
 void main() {
     if(shadowOnly>10.5){
@@ -91,15 +103,15 @@ void main() {
         o=armOver(o,armMetal(cn,la,lz,darkMode)*.92,1.0-smoothstep(-w,w,d));
         // Cartridge body tucked behind the headshell.
         d=armBox(q,vec2(.116,0.0),vec2(.041,.022),.006);
-        vec3 cartridge=mix(vec3(.22,.20,.17),vec3(.10,.11,.10),darkMode)+vec3(.08,.06,.035)*max(q.y/.022,0.0);
+        vec3 cartridge=mix(vec3(.35,.34,.29),vec3(.18,.21,.18),darkMode)+vec3(.06,.055,.04)*max(q.y/.022,0.0);
         o=armOver(o,cartridge,1.0-smoothstep(-w,w,d));
         // Small tapered headshell: two recessed mounting slots, a lower
         // bevel and a separate finger lift make the head read at a glance.
         float hd=armBox(q,vec2(.066,0.0),vec2(.073,.028),.011);
-        vec3 hc=armMetal(q.y/.028*.60,.80,lz,darkMode);
+        vec3 hc=shellSatin(q.y/.028*.60,darkMode);
         float edge=exp(-pow((hd+.004)/.0026,2.0));
-        hc+=vec3(.26,.24,.19)*edge*max(q.y/.028,0.0);
-        hc*=1.0-.25*edge*max(-q.y/.028,0.0);
+        hc+=vec3(.12,.115,.095)*edge*max(q.y/.028,0.0);
+        hc*=1.0-.17*edge*max(-q.y/.028,0.0);
         float slot=min(armSeg(q,vec2(.035,.0115),vec2(.078,.0115)),armSeg(q,vec2(.035,-.0115),vec2(.078,-.0115)))-.0028;
         hc*=1.0-.38*(1.0-smoothstep(-w,w,slot));
         o=armOver(o,hc,1.0-smoothstep(-w,w,hd));
@@ -120,7 +132,7 @@ void main() {
         float underside=smoothstep(-.20,.34,q.y);
         float leftSide=1.0-smoothstep(-.40,.05,q.x);
         lip=max(lip,leftSide*smoothstep(.470,.480,r)*(1.0-smoothstep(.497,.501,r)));
-        float a=lip*mix(.10,.46,max(underside,leftSide*.85));
+        float a=lip*mix(.16,.43,max(underside,leftSide*.65));
         vec3 material=mix(vec3(.66,.62,.55),vec3(.39,.42,.36),darkMode)*mix(1.0,.74,max(underside,leftSide*.7));
         fragColor=vec4(material*a,a)*qt_Opacity;return;
     }
@@ -144,20 +156,38 @@ void main() {
         float groove=.5+.5*sin(r*700.0);
         pigment-=vec3(.28)*trackShade+vec3(.035)*groove;
         pigment+=vec3(.12)*trackLight+vec3(.08)*sweep+vec3(.05)*groove*sweep;
-        float a=(.52+.06*sweep)*body+.10*seat;
+        // Directional pearlescent vinyl; broad softbox reflection follows grooves.
+        float lobe=pow(max(cos(angle+.75),0.0),18.0);
+        float reflected=exp(-pow((q.x*.84+q.y*.54-.10)/.040,2.0));
+        // The resin and room lighting do not depend on the current cover.
+        pigment=mix(mix(vec3(.76,.76,.70),vec3(.46,.50,.43),darkMode),
+                    mix(vec3(.95,.94,.88),vec3(.70,.74,.66),darkMode),.5+.5*lit);
+        // Pressed translucent PVC: radial microgrooves with a little uneven
+        // resin density; stationary illumination reveals the surface relief.
+        // Attenuate subpixel grooves instead of letting them shimmer in motion.
+        float groovePhase=r*2700.0;
+        float fineGroove=sin(groovePhase)*(1.0-smoothstep(.7,3.0,fwidth(groovePhase)));
+        float resin=sin(q.x*37.0+sin(q.y*29.0))*sin(q.y*41.0-q.x*17.0);
+        float satin=pow(max(cos(angle+2.15),0.0),14.0);
+        pigment+=vec3(.020)*fineGroove*(.35+.65*satin);
+        pigment+=vec3(.022,.020,.014)*resin;
+        pigment+=vec3(.22,.225,.19)*satin*(.65+.35*fineGroove);
+        pigment-=vec3(.10)*trackShade;
+        pigment+=vec3(.97,.98,.91)*(lobe*.34+reflected*.20)*( .55+.45*groove);
+        float a=(.72+.12*sweep)*body+.12*seat;
         vec3 rgb=pigment*a;
         // A fine bright lip where the clear seat meets the milky body.
         float lip=exp(-pow((r-seatOuter)/.0016,2.0))*.50*(1.0-smoothstep(.49,.50,r));
         rgb=rgb*(1.0-lip)+vec3(1.0,.99,.96)*lip;a=a+lip*(1.0-a);
         // Outer contour: survives the left defocus so the disc still reads as a record.
         float leftEdge=1.0-smoothstep(-.40,.05,q.x);
-        float contour=exp(-pow((r-.489)/.0055,2.0))*(.38+.14*leftEdge);
-        rgb=rgb*(1.0-contour)+vec3(.36,.31,.25)*contour;a=a+contour*(1.0-a);
+        float contour=exp(-pow((r-.489)/.0065,2.0))*(.23+.06*leftEdge);
+        rgb=rgb*(1.0-contour)+vec3(.49,.46,.39)*contour;a=a+contour*(1.0-a);
         // Bright inner lip on the lit (upper-right) side so the edge separates from the cream glass.
         float rimHi=exp(-pow((r-.481)/.0024,2.0))*.50*max(lit,0.0);
         rgb=rgb*(1.0-rimHi)+vec3(1.0,.99,.96)*rimHi;a=a+rimHi*(1.0-a);
         // Contact occlusion where the printed label sits on the vinyl.
-        float ao=exp(-pow((r-phase-.004)/.010,2.0))*.24*smoothstep(phase-.004,phase,r);
+        float ao=exp(-pow((r-phase-.004)/.005,2.0))*.12*smoothstep(phase-.004,phase,r);
         rgb=rgb*(1.0-ao)+vec3(.28,.22,.16)*ao;a=a+ao*(1.0-a);
         fragColor=vec4(rgb,a)*qt_Opacity;return;
     }
@@ -183,11 +213,11 @@ void main() {
         colour.rgb+=vec3(1.0,.95,.86)*colour.a*.04*winLight*smoothstep(.45,.75,uv.x);
         float grain=fract(sin(dot(floor(sp*900.0),vec2(12.9898,78.233)))*43758.5453)-.5;
         colour.rgb+=grain*.05*colour.a;
-        float veil=mix(.07,.30,1.0-smoothstep(.35,.88,uv.x));
+        float veil=mix(.025,.12,1.0-smoothstep(.35,.88,uv.x));
         vec3 cream=mix(vec3(.965,.950,.920),vec3(.24,.27,.23),darkMode);
         colour.rgb=mix(colour.rgb,cream*colour.a,veil);
         colour.rgb=clamp(colour.rgb,vec3(0.0),vec3(colour.a));
-        float fade=.22+.78*smoothstep(.08,.74,uv.x);
+        float fade=.32+.68*smoothstep(.08,.74,uv.x);
         fade*=1.0-.10*smoothstep(.87,1.0,uv.x);
         fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
         // LiquidGlass has a 22-unit radius in a 440-unit-high content area.
@@ -202,7 +232,21 @@ void main() {
         vec2 uv=qt_TexCoord0;
         vec2 q=uv-.5;float r=length(q);
         float hole=smoothstep(.016,.0175,r);
-        vec4 colour=texture(artwork,uv)*hole+vec4(vec3(.16,.13,.10)*.88,.88)*(1.0-hole);
+        vec4 colour=texture(artwork,uv);
+        // Small independent paper centre and pressed collar. This is part of
+        // the record, not an accidental circle painted into fixture artwork.
+        float label=1.0-smoothstep(.062,.064,r);
+        float grain=sin(q.x*2100.0)*sin(q.y*1870.0)*.004;
+        float key=dot(q,vec2(.707,-.707))/.064;
+        vec3 paper=mix(vec3(.89,.86,.76),vec3(.63,.66,.57),darkMode);
+        paper*=.96+.065*key+grain;
+        float rim=exp(-pow((r-.061)/.0014,2.0));
+        paper*=1.0-.10*rim;
+        colour=vec4(paper,1.0)*label+colour*(1.0-label);
+        float collar=exp(-pow((r-.026)/.0020,2.0));
+        vec3 metal=mix(vec3(.48,.46,.38),vec3(.95,.94,.84),smoothstep(-.022,.022,q.y));
+        colour=vec4(metal,1.0)*collar+colour*(1.0-collar);
+        colour=colour*hole+vec4(vec3(.16,.13,.10)*.88,.88)*(1.0-hole);
         float holeLip=exp(-pow((r-.0185)/.0012,2.0))*.55*smoothstep(-.014,.014,q.y);
         colour.rgb=colour.rgb*(1.0-holeLip)+vec3(1.0,.98,.94)*holeLip;colour.a=colour.a+holeLip*(1.0-colour.a);
         // Regular inner wall: upper interior is darker, lower lip catches light.
@@ -226,7 +270,11 @@ void main() {
         float band=exp(-pow((q.x*.8+q.y*.6-.07)/.13,2.0))*.045;
         float rim=exp(-pow((r-.494)/.0018,2.0))*(.05+.08*sweep);
         float vinylOnly=vinyl*smoothstep(phase+.042,phase+.048,r);
-        float a=clamp((bands+.13*sweep+rim)*vinylOnly+band*(1.0-smoothstep(.47,.50,r)),0.0,.34);
+        float softbox=exp(-pow((q.x*.84+q.y*.54-.10)/.038,2.0));
+        float arc=pow(max(cos(angle+2.15),0.0),16.0)*smoothstep(phase+.045,.47,r);
+        // A softer second window, independent of the primary bow-tie reflection.
+        float fill=exp(-pow((q.x*.39-q.y*.92+.19)/.115,2.0));
+        float a=clamp((bands+.26*sweep+rim+softbox*.30+arc*.24+fill*.085)*vinylOnly+band*(1.0-smoothstep(.47,.50,r)),0.0,.60);
         vec3 light=mix(vec3(1.0,.98,.93),vec3(.87,.92,.85),darkMode);
         fragColor=vec4(light*a,a)*qt_Opacity;return;
     }
@@ -252,6 +300,17 @@ void main() {
         c.rgb*=1.0+.06*lit;
         c.rgb+=c.a*bevel*max(lit,0.0)*.22;
         c.rgb*=1.0-bevel*max(-lit,0.0)*.20;
+        // Printed label is attached to the same surface and lighting field.
+        // Rotate only the artwork; illumination stays fixed in platter space.
+        float illumination=.88+.13*lit;
+        float varnish=exp(-pow((q.x*.84+q.y*.54-.10)/.105,2.0));
+        varnish+=.35*exp(-pow((q.x*.39-q.y*.92+.19)/.16,2.0));
+        // Very fine paper grain is filtered as it approaches pixel size.
+        vec2 grainPhase=uv*vec2(1100.0,970.0);
+        float paper=sin(grainPhase.x)*sin(grainPhase.y)*.003*(1.0-smoothstep(.7,3.0,max(fwidth(grainPhase.x),fwidth(grainPhase.y))));
+        c.rgb=c.rgb*illumination+vec3(.98,.97,.90)*c.a*varnish*.065;
+        c.rgb+=paper*c.a;
+        c.rgb=clamp(c.rgb,vec3(0.0),vec3(c.a));
         fragColor=c*qt_Opacity;return;
     }
     // Same fixed plane as the platter, with padded bounds for feathered light.
@@ -259,16 +318,27 @@ void main() {
     float r=length(p);
     float edge=1.0-smoothstep(.74,.82,r);
     if(shadowOnly>.5) {
-        // Low resolution, stationary cover-coloured bounce, not an opaque oval.
-        vec2 uv=clamp(p*.72+.5,vec2(.13),vec2(.87));
-        vec3 tint=vec3(0.0);
+        // Reuse the existing 64px cover and nine taps for a soft, displaced
+        // image reflection. No additional render target or blur pass.
+        vec2 reflection=(p-vec2(-.33,.19))/vec2(.95,.83);
+        float footprint=1.0-smoothstep(.38,.70,length(reflection));
+        vec2 reflectedUV=vec2(reflection.x,-reflection.y);
+        float a=-phase*6.28318530718;
+        reflectedUV=mat2(cos(a),sin(a),-sin(a),cos(a))*reflectedUV+.5;
+        vec4 reflected=vec4(0.0);
         for(int j=-1;j<=1;++j)for(int i=-1;i<=1;++i)
-            tint+=texture(artwork,clamp(uv+vec2(i,j)*.16,vec2(.05),vec2(.95))).rgb/9.0;
-        float contact=exp(-pow((r-.485)/.035,2.0))*.27;
-        float bounce=exp(-pow(r/.56,4.0))*.20;
-        float alpha=(contact+bounce)*edge;
-        vec3 colour=mix(vec3(.35,.29,.22),tint,.62);
-        fragColor=vec4(colour*alpha,alpha)*qt_Opacity;
+            reflected+=texture(artwork,clamp(reflectedUV+vec2(i,j)*.17,vec2(.01),vec2(.99)))/9.0;
+        float contact=exp(-pow((r-.485)/.018,2.0))*.12;
+        // Keep a restrained reflected image rather than a uniformly tinted halo.
+        vec3 tint=reflected.rgb/max(reflected.a,.001);
+        float lum=dot(tint,vec3(.299,.587,.114));
+        // Dark artwork must not create a broad black cast shadow on the glass.
+        float reflectionAlpha=footprint*reflected.a*.34*mix(.25,1.0,smoothstep(.10,.65,lum));
+        tint=mix(vec3(lum),tint,1.05);
+        tint=mix(tint,mix(vec3(.92,.89,.80),vec3(.29,.34,.28),darkMode),.15);
+        vec4 image=vec4(clamp(tint,0.0,1.0)*reflectionAlpha,reflectionAlpha);
+        vec4 shadow=vec4(vec3(.25,.22,.18)*contact,contact);
+        fragColor=(shadow+image*(1.0-contact))*edge*qt_Opacity;
     } else {
         // Neutral translucent white sheets. Their broad interiors overlap;
         // source-over alpha makes each overlap gently brighter, never coloured.

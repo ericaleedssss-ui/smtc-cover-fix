@@ -249,8 +249,8 @@ Item {
             layer.enabled:GraphicsInfo.api!==GraphicsInfo.Software;layer.smooth:true;layer.samplerName:"artwork"
             layer.effect:ShaderEffect {property variant artwork;property real phase:0;property real shadowOnly:5;property real darkMode:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"}
             transform:[Rotation {objectName:"nowRecordTilt"+nameSuffix;origin.x:plane.width/2;origin.y:plane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:plane.width/2;origin.y:plane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;opacity:.40;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
-                property variant artwork:shadowArt;property real phase:0;property real shadowOnly:1;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
+            ShaderEffect {objectName:"nowRecordShadow"+nameSuffix;opacity:.48;x:-parent.width*.32-12*page.unit;y:-parent.height*.32+20*page.unit;width:parent.width*1.64;height:width
+                property variant artwork:shadowArt;property real phase:page.spinPhase;property real shadowOnly:1;property real darkMode:rhine.state.dark?1:0;fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
                 Image {id:shadowArt;visible:false;source:visualInfo.coverPixels||"";sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
             }
             ShaderEffect {objectName:"nowRecordContactEdge"+nameSuffix;x:-2*page.unit;y:6*page.unit;width:parent.width;height:parent.height

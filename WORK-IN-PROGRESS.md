@@ -1,6 +1,34 @@
 # G98 工作交接：构建回归修复，先读最新状态
 
+## 当前提交验收版（2026-11-01，优先于以下全部历史状态）
+
+- 用户要求先提交并推送一个版本，获取构建验收后再继续；停止扩展视觉范围。
+- 已将材质方案接入 maintained/Qt/qml/NowPlayingPanel.qml 和 maintained/Qt/shaders/recordAtmosphere.frag，不再只是临时预览。
+- 包含乳白胶盘细沟槽、多处柔和固定反光、封面受光与玻璃映色、小中心纸面/压环、暖色缎面唱头。减弱左侧宽灰带、接触阴影和暗封面映黑；保留唱臂几何/位置和双deck动画。没有新增离屏层或模糊pass。
+- 最新完整 D3D11 scripts/test-g86-qml.py 已通过：快速/queued切歌、暂停/播放/反向、迟到/缺失封面、布局、歌词、按钮、隐藏/减少动态和玻璃边界。淡出测试随用户要求更新；500ms边界瞬时断言改为有900ms上限的完成等待，中间态检查仍保留。
+- 最终本地离线切歌测量 p95=8.471ms，max=12.645ms，无>25ms切歌帧间隔；非GPU计时，不代表联网/低配/完整打包性能。证据 design-studies/record-material-v2/proposal-metrics.json。
+- workflow两个嵌入补丁的CRC/SHA/原始字节检查和git diff --check通过。未重复应用历史补丁。完整MSVC编译/打包由新CI验证，本地没有该SDK。
+- 用户对当前预览方向评价不错，新增唱头材质统一已实现；完整安装包仍待本次构建后用户验收。盘缘纸签、静态热评尚未实现，不在本次提交范围。
+- 用户截图显示旧对话首字约36–42秒，新对话0.5–2.3秒；长上下文/缓存可能参与，但24K条目也慢，不能排除中转排队、重试、流式缓冲。未修改Codex配置。建议提交后新对话读取本段交接，不重做已完成调查。
+- 继续时先 git status / git log / 查看当前HEAD的CI；不要重复应用补丁或重跑旧 make-material-preview.py。
+
 ## 最新状态（2026-10-31，优先于下方历史调查）
+
+- 用户最新明确：已核对最新构建，前面发的真实歌曲截图就是构建成品，**对该构建效果满意**。因此下面“最新CI最终结果尚未核对”仅指助手此前状态；用户已完成体验核对，不需要重复要求用户确认。临时材质预览仍未进入该构建，不能混同。
+- 新增视觉意向：用户希望唱片中心加入一点圆形结构，让它更像唱片。可能指中心孔周围压环/金属小环，也可能指较大纸标签；已发简短选项澄清，等待回答，**未动代码**。尤其预览里的大彩色同心环来自测试封面，不是既有唱片物理结构。
+
+- **用户现要求暂停并交接。不要继续调整，等用户下一步。**
+- 当前正式 HEAD/远端为 `24f7a8ac4deee88f431bc729533cf6721882a3a3`，分支 `rhine-g95-unified-record`，工作区干净。此前本地 `a6c8f48` 推送多次 TLS/连接失败，已通过 GitHub connector 创建相同 tree `46b96849e1aa8449f287e7d8107a2337e34b8aed`、提交并更新分支；随后精确重建远端 commit object 并将本地引用对齐。**不是还有待推送的分叉。**
+- 最新 CI：<https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41201811896>。最后查看时 in_progress，**尚未核对最终结果**。不要宣称已经打包成功。
+- 用户满意现有动画/布局，但在讨论下一阶段；玻璃组件是软件的核心区域，包含歌单杂志翻页和唱片，不能仅按“播放栏已有同功能”删除喜欢/评论/分享。用户多屏画画/写作，副屏扫歌词，希望该区域有独立性、陪伴感、可探索内容。
+- 评论想法：避免与歌词一起双重滚动；在底部靠“回到当前歌词”的位置，放热评第一条的小字引号旁注，无头像/昵称。当前只讨论，**未实现**。助手建议静态、切歌更新、长文省略点开、保留回到当前歌词独立入口；这些建议尚未逐项确认。
+- 材质方向：用户认为现唱片像白模/白盘子，缺乏材质、明暗、高光；希望乳白胶盘有更有感觉的肌理，封面也受同一光影影响，唱臂有金属体积与高光，封面颜色对玻璃有淡淡映色；担心破坏此前修好的流畅度。正式实现需连续切歌/帧耗时验证，**静态预览不能证明不卡顿**。
+- 已做**临时实际 QML/D3D11 渲染预览**，完全未修改正式 maintained 文件、未提交视觉改动。当前环境无内置 image_gen；读过 imagegen skill，未调用需要额外授权的 API/CLI。选择已有生产 QML/shader 临时副本出图，非AI生成效果图。
+- 预览脚本 `%TEMP%/rhine-motion-qa/make-material-preview.py` 复制 maintained 到 `%TEMP%/rhine-motion-qa/material-preview/proposal` 并生成 `render.py`。**之后直接对 proposal shader 又做了若干迭代，重跑 make-material-preview.py 会覆盖这些后续迭代！** 保留现副本。原版对照 `material-preview/before.py`，渲染 `before.png`；新版 `render.py` 输出 `proposal.png`。
+- 临时 shader `proposal/maintained/Qt/shaders/recordAtmosphere.frag`：胶盘更明确的定向明暗、宽高光/弧形反光、径向微沟槽和轻微树脂密度变化、较深侧壁；减少最终合成的奶油色veil；唱头金属暗部更深/镜面更强；封面加入固定在盘面坐标的光照/清漆反射与细微纸纹，仅封面纹理转动。已有 cover bounce 略增强，**映色仍很克制，不能说已完成真实反射/折射**。
+- 使用既有 test-g86-qml harness 改成整块玻璃的近景；测试封面是同心彩环，并非用户截图的实际专辑，歌曲/歌词是明确测试文案。所有预览无 QML error；无动画性能测量。用户尚未验收材质，当前对照变化较克制，不能当作最终视觉完成。
+- 交付预览保存在 `C:/Users/Administrator.DESKTOP-OBJIDBO/.codex/generated_images/rhine-material-study/material-study-01.png`（新版大图）和 `comparison.png`（左原版/右新版）。已显示 inline。PIL未安装，使用PySide6 QImage/QPainter生成拼图，无需安装依赖。
+- 渲染环境：`QT_QPA_PLATFORM=windows`、`QT_QUICK_BACKEND=rhi`、`QSG_RHI_BACKEND=d3d11`、`RHINE_TEST_SOURCE=%TEMP%/rhine-motion-qa/upstream`（需要其中fonts和原LiquidGlass依赖；g98-host-fix树无fonts）、`RHINE_TEST_OUTPUT=%TEMP%/rhine-motion-qa/material-preview`。Python为 `%TEMP%/rhine-motion-qa/venv/Scripts/python.exe`。
 
 - 第二次构建 `41200398052` / 提交 `6e449e5`：编译、部署及**全部界面检查已通过**；之后 `npm test` 的七个 CTest 中只有 `qt_offline` 失败，输出定位为 Native Host 检查。其余六项通过，尚未打包。
 - 已复现 Host 新调度检查的真实计时缺陷：offline send 多一次0ms事件循环投递，但 lastStart 在该投递前记录；Windows事件循环下25ms要求实际首两次只有9–13ms。用同一 Windows PySide6 Qt 事件循环模拟生产 pump，修改前12/12次失败（最大并发3和排队边界通过），修复后12/12次全部>=25ms。

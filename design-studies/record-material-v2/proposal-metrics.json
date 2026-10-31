@@ -1,0 +1,81 @@
+{
+  "repo": "C:\\Users\\Administrator.DESKTOP-OBJIDBO\\Desktop\\Codex-Test\\smtc-cover-fix",
+  "present_ms": {
+    "steady": {
+      "n": 384,
+      "median": 6.26,
+      "p95": 7.428,
+      "p99": 7.668,
+      "max": 8.267,
+      "over25": 0,
+      "over50": 0
+    },
+    "pause_play": {
+      "n": 188,
+      "median": 6.249,
+      "p95": 7.37,
+      "p99": 7.681,
+      "max": 100.525,
+      "over25": 1,
+      "over50": 1
+    },
+    "switching": {
+      "n": 1567,
+      "median": 6.126,
+      "p95": 8.471,
+      "p99": 8.768,
+      "max": 12.645,
+      "over25": 0,
+      "over50": 0
+    },
+    "dark_switching": {
+      "n": 790,
+      "median": 6.275,
+      "p95": 8.477,
+      "p99": 9.576,
+      "max": 10.261,
+      "over25": 0,
+      "over50": 0
+    }
+  },
+  "render_submit_ms": {
+    "steady": {
+      "n": 385,
+      "median": 0.23,
+      "p95": 0.325,
+      "p99": 0.425,
+      "max": 0.592,
+      "over25": 0,
+      "over50": 0
+    },
+    "pause_play": {
+      "n": 188,
+      "median": 0.21,
+      "p95": 0.3,
+      "p99": 0.423,
+      "max": 0.525,
+      "over25": 0,
+      "over50": 0
+    },
+    "switching": {
+      "n": 1567,
+      "median": 0.242,
+      "p95": 0.36,
+      "p99": 0.521,
+      "max": 1.834,
+      "over25": 0,
+      "over50": 0
+    },
+    "dark_switching": {
+      "n": 790,
+      "median": 0.246,
+      "p95": 0.397,
+      "p99": 0.495,
+      "max": 0.643,
+      "over25": 0,
+      "over50": 0
+    }
+  },
+  "errors": [],
+  "finalStage": "idle"
+}
