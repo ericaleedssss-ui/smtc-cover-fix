@@ -293,17 +293,19 @@ Item {
         Image {id:armShadowArt;visible:false;source:displayedInfo.coverPixels||displayedFallbackCover;sourceSize:Qt.size(64,64);asynchronous:true;cache:true}
         // Tonearm in the same inclined plane as the platter. Everything outside
         // the glass is clipped by discField and its composite, like the record.
-        Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x-page.vinylInset;y:(parent.height-record.height)/2-6*page.unit-page.vinylInset;width:record.width+2*page.vinylInset;height:width;z:3
-            visible:GraphicsInfo.api!==GraphicsInfo.Software
+        Item {id:armPlane;objectName:"nowTonearmPlane";x:record.x;y:record.y;width:record.width;height:record.height;z:3
+            visible:true
             transform:[Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:1;axis.y:0;axis.z:0;angle:38},Rotation {origin.x:armPlane.width/2;origin.y:armPlane.height/2;axis.x:0;axis.y:0;axis.z:1;angle:18}]
-            readonly property real armLength:width*.54
-            readonly property real pivotX:width*1.10
-            readonly property real pivotY:height*.5566
+            readonly property real armLength:width*.48
+            // The pivot stays just beyond the record edge; the visible tip
+            // remains on the white outer groove instead of crossing the print.
+            readonly property real pivotX:width*1.02
+            readonly property real pivotY:height*.60
             readonly property real normalPose:page.playback.playing?0:1
             // 0 = stylus in the lead-out ring, 1 = lifted and swung clear of the record.
             property real pose:normalPose
             readonly property real lift:Math.min(1,pose*2.4)
-            readonly property real swing:-138+16*pose
+            readonly property real swing:-108+8*pose
             Item {objectName:"nowTonearmShadow";x:-.642*(5+8*armPlane.lift)*page.unit;y:1.6*(5+8*armPlane.lift)*page.unit;width:parent.width;height:parent.height
                 ShaderEffect {
                     x:armPlane.pivotX-.26*armPlane.armLength;y:armPlane.pivotY-.14*armPlane.armLength;width:1.34*armPlane.armLength;height:.28*armPlane.armLength
@@ -324,6 +326,7 @@ Item {
                 property real darkMode:rhine.state.dark?1:0
                 fragmentShader:"qrc:/shaders/recordAtmosphere.frag.qsb"
             }
+            RecordTonearm {objectName:"nowTonearmSoftwareFallback";anchors.fill:parent;visible:GraphicsInfo.api===GraphicsInfo.Software;playing:armPlane.pose<.5;reduced:rhine.state.reduced;dark:rhine.state.dark}
         }
     }
     Timer {id:recordCoverWait;interval:700;repeat:false;onTriggered:page.startRecordVisualTransition()}
