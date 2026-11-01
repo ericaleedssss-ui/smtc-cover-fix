@@ -41,7 +41,7 @@ vec3 shellSatin(float n, float dark){
     float spe=pow(max(dot(N,normalize(light+vec2(0.0,1.0))),0.0),22.0);
     vec3 lo=mix(vec3(.53,.52,.46),vec3(.29,.33,.28),dark);
     vec3 hi=mix(vec3(.89,.87,.78),vec3(.69,.73,.64),dark);
-    return mix(lo,hi,dif)+vec3(.98,.97,.90)*spe*.11;
+    return mix(lo,hi,dif)+vec3(.98,.97,.90)*spe*.145;
 }
 
 float materialNoise(vec2 uv){
@@ -55,6 +55,16 @@ float vinylTwinReflection(float angle){
     // Tangential microgrooves form two opposite reflection fans.
     float axis=cos(angle+.60);
     return pow(abs(axis),8.0)*mix(.88,1.0,smoothstep(-.08,.08,axis));
+}
+vec2 creamReflectionFans(float angle){
+    // The fixed inclined plane maps this axis to screen upper-right/lower-left.
+    // The near return is broader so it survives the original focal fade without
+    // a brighter peak. Both lobes remain stationary as the artwork turns.
+    float axis=cos(angle+1.20);
+    float upper=smoothstep(-.10,.10,axis);
+    float peak=pow(abs(axis),mix(6.5,14.0,upper))*mix(.96,1.0,upper);
+    float shoulder=pow(abs(axis),mix(3.0,4.0,upper));
+    return vec2(peak,shoulder);
 }
 void main() {
     if(shadowOnly>10.5){
@@ -88,7 +98,7 @@ void main() {
                 float contact=(1.0-smoothstep(-.002,.003+.004*lift,d))
                              *smoothstep(.64,.96,p.x)*(1.0-.75*lift);
                 float penumbra=1.0-smoothstep(-sw*.7,sw*1.5,d);
-                a=clamp(penumbra*mix(.24,.12,lift)+contact*.16,0.0,.42);
+                a=clamp(penumbra*mix(.24,.12,lift)+contact*.19,0.0,.45);
             }
             vec3 c=mix(vec3(.30,.24,.18),vec3(.05,.06,.05),darkMode);
             if(studyMaterial>.5)c=mix(vec3(.14,.13,.105),vec3(.035,.045,.035),darkMode);
@@ -138,7 +148,7 @@ void main() {
         float hd=armBox(q,vec2(.066,0.0),vec2(.073,.028),.011);
         vec3 hc=shellSatin(q.y/.028*.60,darkMode);
         float edge=exp(-pow((hd+.004)/.0026,2.0));
-        hc+=vec3(.12,.115,.095)*edge*max(q.y/.028,0.0);
+        hc+=vec3(.145,.14,.115)*edge*max(q.y/.028,0.0);
         hc*=1.0-.17*edge*max(-q.y/.028,0.0);
         float slot=min(armSeg(q,vec2(.035,.0115),vec2(.078,.0115)),armSeg(q,vec2(.035,-.0115),vec2(.078,-.0115)))-.0028;
         hc*=1.0-.38*(1.0-smoothstep(-w,w,slot));
@@ -212,14 +222,20 @@ void main() {
         pigment+=vec3(.97,.98,.91)*(lobe*.34+reflected*.20)*( .55+.45*groove);
 
         if(studyMaterial>.5){
-            float twin=vinylTwinReflection(angle);
+            // The cream surface needs a distinct softbox reflection rather
+            // than an even luminous fill. This axis keeps the near fan visible
+            // in the cropped plane; the opposite fan is a softer room bounce.
+            vec2 fans=creamReflectionFans(angle);
+            float twin=fans.x;
+            float broadFan=fans.y;
             float gp=r*4100.0;
             float grooves=sin(gp)*(1.0-smoothstep(.7,3.0,fwidth(gp)));
             float density=materialNoise(vec2(r*540.0,angle*28.0));
-            vec3 base=mix(vec3(.77,.765,.70),vec3(.39,.44,.37),darkMode);
-            pigment=base*(.98+.045*lit);
-            pigment+=vec3(.24,.245,.22)*twin;
-            pigment+=vec3(.015,.015,.012)*grooves*(.30+.70*twin);
+            vec3 base=mix(vec3(.72,.715,.66),vec3(.35,.40,.34),darkMode);
+            pigment=base*(.96+.055*lit);
+            pigment+=vec3(.075,.08,.07)*broadFan;
+            pigment+=vec3(.23,.235,.21)*twin;
+            pigment+=vec3(.023,.023,.020)*grooves*(.15+.85*twin);
             pigment+=vec3(.023,.021,.017)*density;
             pigment-=vec3(.070,.068,.057)*trackShade;
             pigment+=vec3(.025)*trackLight*twin;
@@ -422,11 +438,16 @@ void main() {
         float fill=exp(-pow((q.x*.39-q.y*.92+.19)/.115,2.0));
         float a=clamp((bands+.26*sweep+rim+softbox*.30+arc*.24+fill*.085)*vinylOnly+band*(1.0-smoothstep(.47,.50,r)),0.0,.60);
         if(studyMaterial>.5){
-            float twin=vinylTwinReflection(angle);
-            float wideFan=pow(abs(cos(angle+.60)),4.0);
+            vec2 fans=creamReflectionFans(angle);
+            float twin=fans.x;
+            float wideFan=fans.y;
             float gp=r*4100.0;
             float grooves=sin(gp)*(1.0-smoothstep(.7,3.0,fwidth(gp)));
-            a=(.22*twin+.035*wideFan+.018*grooves*twin)*vinylOnly;
+            // The highlight brightens groove ridges while the shoulders
+            // remain satin. Retain radial falloff at both physical boundaries.
+            float radial=smoothstep(phase+.044,phase+.075,r)
+                        *(1.0-.20*smoothstep(.43,.49,r));
+            a=(.22*twin+.025*wideFan+.022*grooves*twin)*vinylOnly*radial;
             float outerBevel=exp(-pow((r-.493)/.0018,2.0));
             a+=outerBevel*.025;
         }
