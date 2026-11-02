@@ -1,0 +1,419 @@
+#include "NativeHud.h"
+#include "MusicData.h"
+#include "MusicDiscover.h"
+#include "AppStorage.h"
+#include <QDebug>
+#include <QGuiApplication>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <cstdio>
+
+namespace {
+QJsonObject song(int index) {
+    auto value =
+        MusicData::item("song", QString::number(index), "本地曲目 " + QString::number(index), "测试歌手");
+    value["album"] = "测试专辑";
+    value["albumID"] = "42";
+    value["duration"] = 180000;
+    value["wiki"] = "第一段百科\n第二段百科\n第三段百科\n第四段百科";
+    value["artists"] = QJsonArray{QJsonObject{{"id", "7"}, {"name", "测试歌手"}}};
+    return value;
+}
+
+// 辅助函数：检查 hits 中是否存在指定 action
+bool hasAction(const QJsonArray &hits, const QString &action) {
+    for (const auto &value : hits) {
+        if (value.toObject()["action"].toString() == action) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 辅助函数：获取指定 action 的 hit 对象
+QJsonObject getHit(const QJsonArray &hits, const QString &action) {
+    for (const auto &value : hits) {
+        auto hit = value.toObject();
+        if (hit["action"].toString() == action) {
+            return hit;
+        }
+    }
+    return QJsonObject();
+}
+
+// 创建测试用的 MusicLibrary
+MusicLibrary *createTestMusicLibrary(Host *host, const QString &provider, const QJsonObject &content) {
+    MusicLibrary *music = new MusicLibrary(host, content);
+    music->provider = provider;
+    music->api.provider = provider;
+    music->uid = "42";
+    music->nickname = "测试账号";
+    music->status = "离线固定时间校验";
+    music->keyword = "本地";
+    music->loginStatus = "等待确认";
+    music->coverImage.clear();
+    music->likedIDs = QJsonArray{"1"};
+
+    QJsonArray songs;
+    for (int index = 1; index <= 20; ++index) {
+        songs.append(song(index));
+    }
+    music->current = songs.first().toObject();
+    music->tracks = songs;
+    for (int lane = 0; lane < 5; ++lane) {
+        music->lists[lane] = songs;
+        music->totals[lane] = songs.size();
+        music->hasMore[lane] = false;
+    }
+    music->player.queue = songs;
+    music->player.current = music->current;
+    music->player.index = 2;
+    music->player.state = {{"playing", true},
+                           {"position", 45678},
+                           {"duration", 180000},
+                           {"volume", 0.7},
+                           {"seekable", true}};
+    music->player.status = "原生播放器";
+    music->player.quality = "exhigh";
+    music->player.alternative = false;
+    music->discover->items = songs;
+    music->discover->status = "本地发现";
+    music->discover->more = true;
+    return music;
+}
+}
+
+/**
+ * Native HUD 核心功能回归测试
+ *
+ * 验证关键交互逻辑、状态管理和面板渲染，不依赖像素精确对比。
+ */
+bool runNativeHudChecks(const QString &root, Glyphs &glyphs) {
+    Host host(root, true);
+    const auto content = QJsonDocument::fromJson(host.read("slots.json").toUtf8()).object();
+    bool ok = true;
+    int testCount = 0;
+    const auto check = [&](bool value, const char *label) {
+        if (!value) {
+            qCritical() << "Frosted HUD check failed:" << label;
+            ok = false;
+        }
+    };
+
+    // 测试所有平台和主题组合
+    for (const auto &provider : {QString("netease"), QString("qq"), QString("kugou")}) {
+        for (const bool dark : {false, true}) {
+            testCount++;
+
+            MusicLibrary *music = createTestMusicLibrary(&host, provider, content);
+            HudSceneActions scene;
+            scene.theme = [](bool) {};
+            NativeHud hud(&host, &glyphs, music, scene);
+            hud.dark = dark;
+            hud.themeMode = dark ? "dark" : "light";
+            hud.motion.set(true, 0, true);
+
+            // === 测试 1: 基础面板渲染 ===
+            QJsonObject archiveFrame{{"mode", "archive"}, {"selected", 0}, {"detail", 1}, {"viewer", false}};
+            hud.draw(archiveFrame, 1920, 50);
+
+            if (hud.commands.isEmpty()) {
+                qCritical() << "Archive panel commands empty" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+            if (hud.hits.isEmpty()) {
+                qCritical() << "Archive panel hits empty" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // 阅读区承载内容；磨砂开关只控制采样，不移除内容布局。
+            if (provider == "netease" && !dark) {
+                if (!hud.textFrosted) {
+                    hud.action("text-frosted");
+                }
+                hud.draw(archiveFrame, 1920, 50);
+                const auto panel = hud.state().value("readingPanel").toObject();
+                check(panel.value("x").toDouble() > 900 && panel.value("width").toDouble() < 960 &&
+                          panel.value("y").toDouble() == 400 && panel.value("height").toDouble() == 440,
+                      "shared reading area bounds");
+                // 仅此处访问临时设置文件；离线模式本来就禁止读写任何偏好。
+                host.offline = false;
+                hud.action("text-frosted");
+                check(host.preference("text-frosted") == "off", "off preference saved");
+                hud.draw(archiveFrame, 1920, 50);
+                check(!hud.state().value("textFrosted").toBool(), "off disables frosting");
+                check(hud.state().value("readingPanel").toObject() == panel,
+                      "off preserves the shared reading content region");
+                check(music->current.value("key") == song(1).value("key") && hasAction(hud.hits, "open"),
+                      "off preserves the selected song and its details action");
+                NativeHud restored(&host, &glyphs, music, scene);
+                check(!restored.textFrosted, "off preference restored");
+                hud.action("text-frosted");
+                check(host.preference("text-frosted") == "on", "on preference saved");
+                hud.action("desktop:toggle");
+                hud.action("desktop:lock");
+                hud.action("desktop:larger");
+                host.setPreference("desktop-lyrics-primary-color", "#f1e9db");
+                host.setPreference("desktop-lyrics-secondary-color", "#b9c19a");
+                host.setPreference("desktop-lyrics-background-color", "#e8dfc6");
+                host.setPreference("desktop-lyrics-background-opacity", "40");
+                NativeHud lyricsRestored(&host, &glyphs, music, scene);
+                check(lyricsRestored.desktopLyricsEnabled && lyricsRestored.desktopLyricsLocked &&
+                      lyricsRestored.desktopLyricsSize == 28, "desktop lyrics visibility, lock and size persist");
+                check(lyricsRestored.desktopLyricsPrimaryColor == "#f1e9db" &&
+                      lyricsRestored.desktopLyricsSecondaryColor == "#b9c19a" &&
+                      lyricsRestored.desktopLyricsBackgroundColor == "#e8dfc6" &&
+                      lyricsRestored.desktopLyricsBackgroundOpacity == 40, "desktop lyric colors and background transparency persist");
+                hud.action("desktop:reset");
+                hud.action("desktop:close");
+                check(host.preference("desktop-lyrics-size") == "26" && host.preference("desktop-lyrics-locked") == "off", "desktop defaults are saved");
+                host.offline = true;
+                hud.trackListMode = true;
+                hud.draw(archiveFrame, 1920, 50);
+                check(hud.state().value("readingPanel").toObject().value("y").toDouble() == 205,
+                      "track list expands area");
+                hud.trackListMode = false;
+                hud.draw(QJsonObject{{"mode", "detail"}, {"detail", 1}}, 1920, 50);
+                check(hud.state().value("readingPanel").isNull(), "detail uses existing surface");
+                hud.draw(archiveFrame, 1920, 50);
+            }
+
+            // === 测试 2: Settings 面板功能 ===
+            hud.openModal("settings");
+            hud.draw(archiveFrame, 1920, 50);
+
+            // 验证 settings 面板渲染
+            if (!hasAction(hud.hits, "close-modal")) {
+                qCritical() << "Settings panel missing close button" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // 设置增加后末行需要滚动；同时验证它可以滚入视口并获得点击区域。
+            auto settingsHits = hud.hits;
+            {
+                const auto bounds = hud.modalBounds(1920);
+                hud.wheel(bounds.center().x(), bounds.top() + 500, -120, 1, 100.);
+                hud.draw(archiveFrame, 1920, 50);
+                for (const auto &hit : hud.hits) {
+                    settingsHits.append(hit);
+                }
+            }
+            for (int page = 0; page < 3; ++page) {
+                const auto bounds = hud.modalBounds(1920);
+                hud.wheel(bounds.center().x(), bounds.top() + 500, -120, 1, 400.);
+                hud.draw(archiveFrame, 1920, 50);
+                for (const auto &hit : hud.hits) { settingsHits.append(hit); }
+            }
+            const QStringList requiredSettings = {"theme",           "motion",           "startup-animation",
+                                                  "single-play-mode", "scene-enhancement",
+                                                  "quality", "text-frosted", "desktop:settings"};
+            for (const auto &setting : requiredSettings) {
+                if (!hasAction(settingsHits, setting)) {
+                    qCritical() << "Missing setting toggle:" << setting << provider
+                                << (dark ? "dark" : "light");
+                    ok = false;
+                }
+            }
+
+            // 滚动到底部以验证性能相关设置项
+            {
+                const auto bounds = hud.modalBounds(1920);
+                hud.wheel(bounds.center().x(), bounds.top() + 500, -120, 1, 10000.);
+                hud.draw(archiveFrame, 1920, 50);
+            }
+
+            // 验证性能相关设置项存在（下方性能区域）
+            const QStringList performanceSettings = {"disc-rotation", "performance:toggle"};
+            for (const auto &setting : performanceSettings) {
+                if (!hasAction(hud.hits, setting)) {
+                    qCritical() << "Missing performance toggle:" << setting << provider
+                                << (dark ? "dark" : "light");
+                    ok = false;
+                }
+            }
+
+            // 滚动回顶部继续其他测试
+            {
+                const auto bounds = hud.modalBounds(1920);
+                hud.wheel(bounds.center().x(), bounds.top() + 500, 120, -1, -10000.);
+                hud.draw(archiveFrame, 1920, 50);
+            }
+
+            // === 测试 3: 设置项切换功能 ===
+            const bool initialStartupAnim = hud.startupAnimation;
+            hud.action("startup-animation");
+            const bool toggledStartupAnim = hud.startupAnimation;
+            hud.action("startup-animation");
+            const bool restoredStartupAnim = hud.startupAnimation;
+
+            if (initialStartupAnim == toggledStartupAnim || restoredStartupAnim != initialStartupAnim) {
+                qCritical() << "Startup animation toggle failed" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // === 测试 4: 设置面板滚动功能 ===
+            const auto bounds = hud.modalBounds(1920);
+
+            // 向下滚动到底部
+            hud.wheel(bounds.center().x(), bounds.top() + 500, -120, 1, 10000.);
+            hud.draw(archiveFrame, 1920, 50);
+
+            // 验证滚动到最大值
+            const bool atEnd = hud.settingsScroll == hud.settingsScrollMaximum();
+            if (!atEnd) {
+                qCritical() << "Settings scroll to bottom failed" << provider << (dark ? "dark" : "light")
+                            << "scroll:" << hud.settingsScroll << "max:" << hud.settingsScrollMaximum();
+                ok = false;
+            }
+
+            // 验证标题固定、内容裁剪
+            bool headerFixed = false;
+            bool contentClipped = true;
+            for (const auto &value : hud.hits) {
+                const auto hit = value.toObject();
+                const auto action = hit["action"].toString();
+                if (action == "close-modal") {
+                    headerFixed = hit["y"].toDouble() == bounds.top() + 18;
+                } else if (!action.startsWith("settings:scroll-") && !hit.value("fixed").toBool()) {
+                    const double hitTop = hit["y"].toDouble();
+                    const double hitBottom = hitTop + hit["height"].toDouble();
+                    const double viewportTop = bounds.top() + NativeHud::SettingsViewportTop;
+                    const double viewportBottom = bounds.top() + NativeHud::SettingsViewportBottom;
+                    contentClipped &= (hitTop >= viewportTop && hitBottom <= viewportBottom);
+                }
+            }
+
+            if (!headerFixed) {
+                qCritical() << "Settings header not fixed" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+            if (!contentClipped) {
+                qCritical() << "Settings content not clipped" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // 向上滚动回顶部
+            hud.wheel(bounds.center().x(), bounds.top() + 500, 120, -1, -10000.);
+            const bool atStart = hud.settingsScroll == 0;
+            if (!atStart) {
+                qCritical() << "Settings scroll to top failed" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // 平滑滚轮的后续帧只补送距离，不再带有角度增量，仍需继续滚动。
+            hud.wheel(bounds.center().x(), bounds.top() + 500, 0, 0, 75.);
+            if (hud.settingsScroll != 75.) {
+                qCritical() << "Settings smoothed wheel frame failed" << provider
+                            << (dark ? "dark" : "light") << "scroll:" << hud.settingsScroll;
+                ok = false;
+            }
+
+            // 测试滚动按钮
+            hud.action("settings:scroll-down");
+            const bool scrolledDown = hud.settingsScroll > 0;
+            if (!scrolledDown) {
+                qCritical() << "Settings scroll-down action failed" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // 重新打开 settings 应该重置滚动位置
+            hud.openModal("settings");
+            const bool reset = hud.settingsScroll == 0;
+            if (!reset) {
+                qCritical() << "Settings scroll reset failed" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // === 测试 5: Detail 面板 ===
+            QJsonObject detailFrame{{"mode", "detail"}, {"selected", 1}, {"detail", 1}, {"viewer", false}};
+            hud.modal.clear();
+            hud.draw(detailFrame, 1920, 50);
+
+            if (hud.commands.isEmpty()) {
+                qCritical() << "Detail panel commands empty" << provider << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            // === 测试 6: 其他关键面板存在性检查 ===
+            const QStringList criticalPanels = {"search", "login", "player", "confirm"};
+            for (const auto &panel : criticalPanels) {
+                hud.openModal(panel);
+                hud.draw(archiveFrame, 1920, 50);
+
+                if (hud.commands.isEmpty()) {
+                    qCritical() << "Panel commands empty:" << panel << provider << (dark ? "dark" : "light");
+                    ok = false;
+                }
+                if (!hasAction(hud.hits, "close-modal") && panel != "player") {
+                    qCritical() << "Panel missing close button:" << panel << provider
+                                << (dark ? "dark" : "light");
+                    ok = false;
+                }
+            }
+
+            // === 测试 7: 每日推荐资料库入口 ===
+            music->discover->tab = "daily";
+            hud.openModal("discover");
+            hud.draw(archiveFrame, 1920, 50);
+            if (!hasAction(hud.hits, "discover:open")) {
+                qCritical() << provider << "daily discover missing library button"
+                            << (dark ? "dark" : "light");
+                ok = false;
+            }
+            hud.action("discover:open");
+            if (!music->directory || music->directory->songs.size() != music->discover->items.size()) {
+                qCritical() << provider << "daily discover did not open as playlist directory"
+                            << (dark ? "dark" : "light");
+                ok = false;
+            }
+            music->leaveDirectory(false);
+
+            // === 测试 8: 分类歌单列表选择 ===
+            music->discover->tab = "categories";
+            music->discover->category = "1";
+            music->discover->categories = QJsonArray{
+                QJsonObject{{"id", "1"}, {"name", "甲"}},
+                QJsonObject{{"id", "2"}, {"name", "乙"}},
+            };
+            hud.openModal("discover");
+            hud.draw(archiveFrame, 1920, 50);
+            if (!hasAction(hud.hits, "discover:categories")) {
+                qCritical() << provider << "category selector missing" << (dark ? "dark" : "light");
+                ok = false;
+            }
+            hud.action("discover:categories");
+            hud.draw(archiveFrame, 1920, 50);
+            if (!hasAction(hud.hits, "discover:category:1") ||
+                !hasAction(hud.hits, "discover:category:2")) {
+                qCritical() << provider << "category list missing choices" << (dark ? "dark" : "light");
+                ok = false;
+            }
+
+            delete music;
+        }
+    }
+
+    qInfo() << "Native HUD core functionality tests:" << testCount << (ok ? "passed" : "FAILED");
+    return ok;
+}
+
+#ifdef RHINE_HUD_REGRESSION_TEST_MAIN
+int main(int argc, char **argv) {
+    qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &context, const QString &message) {
+        const auto text = qFormatLogMessage(type, context, message).toUtf8();
+        std::fprintf(stderr, "%s\n", text.constData());
+        std::fflush(stderr);
+    });
+    QGuiApplication application(argc, argv);
+    QTemporaryDir settingsDirectory;
+    if (!settingsDirectory.isValid() ||
+        !AppStorage::initializePortable(settingsDirectory.path()).isEmpty()) {
+        qCritical() << "Cannot create isolated HUD test settings";
+        return 1;
+    }
+    const auto root = application.arguments().value(1);
+    Glyphs glyphs(root);
+    return runNativeHudChecks(root, glyphs) ? 0 : 1;
+}
+#endif

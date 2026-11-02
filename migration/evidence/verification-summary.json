@@ -1,0 +1,96 @@
+{
+  "status": "candidate; visual acceptance incomplete; no formal workflow cutover",
+  "baseline": {
+    "commit": "6a1639ce227da15deb2e69d757d00c09fbe62d15",
+    "upstream": "b8b8ad5ed661fa32404731f1b09f7c37d34bf070",
+    "workflow_run": 41258315791,
+    "ci_source_hashes_verified": 9
+  },
+  "source": {
+    "files": 326,
+    "bytes": 59847051,
+    "reconstructed_legacy_identical_files": 325,
+    "application_code_resources_build_inputs_unchanged": true,
+    "metadata_adjustments": {
+      ".gitattributes": {
+        "reconstructed_sha256": "6a64662047e4578357954df2fd80a9c3069bfe753dcebb6213a717d5f98f4319",
+        "migrated_sha256": "84f1bd9ca2058548fe991f0f5d9819cde8ed8547cf025fc229b050ab7c2d09d1",
+        "reason": "Preserve exact mixed line endings of all verified source inputs on Git add and checkout; no application code changed."
+      }
+    },
+    "staged_blobs_equal_working_tree": true,
+    "fresh_git_checkout_hashes_match": true
+  },
+  "preservation": {
+    "original_uncommitted_files": 145,
+    "original_uncommitted_bytes": 64499204,
+    "all_original_hashes_unchanged": true,
+    "historical_input_files": 152,
+    "historical_hashes_unchanged": true,
+    "old_workflows_unchanged": true
+  },
+  "regressions": {
+    "build_exit_code": 0,
+    "npm_test_exit_code": 0,
+    "ctest_passed": 7,
+    "ctest_total": 7,
+    "bridge_node_tests_passed": 48,
+    "native_music_checks_passed": 34,
+    "packaged_offline_gpu_smoke": true,
+    "migration_negative_checks": true,
+    "integration_assertions": true
+  },
+  "package": {
+    "baseline_files": 7766,
+    "candidate_files": 7766,
+    "identical_files": 7763,
+    "added": [],
+    "removed": [],
+    "changed": [
+      "RHINE MUSIC DATABASE.exe",
+      "dxcompiler.dll",
+      "dxil.dll"
+    ],
+    "final_zip_files": 7766,
+    "final_zip_sha256": "7c11ae0ad0e2f1ee2674340770ab062e056d9cb3248720303474263845d8c340",
+    "zip_matches_deployed_app": true
+  },
+  "visual": {
+    "candidate_passed": 306,
+    "candidate_total": 307,
+    "candidate_failed": [
+      "hover reveals progress controls and only the actual chorus marker"
+    ],
+    "legacy_passed": 306,
+    "legacy_total": 307,
+    "legacy_failed": [
+      "close click actually dismisses the queue"
+    ],
+    "incorrect_screen_geometry_failed": [
+      "G90 ordinary artist-album route renders the shared magazine and heat column",
+      "playlist virtual table renders actual track artwork delegates",
+      "the main playlist entry opens its detail page consistently with navigation and discovery",
+      "recommendations use a local scroll region",
+      "spatial lyric blur shader compiles and renders on the packaged Windows backend",
+      "Following page actually scrolls before opening the queue"
+    ],
+    "screenshots_compared": 37,
+    "identical_screenshots": 3,
+    "all_screenshot_dimensions_equal": true,
+    "fully_passed": false
+  },
+  "candidate_workflow": {
+    "manual_only": true,
+    "only_self_checkout": true,
+    "static_yaml_check": true,
+    "run_on_github_actions": false
+  },
+  "incomplete": [
+    "Clean packaged frosted UI regression and full visual/interaction acceptance",
+    "Standalone candidate workflow run on GitHub Actions",
+    "End-to-end invocation of build-local.ps1 (underlying build/test/share commands passed)",
+    "Authenticated real service playback/collections/comments/FM; local real-library coverage",
+    "macOS/Linux packaging and performance/long-session acceptance"
+  ],
+  "not_pushed": true
+}

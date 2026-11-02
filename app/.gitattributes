@@ -1,0 +1,14 @@
+# 固定文本换行，确保两端检出后的上游文件哈希一致。
+* text=auto eol=lf
+*.glb -text
+*.bin -text
+*.otf -text
+*.ttf -text
+*.png -text
+*.ico -text
+*.pdf -text
+
+# Preserve the verified Windows patch output byte-for-byte in the standalone
+# source import. Some generated sources already contain CRLF; do not rewrite
+# them on add or checkout. Git still detects and displays textual diffs.
+* -text

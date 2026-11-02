@@ -1,0 +1,17 @@
+{
+  "workflow_commit": "6a1639ce227da15deb2e69d757d00c09fbe62d15",
+  "maintained_commit": "6a1639ce227da15deb2e69d757d00c09fbe62d15",
+  "upstream_commit": "b8b8ad5ed661fa32404731f1b09f7c37d34bf070",
+  "generated_sha256": {
+    "Qt/qml/Main.qml": "5c2cee2d5d48b7ac546e6aa570fae3265e0c306ecaaddf45dd9385180d6d177b",
+    "Qt/src/NativeHudController.cpp": "06ab22beef39d329c79b9b9b8e0f6b213aeeb651c8ff714d58f4a822bda9087a",
+    "Qt/src/NativeHudMusic.cpp": "7e39eb63aad16819e0b872c18a1bcd75a5844badd345b192dc4c70e09ab36a28",
+    "Qt/src/NativeHudDetail.cpp": "3133d37816241e6baabaff8cbb869b68f8aaf8c1a902425b3ebd478cb4206a83",
+    "Qt/tests/UiChecks.cpp": "6626a0b5dec91280de1fa04288beec7433b68de03a5145ec1e20129f125c1568"
+  },
+  "magazine_controller_sha256": "765627d97ecb001b976f491076cbd0b06ae7a7141831312e64fe301301394f49",
+  "search_qml_sha256": "4045244acd891e2924536aa29581c1e6acf86c6cd70e614a6665e7881cda98b3",
+  "records_qml_sha256": "e79920b60f79b0d30cd8d52d21218d1ec4a1080fde48c0a11f27d41d933f8eac",
+  "magazine_qml_sha256": "258e132df56133d1cc4a5d00a401d68e821cac72c674ae725e82c6a24e44a966",
+  "queue_patch_sha256": "1e2ed5f7f5d500e969296c941b61c64a7598f851da17cd599eaa09d747e76e50"
+}

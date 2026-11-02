@@ -1,0 +1,137 @@
+name: Desktop build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}-${{ inputs.release_version || 'development' }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-15
+            qt-arch: clang_64
+            node-platform: darwin-arm64
+            artifact: macOS-arm64
+          - name: Linux x86_64
+            os: ubuntu-24.04
+            qt-arch: linux_gcc_64
+            node-platform: linux-x64
+            artifact: Linux-x64
+          - name: Windows x64
+            os: windows-2022
+            qt-arch: win64_msvc2022_64
+            # aqtinstall 3.3.0 仍查找旧目录，固定到支持 Qt 6.11+ Windows 仓库的上游版本。
+            qt-installer: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
+            node-platform: win-x64
+            artifact: Windows-x64
+    runs-on: ${{ matrix.os }}
+    env:
+      NODE_VERSION: '22.14.0'
+      RHINE_BUILD_TYPE: Release
+      RHINE_VERSION: ${{ inputs.release_version || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            MusicBridge/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            cmake ninja-build file libgl1-mesa-dev libxkbcommon-dev \
+            libxkbcommon-x11-0 libxcb-cursor0
+          # 构建脚本用 --appimage-extract-and-run 打包与冒烟测试，不依赖 FUSE；
+          # 这里只为兼容手动验证，noble 已按 t64 改名，缺失不算失败。
+          sudo apt-get install --yes --no-install-recommends libfuse2t64 || \
+            sudo apt-get install --yes --no-install-recommends libfuse2 || true
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.12.0'
+          arch: ${{ matrix.qt-arch }}
+          aqtsource: ${{ matrix.qt-installer }}
+          # Wayland 客户端插件 (libqwayland-*.so) 随 linux_gcc_64 基础包提供，
+          # 由 aqt 的 --autodesktop 一并安装，不能写进 --modules。
+          modules: qtshadertools qtmultimedia
+          cache: true
+      - name: Install build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check repository boundaries
+        run: node scripts/check-repository.cjs
+      - name: Download standalone Node and verify checksum
+        shell: bash
+        env:
+          NODE_PLATFORM: ${{ matrix.node-platform }}
+        run: |
+          set -euo pipefail
+          distribution="node-v${NODE_VERSION}-${NODE_PLATFORM}"
+          extension=tar.gz
+          [[ "$RUNNER_OS" == Windows ]] && extension=zip
+          archive="${distribution}.${extension}"
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 "https://nodejs.org/dist/v${NODE_VERSION}/${archive}" -o "$archive"
+          curl --fail --location --retry 3 "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o SHASUMS256.txt
+          python - "$archive" <<'PY'
+          import hashlib, pathlib, sys
+          archive = pathlib.Path(sys.argv[1])
+          checksums = dict(line.split()[::-1] for line in pathlib.Path('SHASUMS256.txt').read_text().splitlines())
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == checksums[archive.name], 'Node checksum mismatch'
+          PY
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            python -m zipfile -e "$archive" .
+            echo "RHINE_NODE_BINARY=$(cygpath -w "$RUNNER_TEMP/$distribution/node.exe")" >> "$GITHUB_ENV"
+            echo "RHINE_NODE_LICENSE=$(cygpath -w "$RUNNER_TEMP/$distribution/LICENSE")" >> "$GITHUB_ENV"
+          else
+            tar -xzf "$archive"
+            echo "RHINE_NODE_BINARY=$RUNNER_TEMP/$distribution/bin/node" >> "$GITHUB_ENV"
+            echo "RHINE_NODE_LICENSE=$RUNNER_TEMP/$distribution/LICENSE" >> "$GITHUB_ENV"
+          fi
+      # appimagetool 由构建脚本按锁定版本自动下载并校验 SHA256，无需预装。
+      - name: Build and deploy
+        run: npm run build
+        env:
+          QT_ROOT: ${{ env.QT_ROOT_DIR }}
+      # 离线测试
+      - name: Run offline regressions
+        run: npm test
+      - name: Create distribution ZIP
+        if: runner.os != 'Linux'
+        run: npm run share
+      - name: Upload distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: RHINE-MUSIC-DATABASE-${{ matrix.artifact }}
+          path: |
+            output/RhineMusicDatabase-${{ inputs.release_version || '*' }}-*.zip
+            output/RhineMusicDatabase-${{ inputs.release_version || '*' }}-*.AppImage
+          if-no-files-found: error

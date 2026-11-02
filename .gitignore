@@ -1,0 +1,2 @@
+# Local verification outputs only. app/ retains its original ignore rules.
+/migration/results/

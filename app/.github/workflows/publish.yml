@@ -1,0 +1,69 @@
+name: Publish Versioned Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (vMAJOR.MINOR.PATCH, e.g. v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/publish-release.cjs --check
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/desktop.yml
+    with:
+      release_version: ${{ inputs.tag }}
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Download versioned builds from this run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: RHINE-MUSIC-DATABASE-*
+          path: artifacts
+      - name: Collect exact release packages
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir release
+          for platform in macOS-arm64.zip Windows-x64.zip Linux-x86_64.AppImage; do
+            name="RhineMusicDatabase-${RELEASE_TAG}-${platform}"
+            mapfile -t files < <(find artifacts -type f -name "$name")
+            [[ "${#files[@]}" -eq 1 ]] || { echo "Missing or ambiguous package: $name"; exit 1; }
+            cp "${files[0]}" "release/$name"
+          done
+          chmod 0755 release/*.AppImage
+          node scripts/create-update-feed.cjs release "$RELEASE_TAG"
+      # 使用创建时返回的 Release ID，避免未发布草稿按 tag 查询时返回 404。
+      - name: Upload, verify and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/publish-release.cjs
