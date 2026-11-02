@@ -1,5 +1,15 @@
 # 独立源码迁移交接 · 2026-11-02
 
+## 最新追加验证（优先于下面初始记录）
+
+用户已要求继续验收，并在误按 Esc 后明确允许重新发起电脑控制。最终正式候选包在 Type-C 副屏、仅测试子进程原生 DPI 环境下 **307/307 全部通过 / exit 0**，37 张截图保留于 `migration/results/candidate-final-native-dpi/`，全部窗口自动退出。`migration/build-local.ps1 -Share` 已完整运行成功（编译、npm test、7 CTest、48 桥接测试、share、7,766 文件 ZIP 校验）。修复 wrapper 对 PowerShell 5 原生 stderr 普通警告的误判。
+
+生产 UI、shader、业务/播放器源码未改。两份测试文件新增可选 `RHINE_QA_SCREEN`，把主测试窗/桌面歌词/任务栏测试窗定位至 Type-C；原 check 表达式与标签全部保留。`migration/run-ui-check.py` 支持 `--screen Type-C --native-dpi --geometry 1280x720+60+2220`。原多屏混合 DPI 与输入坐标的环境问题已在正式候选包通过本轮验证；无需更改系统缩放。323 个输入与旧还原完全相同，另外 3 项是 `.gitattributes` 和两份 QA 定位文件，哈希见 `ui-validation-changes.json`，基线核对只允许这些精确例外。
+
+摘要见 `migration/evidence/ui-followup-verification.json`，报告第 9 节优先。旧失败记录仍保留，不能覆盖证据。最终 ZIP SHA-256 `ba9a024373ff4230c9204fba28e87968fcafc6c14af36b3c0724058ceeec07a1`。
+
+接下来在现有仓库仅推送迁移候选分支，候选工作流新加限制为该分支 app/migration/自身相关修改的 push 触发，避免修改默认分支才能发现 workflow_dispatch 的问题。原正式工作流保持原样。远端运行结果未确认前不能说 CI 成功，不合并、不切换正式构建。
+
 当前工作树：`smtc-source-migration`，分支 `migration/full-source-20261102`。先读根 `MIGRATION-REPORT.md`、检查 `git status` / 最新提交。本轮只有源码维护方式迁移，视觉设计暂停。
 
 完整应用在 `app/`，325 个输入文件与旧 G98 流程完全一致；第 326 个 `.gitattributes` 仅增加禁止换行转换的规则，防止 Git 改写已验证的混合换行。生产源码/资源/构建/测试无改动，326 个暂存 blob 均与磁盘字节一致。原始工作区 `../smtc-cover-fix` 仍在 `rhine-g95-unified-record@6a1639c`；145 个未提交文件完整保留并备份。不要把未验收的 G99 混入迁移，不要清理旧补丁或擅自改 UI。

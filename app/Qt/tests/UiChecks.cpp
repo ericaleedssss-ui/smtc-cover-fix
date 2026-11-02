@@ -318,6 +318,18 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     if (!window || output.isEmpty()) {
         return 1;
     }
+    // Optional test placement keeps every QA window on the requested monitor.
+    // Normal application startup and tests without this option are unchanged.
+    QScreen *qaScreen = nullptr;
+    const auto qaScreenName = qEnvironmentVariable("RHINE_QA_SCREEN");
+    if (!qaScreenName.isEmpty()) {
+        for (auto *screen : QGuiApplication::screens()) {
+            if (screen->name() == qaScreenName) { qaScreen = screen; break; }
+        }
+        if (!qaScreen) { qCritical() << "QA screen not found:" << qaScreenName; return 1; }
+        window->setScreen(qaScreen);
+        window->setPosition(qaScreen->geometry().topLeft() + QPoint(60, 60));
+    }
     QElapsedTimer ready;
     ready.start();
     while (!backend.ready() && ready.elapsed() < 10000) {
@@ -1154,6 +1166,13 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     player.lyrics.load(player.current, true);
     QElapsedTimer lyricWait; lyricWait.start();
     while (player.lyrics.status == "loading" && lyricWait.elapsed() < 10000) { settle(30); }
+    const auto placeQaLyrics = [&] {
+        if (qaScreen) {
+            const auto bounds = qaScreen->availableGeometry();
+            backend.saveDesktopPosition(bounds.left() + 100, bounds.bottom() - 200);
+        }
+    };
+    placeQaLyrics();
     if (!hud.desktopLyricsEnabled) { backend.action("desktop:toggle"); }
     settle(300);
     QQuickWindow *desktop = nullptr;
@@ -1206,14 +1225,14 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
         backend.setDesktopColor("primary", "#334455"); settle(100);
         check(desktop->y() == edgeY && backend.desktopLyrics().value("y").toInt() == edgeY,
               "releasing at the screen bottom keeps the actual window edge without an upward snap");
-        backend.action("desktop:reset"); settle(150);
+        backend.action("desktop:reset"); placeQaLyrics(); settle(150);
         backend.action("desktop:lock"); settle(200);
         check(desktop->flags().testFlag(Qt::WindowTransparentForInput), "locking enables native mouse click-through");
         backend.action("desktop:lock"); settle(200);
         check(!desktop->flags().testFlag(Qt::WindowTransparentForInput), "player controls can unlock a click-through window");
         backend.action("desktop:larger");
         check(backend.desktopLyrics().value("size").toInt() == 28, "desktop font size setting updates the independent window");
-        backend.action("desktop:reset");
+        backend.action("desktop:reset"); placeQaLyrics();
         check(hud.desktopLyricsSize == 26 && hud.desktopLyricsFont == "MiSans" && !hud.desktopLyricsLocked &&
               hud.desktopLyricsPrimaryColor.isEmpty() && hud.desktopLyricsSecondaryColor.isEmpty() &&
               hud.desktopLyricsBackgroundColor == "#f5f0e4" && hud.desktopLyricsBackgroundOpacity == 65,

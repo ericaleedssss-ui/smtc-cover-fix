@@ -1,5 +1,7 @@
 #include "TaskbarIntegration.h"
 #include <QCoreApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QThread>
@@ -21,7 +23,18 @@ bool runTaskbarChecks() {
         QElapsedTimer time; time.start();
         while (time.elapsed() < 100) { QCoreApplication::processEvents(); QThread::msleep(5); }
     };
-    QWindow window; window.setTitle("Taskbar integration regression"); window.resize(320, 320); window.show();
+    QWindow window; window.setTitle("Taskbar integration regression"); window.resize(320, 320);
+    const auto qaScreenName = qEnvironmentVariable("RHINE_QA_SCREEN");
+    if (!qaScreenName.isEmpty()) {
+        QScreen *qaScreen = nullptr;
+        for (auto *screen : QGuiApplication::screens()) {
+            if (screen->name() == qaScreenName) { qaScreen = screen; break; }
+        }
+        if (!qaScreen) { qCritical() << "QA screen not found:" << qaScreenName; return false; }
+        window.setScreen(qaScreen);
+        window.setPosition(qaScreen->geometry().topLeft() + QPoint(100, 100));
+    }
+    window.show();
     QStringList commands;
     {
         TaskbarIntegration integration(&window, [&](QString command) { commands.append(command); });

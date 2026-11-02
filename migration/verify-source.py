@@ -38,8 +38,14 @@ for name in ['CMakeLists.txt', 'Qt/CMakeLists.txt', 'package.json', 'package-loc
     assert name in actual, 'Missing standalone build input: '+name
 
 baseline = json.loads((ROOT/'migration/source-baseline.json').read_text(encoding='utf-8'))
+expected = dict(baseline['files'])
+validation_changes = ROOT/'migration/ui-validation-changes.json'
+if validation_changes.exists():
+    for name, change in json.loads(validation_changes.read_text(encoding='utf-8')).items():
+        assert name in {'Qt/tests/UiChecks.cpp', 'Qt/tests/TaskbarChecks.cpp'}, 'Unexpected migration exception: '+name
+        assert change['before_sha256'] == expected[name], 'Validation exception has the wrong baseline: '+name
+        expected[name] = change['after_sha256']
 if args.compare_baseline:
-    expected = baseline['files']
     added = sorted(set(actual)-set(expected))
     missing = sorted(set(expected)-set(actual))
     changed = sorted(name for name in actual.keys() & expected.keys() if actual[name] != expected[name])
@@ -51,8 +57,9 @@ if os.environ.get('GITHUB_SHA'):
 stamp = dict(commit=head, application_directory='app', files=actual,
              baseline_commit=baseline['maintained_commit'],
              baseline_equal=actual == baseline['files'],
+             migration_equal=actual == expected,
              historical_patches_required=False)
 if args.stamp:
     args.stamp.parent.mkdir(parents=True, exist_ok=True)
     args.stamp.write_text(json.dumps(stamp,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-print(f'Standalone source: {len(actual)} files; migration baseline identical: {stamp["baseline_equal"]}; no reconstruction step.')
+print(f'Standalone source: {len(actual)} files; verified migration inputs match: {stamp["migration_equal"]}; no reconstruction step.')

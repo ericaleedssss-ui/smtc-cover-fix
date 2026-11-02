@@ -13,8 +13,15 @@ $ErrorActionPreference = 'Stop'
 $migrationRoot = Split-Path -Parent $PSScriptRoot
 $applicationRoot = Join-Path $migrationRoot 'app'
 function Invoke-Checked([string]$Executable, [string[]]$Arguments) {
-    & $Executable @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$Executable exited with code $LASTEXITCODE" }
+    # Windows PowerShell 5 wraps native stderr as ErrorRecords when redirected.
+    # Compiler/Qt warnings are valid output; the process exit code is decisive.
+    $previousErrorAction = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $Executable @Arguments
+        $nativeExitCode = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousErrorAction }
+    if ($nativeExitCode -ne 0) { throw "$Executable exited with code $nativeExitCode" }
 }
 
 # A Visual Studio x64 Developer PowerShell already provides INCLUDE/LIB/PATH.

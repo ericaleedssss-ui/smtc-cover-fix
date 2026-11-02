@@ -1,9 +1,15 @@
 name: Standalone Rhine migration validation
 
-# Deliberately manual. The existing build-smtc.yml remains unchanged until the
-# migrated build has passed and the owner chooses to adopt it.
+# Isolated candidate validation only. The existing formal build is unchanged.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - migration/full-source-20261102
+    paths:
+      - app/**
+      - migration/**
+      - .github/workflows/standalone-candidate.yml
 
 permissions:
   contents: read

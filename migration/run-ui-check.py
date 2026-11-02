@@ -11,13 +11,22 @@ parser.add_argument('--app',type=Path,default=ROOT/'app/output/windows/RHINE MUS
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--geometry',default=os.environ.get('RHINE_QA_GEOMETRY'),
     help='Optional Qt initial geometry; verify placement manually on mixed-DPI desktops first')
+parser.add_argument('--screen',default=os.environ.get('RHINE_QA_SCREEN'),
+    help='Optional exact Qt screen name for all QA windows, including lyrics and taskbar checks')
+parser.add_argument('--native-dpi',action='store_true',
+    help='Use native pixels in this test process to avoid mixed-DPI synthetic input conversion')
 args=parser.parse_args()
 app=args.app.resolve();qa=args.output.resolve();qa.mkdir(parents=True,exist_ok=True)
 shutil.copyfile(ROOT/'migration/comments-fixture.json',qa/'comments-fixture.json')
 command=[str(app/'RHINE MUSIC DATABASE.exe'),'--frosted-self-test',str(qa)]
 if args.geometry:
     command.extend(['-qwindowgeometry',args.geometry])
-result=subprocess.run(command,
+environment=os.environ.copy()
+if args.screen:
+    environment['RHINE_QA_SCREEN']=args.screen
+if args.native_dpi:
+    environment['QT_ENABLE_HIGHDPI_SCALING']='0'
+result=subprocess.run(command,env=environment,
     cwd=app,timeout=360,capture_output=True,text=True,encoding='utf-8',errors='replace')
 (qa/'stdout.txt').write_text(result.stdout,encoding='utf-8')
 (qa/'stderr.txt').write_text(result.stderr,encoding='utf-8')

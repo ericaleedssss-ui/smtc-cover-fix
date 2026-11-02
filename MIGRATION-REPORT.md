@@ -1,6 +1,6 @@
 # Rhine 完整源码迁移报告
 
-日期：2026-11-02。当前状态：**独立源码候选已完成本地编译与离线回归；界面专项验收未全部通过，未切换正式构建。**
+日期：2026-11-02。当前状态：**独立源码候选已完成本地完整构建、离线回归、打包和 Windows 玻璃 UI 307/307 检查；准备运行远端候选 CI，未切换正式构建。** 下文第 9 节为本轮追加验证，优先于初次迁移时的待完成记录。
 
 ## 1. 基线与隔离方式
 
@@ -81,7 +81,7 @@ G65、G66、G67、G68 两份 QA、G69、G70、G71 的独立 `.patch` 由对应�
 
 新增 [`standalone-candidate.yml`](.github/workflows/standalone-candidate.yml)：
 
-- 仅 `workflow_dispatch`，只检出当前仓库一次；默认工作目录 `app`。
+- 仅迁移分支 `migration/full-source-20261102` 的相关文件推送或 `workflow_dispatch`，只检出当前仓库一次；默认工作目录 `app`。
 - 不检出原作者仓库，不执行根历史补丁或 enable 链。
 - 沿用 MSVC 2022、Qt 6.12.0、Node 22.14.0，执行原构建、玻璃检查、离线回归与打包。
 - 保留原工作流的 scrobble/FM 来源断言，使用 `migration/check-integrations.py`。
@@ -180,3 +180,37 @@ SHA-256：
 主要新增内容：`app/`、`.github/workflows/standalone-candidate.yml`、`migration/`、本报告，以及根 README 和仅忽略本地验证结果的 `.gitignore`。简明验证摘要保存在 [`migration/evidence/verification-summary.json`](migration/evidence/verification-summary.json)；详细日志和截图位于本地 `migration/results/`，不会自动进入 Git。
 
 后续可先审阅当前候选。在图形验收及候选 CI 实际成功后，再决定是否采用新的工作流和将本地迁移提交推送到现有仓库。正式采用前无需删除历史文件。
+
+## 9. 2026-11-02 追加：本地完整界面检查通过
+
+用户授权继续验收后，先在不显示窗口的 offscreen 平台对新旧原样包进行对照：两者均为 **305/307**，同样失败于 Windows 任务栏和歌词 shader。日志明确显示 offscreen 没有 QRhi；该平台不能作为 Windows 图形验收依据。
+
+三屏使用不同缩放比例，原样测试通过 `QMouseEvent` 的本地/全局坐标注入鼠标事件，检查结果随窗口位置和 DPI 环境变化。将测试进程设为原生像素（`QT_ENABLE_HIGHDPI_SCALING=0`，不更改 Windows 设置），并明确指定 Type-C 副屏后，独立诊断程序 **307/307** 通过。随后已在真正部署的候选包上重复验证，同样 **exit 0 / 307/307**，生成 37 张截图。
+
+为安全地将所有自测窗口放在副屏，最终仅修改两份测试文件：
+
+- `app/Qt/tests/UiChecks.cpp`：可选 `RHINE_QA_SCREEN` 指定主测试窗和桌面歌词窗的位置。
+- `app/Qt/tests/TaskbarChecks.cpp`：同一可选环境变量指定任务栏自测窗位置。
+
+没有修改生产主入口、UI、shader、播放器或业务逻辑。两份文件中原有全部 `check(...)` 表达式和标签已与还原的 G98 源码逐项核对，完全保留。无测试屏幕参数时沿用原测试行为；找不到明确指定的屏幕则失败。两份文件修改前后哈希及用途见 `migration/ui-validation-changes.json`；等价检查只允许这两项记录的精确变更，负向测试覆盖额外变更及非法生产源码例外。
+
+因此最终 326 个输入中 **323 个与旧还原结果逐字节相同**；另外三项为 Git 换行属性和两份测试窗口定位文件。初次导入的完全等价证据保持原记录，后续测试改动单独列明。
+
+`migration/run-ui-check.py` 增加 `--screen` / `--native-dpi`，只给测试子进程设置环境，不影响用户常规启动。命令：
+
+```powershell
+python migration/run-ui-check.py --output migration/results/candidate-final-native-dpi `
+  --screen Type-C --native-dpi --geometry 1280x720+60+2220
+```
+
+`migration/build-local.ps1 -Share` 已真正从头调用完成：源码检查、npm ci、编译/部署、npm test、share、ZIP 全文件校验均 **exit 0**。修复了 Windows PowerShell 5 将重定向的原生 stderr 普通警告误判为终止异常的问题，仍严格按非零退出码报错。
+
+最终候选包仍为 7,766 文件，与旧包 7,763 文件字节相同，无增加/缺失。变化仍为 EXE、`dxcompiler.dll`、`dxil.dll`。本轮最终 ZIP SHA-256 更新为：
+
+```text
+ba9a024373ff4230c9204fba28e87968fcafc6c14af36b3c0724058ceeec07a1
+```
+
+证据摘要：[`migration/evidence/ui-followup-verification.json`](migration/evidence/ui-followup-verification.json)。原工作区 145 个文件及 152 个历史输入哈希再次确认未变。测试窗口已自动退出。
+
+本地自动化界面检查和 wrapper 端到端验证不再待完成。仍需远端候选 CI、用户主观体验确认、真实账号在线端到端回归、macOS/Linux 与不同硬件验收。截图不能提供跨机器逐像素等价保证。新候选工作流增加仅迁移分支的 push 触发，用于在现有仓库隔离验证；正式构建工作流仍原样保留，不合并或切换正式分支。

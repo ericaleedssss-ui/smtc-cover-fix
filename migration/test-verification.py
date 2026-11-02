@@ -43,6 +43,20 @@ with tempfile.TemporaryDirectory(prefix='rhine-migration-check-') as temporary:
     assert run([migration/'verify-source.py'],env={**env,'GITHUB_SHA':'0'*40}).returncode!=0
     print('PASS: changed baseline and wrong workflow commit are rejected; future app edits remain possible.')
 
+    (app/'Qt/src/main.cpp').write_bytes(b'fixture\n')
+    test_source=app/'Qt/tests/UiChecks.cpp'
+    test_source.write_bytes(b'placement-only fixture\n')
+    changes={'Qt/tests/UiChecks.cpp':dict(before_sha256=hashes['Qt/tests/UiChecks.cpp'],
+        after_sha256=hashlib.sha256(test_source.read_bytes()).hexdigest())}
+    (migration/'ui-validation-changes.json').write_text(json.dumps(changes),encoding='utf-8')
+    assert run([migration/'verify-source.py','--compare-baseline'],env=env).returncode==0
+    test_source.write_bytes(b'additional unreviewed test change\n')
+    assert run([migration/'verify-source.py','--compare-baseline'],env=env).returncode!=0
+    changes['Qt/src/main.cpp']=dict(before_sha256=hashes['Qt/src/main.cpp'],after_sha256=hashes['Qt/src/main.cpp'])
+    (migration/'ui-validation-changes.json').write_text(json.dumps(changes),encoding='utf-8')
+    assert run([migration/'verify-source.py'],env=env).returncode!=0
+    print('PASS: exact QA placement changes are accepted; unreviewed changes and production-code exceptions are rejected.')
+
     deployed=temp/'RHINE MUSIC DATABASE'
     for name in ['resources/LICENSE','resources/NOTICE','resources/MusicBridge/NODE-LICENSE','RHINE MUSIC DATABASE.exe']:
         p=deployed/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'fixture')
