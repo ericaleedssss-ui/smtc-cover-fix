@@ -246,4 +246,6 @@ GitHub artifact 外层 ZIP 有独立哈希，不与上述内部应用 ZIP 混用
 - 本轮仅调整工作流触发入口、产物标签和文档；正式工作流的权限、依赖版本、编译、玻璃 UI、原生/桥接回归和打包校验步骤沿用成功候选。
 - 原目录所有未提交源码和设计保留；仅在其未跟踪的 `SESSION-HANDOFF.md` 顶部追加正式开发目录提示，旧交接正文完整保留。这不是把未验收 G99 合入正式版本。
 
-候选成功记录仍为 [41447801633](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633)。切换后正式 `main` 构建的结果另行记录，不将候选成功冒充为新工作流运行结果。真实账号在线操作、长期使用、macOS/Linux 与其他机器测试仍未完成。
+正式采用提交 `4cd76ffbf230646e5f9c7957a9cd1b496b30f34f` 已成功推送至 `origin/main`，没有强制推送。新正式构建 [41451386632](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 已由该推送触发，最后核对为 `in_progress`，尚未取得最终结果。源码逐文件基线核对、集成保护和验证器负向检查通过；归档后的 Git blob 与原工作流逐字节一致。正式触发路径排除 `migration/evidence/`、`migration/legacy-workflows/`，单独更新证据或归档不消耗重复构建。
+
+候选成功记录仍为 [41447801633](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633)。不将候选成功冒充为新工作流运行结果。真实账号在线操作、长期使用、macOS/Linux 与其他机器测试仍未完成。

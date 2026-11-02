@@ -1,5 +1,5 @@
 {
-  "status": "User confirmed adoption; main cutover prepared; formal CI pending push",
+  "status": "Adopted on origin/main; new formal CI started and is in progress; candidate validation succeeded",
   "date": "2026-11-02",
   "formal_branch": "main",
   "application_directory": "app",
@@ -7,7 +7,13 @@
   "successful_candidate_run": 41447801633,
   "application_changes_during_cutover": false,
   "formal_workflow": ".github/workflows/build-smtc.yml",
-  "formal_ci": null,
+  "formal_ci": {
+    "run_id": 41451386632,
+    "url": "https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632",
+    "commit": "4cd76ffbf230646e5f9c7957a9cd1b496b30f34f",
+    "status": "in_progress",
+    "conclusion": null
+  },
   "legacy_workflows": {
     "build-smtc.yml": "e22fb150e4923ae531ef989f3bbcb3b9259b25144a4530e0ed88ad1c11a22c12",
     "export-g53.yml": "8597b31b88d3d749941810bd41995cc78baff567718d37e5033e042e34cba590"
@@ -33,5 +39,6 @@
     "long sessions",
     "macOS/Linux",
     "other machines"
-  ]
+  ],
+  "cutover_commit": "4cd76ffbf230646e5f9c7957a9cd1b496b30f34f"
 }
