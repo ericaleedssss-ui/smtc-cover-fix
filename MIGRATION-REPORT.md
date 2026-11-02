@@ -261,3 +261,13 @@ GitHub artifact 外层 ZIP 有独立哈希，不与上述内部应用 ZIP 混用
 - [正式构建证据](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632/artifacts/13145491745)：`Rhine-build-evidence`。两份 artifact 保留至 2026-11-16。
 
 完整状态和 artifact 摘要记录于 `migration/evidence/formal-ci-verification.json`。本次迁移、正式源码采用和正式构建验证已完成；后续直接从 `main` 修改 `app/`。本次仅更新记录，无应用改动，无需重复编译。真实账号在线、长期使用、其他平台和硬件仍待后续验收。
+
+## 13. 按用户要求迁至 H 盘开发
+
+本机正式目录更新为 `H:\Development\Rhine\smtc-source-migration`；同级旧分支工作树 `smtc-cover-fix` 与 Git 元数据、工具链、Python、验证资料均已完整复制并逐文件 SHA-256 校验。Git worktree 与 Python 路径已修正为 H 盘。C 盘少量源码保留作历史参考，已迁出 C 盘的大体积旧工具和产物归档在 H 盘，不删除未提交设计。
+
+已在 H 盘重新生成 CMake 构建目录并完成完整编译/部署。CTest 7/7、桥接 48 项、随包 IPC、离线 GPU 和资源审计通过，ZIP 的 7,766 个文件与部署树一致。第一次 IPC 检查遇到启动超时，保留失败日志；原样单项重跑及完整 npm test 重跑均通过。没有修改生产源文件或测试时限。
+
+本机统一入口为仓库外 `H:\Development\Rhine\Build-Rhine.ps1 -Share`，工具环境为同级 `Use-Rhine-Tools.ps1`。Qt 6.12、MSVC 19.44、Windows SDK 10.0.26100、Node 22.14、Python 3.12、CMake 与 Ninja 均从 H 盘使用。用户 TEMP/TMP、npm 和 pip 缓存也改到 H 盘；此前用户环境值有本地备份。此配置不影响云端正式工作流。
+
+按用户要求整理 C 盘后可用空间达到约 40 GiB。旧临时图片、更新安装包、下载安装器和开发下载缓存归档到 `H:\C-Drive-Cleanup\2026-11-02`；项目大文件归档见上述本地迁移目录。未清理个人文档、聊天数据库、画图软件工作文件、系统安装缓存或分页文件。本轮无需继续安装完整 Visual Studio。

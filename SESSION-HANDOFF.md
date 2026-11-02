@@ -1,5 +1,9 @@
 # 2026-11-02 用户确认采用：正式完整源码开发
 
+**最新本机目录：`H:\Development\Rhine\smtc-source-migration`，分支 `main`。用户要求不在 C 盘开发，源码、工具、构建和缓存已迁至 H 盘并验证。** 同级 `START-HERE.md`、`Use-Rhine-Tools.ps1` 和 `Build-Rhine.ps1` 为本机入口。旧 C 盘源码副本仍保留，仅供历史参考，不要在 C 盘工作树提交或继续开发。H 盘的同级 `smtc-cover-fix` 保存其独立 Git 元数据与全部未提交设计。
+
+H 盘重新完整编译/部署成功；CTest 7/7、48 桥接测试、随包 IPC、离线 GPU 审计和 7,766 文件 ZIP 核对通过。初次 IPC 15 秒启动超时，未改任何应用/测试代码，原样单项和全套重跑均通过。C 盘可用空间从约 24.3 GiB 增至至少 40 GiB，清理内容归档在 `H:\C-Drive-Cleanup\2026-11-02`，项目旧产物归档在同级 `relocation-evidence/c-drive-originals/`。用户级 TEMP/TMP、npm 和 pip 缓存已指向 H 盘，重新打开应用或登录后继承；本机工具入口当次即生效。系统/聊天/绘画资料未清理。
+
 用户已明确确认采用完整源码维护方式。本工作树当前分支为 `main`，迁移与正式切换提交 `4cd76ffbf230646e5f9c7957a9cd1b496b30f34f` 已推送到 `origin/main`；后续直接修改 `app/`，不再制作历史补丁。正式工作流为 `.github/workflows/build-smtc.yml`，直接检出本仓库、在 `app/` 中编译；旧工作流完整归档至 `migration/legacy-workflows/`。**正式构建 [41451386632](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 已核对为 success**：玻璃 UI 307/307、CTest 7/7、桥接 48 项、7,766 文件包核对均通过。正式 Windows artifact 为 `13145696581`，证据为 `13145491745`。最终记录见 `migration/evidence/formal-ci-verification.json`。迁移与正式切换均已完成，不必重复构建或电脑控制；只更新文档/证据不会触发新构建。
 
 - 已验证应用基线：`f89fa4b`，成功候选 Actions `41447801633`，玻璃 UI 307/307、CTest 7/7、桥接 48 项、7,766 打包文件核对通过。本轮 `app/` 没有改动。

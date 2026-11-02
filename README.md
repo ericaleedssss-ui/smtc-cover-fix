@@ -2,7 +2,7 @@
 
 完整应用源码位于 [`app/`](app/)。后续独立开发应直接修改其中的 C++、QML、shader、资源与构建脚本。
 
-用户已于 2026-11-02 确认采用完整源码结构。正式开发分支为 `main`，本地开发目录为原目录同级的 `smtc-source-migration/`。应用从已成功构建的 `6a1639c`（G98）完整还原，本地与 [GitHub Actions 候选构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633) 的完整编译、回归、打包和玻璃 UI 307/307 检查已通过。正式工作流现在直接编译本仓库 `app/`。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
+用户已于 2026-11-02 确认采用完整源码结构。正式开发分支为 `main`，本机开发目录已迁至 **`H:\Development\Rhine\smtc-source-migration`**；C 盘副本仅保留作历史参考。应用从已成功构建的 `6a1639c`（G98）完整还原，本地与 [GitHub Actions 候选构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633) 的完整编译、回归、打包和玻璃 UI 307/307 检查已通过。正式工作流现在直接编译本仓库 `app/`。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
 
 [首次正式 main 构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 同样成功，玻璃 UI 307/307、CTest 7/7、桥接 48 项与打包检查全部通过。[Windows 程序包](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632/artifacts/13145696581) 保留至 2026-11-16。
 
@@ -22,6 +22,8 @@
 `app/.github/workflows/` 是原项目保留的文件。GitHub 不会将子目录内这些文件作为本仓库工作流运行。
 
 ## Windows 本地开发
+
+本机工具已集中在 H 盘并经过完整编译验证，可直接执行 `H:\Development\Rhine\Build-Rhine.ps1 -Share`。单独加载工具使用 `. H:\Development\Rhine\Use-Rhine-Tools.ps1`，入口说明位于 `H:\Development\Rhine\START-HERE.md`。这些机器专用入口保存在仓库外，不影响 GitHub Actions 或其他机器。
 
 需要 Qt **6.12.0 / MSVC 2022 x64**（包含 ShaderTools、Multimedia 和对应私有头文件）、MSVC C++20 工具链与 Windows SDK、Node **22.14.0**、Python 3、CMake ≥ 3.24 和 Ninja。第三方 npm 依赖由锁文件安装；TagLib、utfcpp 和二维码库源码已保留在 `app/vendor/`。
 
