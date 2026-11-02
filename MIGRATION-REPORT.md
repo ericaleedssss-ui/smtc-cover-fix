@@ -1,6 +1,6 @@
 # Rhine 完整源码迁移报告
 
-日期：2026-11-02。当前状态：**独立源码候选已完成本地完整构建、离线回归、打包和 Windows 玻璃 UI 307/307 检查；准备运行远端候选 CI，未切换正式构建。** 下文第 9 节为本轮追加验证，优先于初次迁移时的待完成记录。
+日期：2026-11-02。当前状态：**独立源码已通过本地与 GitHub Actions 完整编译、离线回归、打包核对和玻璃 UI 307/307 检查；候选分支已推送，正式构建尚未切换。** 下文第 9、10 节为最终追加验证，优先于初次迁移时的待完成记录。
 
 ## 1. 基线与隔离方式
 
@@ -214,3 +214,24 @@ ba9a024373ff4230c9204fba28e87968fcafc6c14af36b3c0724058ceeec07a1
 证据摘要：[`migration/evidence/ui-followup-verification.json`](migration/evidence/ui-followup-verification.json)。原工作区 145 个文件及 152 个历史输入哈希再次确认未变。测试窗口已自动退出。
 
 本地自动化界面检查和 wrapper 端到端验证不再待完成。仍需远端候选 CI、用户主观体验确认、真实账号在线端到端回归、macOS/Linux 与不同硬件验收。截图不能提供跨机器逐像素等价保证。新候选工作流增加仅迁移分支的 push 触发，用于在现有仓库隔离验证；正式构建工作流仍原样保留，不合并或切换正式分支。
+
+## 10. 最终：独立源码远端候选构建成功
+
+迁移分支 `migration/full-source-20261102` 已推送到现有仓库；实际验证提交 `f89fa4bbf7c8d5bbb44ad47da8642563c168a023`。
+
+- [Actions 41447801633](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633)，job `125285152941`，最终 **success**。
+- 云端从本仓库完整 `app/` 直接编译/部署，来源清单记录 `migration_equal=true`、`historical_patches_required=false`。
+- 玻璃 UI **307/307**、CTest **7/7**、桥接 **48 项**、包隔离/GPU/资源审计全部通过。
+- 绿色 ZIP **7,766 文件**与部署树逐文件相符，许可证存在，个人数据已排除。
+- [候选 Windows 下载](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633/artifacts/13143298236)：`Rhine-Standalone-Candidate-Windows-x64`。
+- [云端证据下载](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633/artifacts/13144147006)：`Standalone-migration-evidence`。
+
+已下载约 9.6 MB 云端证据并核对 artifact SHA-256，确认来源清单和包校验记录。云端应用 ZIP（artifact 内部的实际分发 ZIP）SHA-256：
+
+```text
+eb444e92b7ab9b600d56a9ee7d68d6b126a25106d50380532119f765f589c429
+```
+
+GitHub artifact 外层 ZIP 有独立哈希，不与上述内部应用 ZIP 混用。两份 artifact 保留至 2026-11-16；届时需要重新构建获取。简明证据在 `migration/evidence/remote-ci-verification.json`。
+
+**本轮迁移实现与 Windows 自动化验证已完成。** 没有合并、修改默认分支或切换原正式构建；也没有删除任何历史补丁。接下来用户可以下载候选包，按日常方式体验搜索、播放、切歌、队列和喜欢等内容；真实账号在线验收、主观视觉验收、macOS/Linux/其他硬件仍不属于已证明结果。用户确认采用后，再单独切换正式开发/构建流程。

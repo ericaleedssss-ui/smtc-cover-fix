@@ -2,7 +2,7 @@
 
 完整应用源码位于 [`app/`](app/)。后续独立开发应直接修改其中的 C++、QML、shader、资源与构建脚本。
 
-当前候选从已成功构建的 `6a1639c`（G98）完整还原，本地完整编译、回归、打包和玻璃 UI 307/307 检查已通过，尚未切换正式构建。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
+当前候选从已成功构建的 `6a1639c`（G98）完整还原，本地与 [GitHub Actions 候选构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633) 的完整编译、回归、打包和玻璃 UI 307/307 检查已通过，尚未切换正式构建。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
 
 ## 目录
 

@@ -2,6 +2,8 @@
 
 ## 最新追加验证（优先于下面初始记录）
 
+**最终远端结果已成功**：[Actions 41447801633](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633)，验证提交 `f89fa4b`，job `125285152941`。云端完整源码编译、玻璃 UI 307/307、CTest 7/7、48 桥接测试、打包/7,766 文件核对均通过。分支已推送，没有合并或正式切换。Windows 候选 artifact `13143298236`，证据 `13144147006`，保留至 2026-11-16。完整结果见报告第 10 节和 `migration/evidence/remote-ci-verification.json`。不必再重复构建、重跑 GUI 或继续轮询；等待用户体验与采用决定。所有测试窗已退出，不再需要 Computer Use。
+
 用户已要求继续验收，并在误按 Esc 后明确允许重新发起电脑控制。最终正式候选包在 Type-C 副屏、仅测试子进程原生 DPI 环境下 **307/307 全部通过 / exit 0**，37 张截图保留于 `migration/results/candidate-final-native-dpi/`，全部窗口自动退出。`migration/build-local.ps1 -Share` 已完整运行成功（编译、npm test、7 CTest、48 桥接测试、share、7,766 文件 ZIP 校验）。修复 wrapper 对 PowerShell 5 原生 stderr 普通警告的误判。
 
 生产 UI、shader、业务/播放器源码未改。两份测试文件新增可选 `RHINE_QA_SCREEN`，把主测试窗/桌面歌词/任务栏测试窗定位至 Type-C；原 check 表达式与标签全部保留。`migration/run-ui-check.py` 支持 `--screen Type-C --native-dpi --geometry 1280x720+60+2220`。原多屏混合 DPI 与输入坐标的环境问题已在正式候选包通过本轮验证；无需更改系统缩放。323 个输入与旧还原完全相同，另外 3 项是 `.gitattributes` 和两份 QA 定位文件，哈希见 `ui-validation-changes.json`，基线核对只允许这些精确例外。
