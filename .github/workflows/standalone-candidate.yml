@@ -1,6 +1,6 @@
 name: Standalone Rhine migration validation
 
-# Isolated candidate validation only. The existing formal build is unchanged.
+# Retained migration-branch validation. main uses build-smtc.yml directly.
 on:
   workflow_dispatch:
   push:

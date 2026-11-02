@@ -1,8 +1,10 @@
-# Rhine Music Database — 独立源码迁移候选
+# Rhine Music Database — 独立维护完整源码
 
 完整应用源码位于 [`app/`](app/)。后续独立开发应直接修改其中的 C++、QML、shader、资源与构建脚本。
 
-当前候选从已成功构建的 `6a1639c`（G98）完整还原，本地与 [GitHub Actions 候选构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633) 的完整编译、回归、打包和玻璃 UI 307/307 检查已通过，尚未切换正式构建。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
+用户已于 2026-11-02 确认采用完整源码结构。正式开发分支为 `main`，本地开发目录为原目录同级的 `smtc-source-migration/`。应用从已成功构建的 `6a1639c`（G98）完整还原，本地与 [GitHub Actions 候选构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633) 的完整编译、回归、打包和玻璃 UI 307/307 检查已通过。正式工作流现在直接编译本仓库 `app/`。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
+
+日常修改直接发生在 `app/`，提交到开发分支后合入 `main`；不再修改 `maintained/` 或新增历史补丁。原目录 `smtc-cover-fix/` 保留旧分支和所有未提交设计工作，这些尚未验收的设计没有自动进入正式版本。
 
 ## 目录
 
@@ -10,9 +12,10 @@
 | --- | --- |
 | `app/` | 可直接编译的完整应用，包含依赖锁文件、测试、资源、MIT 许可证及原版权声明 |
 | `migration/` | 独立构建辅助、来源清单和迁移验证 |
-| `.github/workflows/standalone-candidate.yml` | 仅迁移分支推送或手动触发的独立源码候选构建，仅检出本仓库 |
+| `.github/workflows/build-smtc.yml` | 正式完整源码构建；响应 `main` 的相关源码推送、面向 `main` 的 PR 或手动触发 |
+| `.github/workflows/standalone-candidate.yml` | 保留的迁移分支候选验证入口 |
 | `maintained/`、`patches/`、根目录 `scripts/` | 原补丁开发历史，原样保留；独立构建不执行它们 |
-| `.github/workflows/build-smtc.yml` | 原正式构建，暂时保持原样 |
+| `migration/legacy-workflows/` | 原补丁构建和 G53 导出工作流的逐字节归档，GitHub 不会执行此目录中的工作流 |
 
 `app/.github/workflows/` 是原项目保留的文件。GitHub 不会将子目录内这些文件作为本仓库工作流运行。
 
@@ -55,6 +58,6 @@ python migration/test-verification.py
 
 `--compare-baseline` 仅用于本次迁移的逐文件等价核对，允许 `ui-validation-changes.json` 中明确记录的两份测试窗口定位改动。未来正常开发使用不带该参数的检查；无需把源码改动重新制成补丁。`migration/source-baseline.json` 保持为迁移时的来源证据。
 
-新工作流只响应 `migration/full-source-20261102` 分支的相关文件推送或手动触发。它是候选验证流程，暂不替换正式工作流；远端运行情况见迁移报告。
+正式工作流仅检出本仓库，直接编译 `app/`，不执行历史补丁。原正式工作流已完整归档至 `migration/legacy-workflows/build-smtc.yml`，G53 导出工具也在该目录保留。历史分支和候选验证分支继续保留。正式构建产物名为 `Rhine-Windows-x64`，日志与验证记录为 `Rhine-build-evidence`。
 
 应用及第三方许可沿用 [`app/LICENSE`](app/LICENSE)、[`app/NOTICE`](app/NOTICE)、`app/licenses/` 和各依赖自带声明；迁移没有更换原作者署名。
