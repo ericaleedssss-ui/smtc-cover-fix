@@ -1,5 +1,5 @@
 {
-  "status": "Adopted on origin/main; new formal CI started and is in progress; candidate validation succeeded",
+  "status": "Adopted on origin/main; formal full-source CI succeeded; migration and cutover complete",
   "date": "2026-11-02",
   "formal_branch": "main",
   "application_directory": "app",
@@ -9,10 +9,11 @@
   "formal_workflow": ".github/workflows/build-smtc.yml",
   "formal_ci": {
     "run_id": 41451386632,
+    "job_id": 125297190125,
     "url": "https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632",
     "commit": "4cd76ffbf230646e5f9c7957a9cd1b496b30f34f",
-    "status": "in_progress",
-    "conclusion": null
+    "status": "completed",
+    "conclusion": "success"
   },
   "legacy_workflows": {
     "build-smtc.yml": "e22fb150e4923ae531ef989f3bbcb3b9259b25144a4530e0ed88ad1c11a22c12",
@@ -34,7 +35,6 @@
     "original work preserved"
   ],
   "remaining": [
-    "formal main CI result",
     "real authenticated online regression",
     "long sessions",
     "macOS/Linux",

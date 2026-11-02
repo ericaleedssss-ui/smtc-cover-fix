@@ -249,3 +249,15 @@ GitHub artifact 外层 ZIP 有独立哈希，不与上述内部应用 ZIP 混用
 正式采用提交 `4cd76ffbf230646e5f9c7957a9cd1b496b30f34f` 已成功推送至 `origin/main`，没有强制推送。新正式构建 [41451386632](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 已由该推送触发，最后核对为 `in_progress`，尚未取得最终结果。源码逐文件基线核对、集成保护和验证器负向检查通过；归档后的 Git blob 与原工作流逐字节一致。正式触发路径排除 `migration/evidence/`、`migration/legacy-workflows/`，单独更新证据或归档不消耗重复构建。
 
 候选成功记录仍为 [41447801633](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633)。不将候选成功冒充为新工作流运行结果。真实账号在线操作、长期使用、macOS/Linux 与其他机器测试仍未完成。
+
+## 12. 正式 main 构建最终成功
+
+用户通知构建完成后，已核对 GitHub 正式运行 [41451386632](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632)、job `125297190125` 和完整 job 日志，结论为 **success**，验证提交为 `4cd76ffbf230646e5f9c7957a9cd1b496b30f34f`。这次结果来自新的正式工作流，替代第 11 节运行中的临时状态。
+
+- 完整 `app/` 源码直接编译、部署与来源核对成功，326 个输入保持迁移等价，不执行历史补丁。
+- 日志中 307 条玻璃 UI checkpoint 全部为 true；CTest 7/7，桥接测试总计 48 项通过、0 失败。
+- 绿色包的 7,766 个文件与部署树一致，许可证检查通过。
+- [Windows 正式程序包](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632/artifacts/13145696581)：`Rhine-Windows-x64`。
+- [正式构建证据](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632/artifacts/13145491745)：`Rhine-build-evidence`。两份 artifact 保留至 2026-11-16。
+
+完整状态和 artifact 摘要记录于 `migration/evidence/formal-ci-verification.json`。本次迁移、正式源码采用和正式构建验证已完成；后续直接从 `main` 修改 `app/`。本次仅更新记录，无应用改动，无需重复编译。真实账号在线、长期使用、其他平台和硬件仍待后续验收。

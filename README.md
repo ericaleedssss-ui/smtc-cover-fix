@@ -4,6 +4,8 @@
 
 用户已于 2026-11-02 确认采用完整源码结构。正式开发分支为 `main`，本地开发目录为原目录同级的 `smtc-source-migration/`。应用从已成功构建的 `6a1639c`（G98）完整还原，本地与 [GitHub Actions 候选构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41447801633) 的完整编译、回归、打包和玻璃 UI 307/307 检查已通过。正式工作流现在直接编译本仓库 `app/`。迁移详情、验证结果和未完成项目见 [`MIGRATION-REPORT.md`](MIGRATION-REPORT.md)。
 
+[首次正式 main 构建](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 同样成功，玻璃 UI 307/307、CTest 7/7、桥接 48 项与打包检查全部通过。[Windows 程序包](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632/artifacts/13145696581) 保留至 2026-11-16。
+
 日常修改直接发生在 `app/`，提交到开发分支后合入 `main`；不再修改 `maintained/` 或新增历史补丁。原目录 `smtc-cover-fix/` 保留旧分支和所有未提交设计工作，这些尚未验收的设计没有自动进入正式版本。
 
 ## 目录

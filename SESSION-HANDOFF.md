@@ -1,6 +1,6 @@
 # 2026-11-02 用户确认采用：正式完整源码开发
 
-用户已明确确认采用完整源码维护方式。本工作树当前分支为 `main`，迁移与正式切换提交 `4cd76ffbf230646e5f9c7957a9cd1b496b30f34f` 已推送到 `origin/main`；后续直接修改 `app/`，不再制作历史补丁。正式工作流为 `.github/workflows/build-smtc.yml`，直接检出本仓库、在 `app/` 中编译；旧工作流完整归档至 `migration/legacy-workflows/`。新正式构建 [41451386632](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 已自动启动，最后核对为 `in_progress`，尚未取得最终结果；候选成功不能替代新运行结果。只更新文档/证据的后续提交不会重复触发正式构建。
+用户已明确确认采用完整源码维护方式。本工作树当前分支为 `main`，迁移与正式切换提交 `4cd76ffbf230646e5f9c7957a9cd1b496b30f34f` 已推送到 `origin/main`；后续直接修改 `app/`，不再制作历史补丁。正式工作流为 `.github/workflows/build-smtc.yml`，直接检出本仓库、在 `app/` 中编译；旧工作流完整归档至 `migration/legacy-workflows/`。**正式构建 [41451386632](https://github.com/ericaleedssss-ui/smtc-cover-fix/actions/runs/41451386632) 已核对为 success**：玻璃 UI 307/307、CTest 7/7、桥接 48 项、7,766 文件包核对均通过。正式 Windows artifact 为 `13145696581`，证据为 `13145491745`。最终记录见 `migration/evidence/formal-ci-verification.json`。迁移与正式切换均已完成，不必重复构建或电脑控制；只更新文档/证据不会触发新构建。
 
 - 已验证应用基线：`f89fa4b`，成功候选 Actions `41447801633`，玻璃 UI 307/307、CTest 7/7、桥接 48 项、7,766 打包文件核对通过。本轮 `app/` 没有改动。
 - 本轮已检查正式构建步骤与成功候选逐项一致（仅产物/证据命名不同），源码等价、集成保护和负向检查均通过。
