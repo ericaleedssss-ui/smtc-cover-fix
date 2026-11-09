@@ -267,7 +267,7 @@ Item {
                 }
             }
         }
-        Text {text:stack.controller.info.recordsLoading?"读取中…":"更多收藏";height:32*Math.max(.9,stack.unit);verticalAlignment:Text.AlignVCenter;color:rhine.state.dark?"#b3bea6":"#7b876e";font.family:rhineFontFamily;font.pixelSize:11*Math.max(.9,stack.unit)
+        Text {text:stack.controller.info.recordsLoading?"读取中…":"更多收藏";height:32*Math.max(.9,stack.unit);verticalAlignment:Text.AlignVCenter;color:rhine.state.dark?"#b3bea6":"#7b876e";font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:11*Math.max(.9,stack.unit)
             visible:stack.controller.info.recordsMore===true&&Number(stack.controller.info.recordPosition)>=Number(stack.controller.info.recordCount)-1
             MouseArea {anchors.fill:parent;enabled:!stack.controller.info.recordsLoading;cursorShape:Qt.PointingHandCursor;onClicked:stack.controller.prepareRecords()}
         }
@@ -276,8 +276,8 @@ Item {
         objectName:"recordTargetInfo";x:stack.frontX+6*stack.unit;y:stack.frontY+stack.size*.55;width:stack.size-12*stack.unit;height:targetText.implicitHeight+20*stack.unit
         visible:!!stack.hoveredRecord.key&&!stack.turning;z:30;radius:8*stack.unit;color:rhine.state.dark?"#eb30392b":"#edf3f1e7";border.width:1;border.color:"#60ffffff"
         Column {id:targetText;x:10*stack.unit;y:10*stack.unit;width:parent.width-20*stack.unit;spacing:4*stack.unit
-            Text {objectName:"recordTargetTitle";width:parent.width;text:stack.hoveredRecord.title||"";wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;color:rhine.state.dark?"#e6ebdf":"#36402f";font.family:rhineFontFamily;font.pixelSize:13*Math.max(.9,stack.unit)}
-            Text {width:parent.width;text:(stack.hoveredRecord.kind==="album"?"专辑":"歌单")+(stack.hoveredRecord.artist?" · "+stack.hoveredRecord.artist:"");elide:Text.ElideRight;color:rhine.state.dark?"#acb79e":"#7b866d";font.family:rhineFontFamily;font.pixelSize:11*Math.max(.9,stack.unit)}
+            Text {objectName:"recordTargetTitle";width:parent.width;text:stack.hoveredRecord.title||"";wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;color:rhine.state.dark?"#e6ebdf":"#36402f";font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:13*Math.max(.9,stack.unit)}
+            Text {width:parent.width;text:(stack.hoveredRecord.kind==="album"?"专辑":"歌单")+(stack.hoveredRecord.artist?" · "+stack.hoveredRecord.artist:"");elide:Text.ElideRight;color:rhine.state.dark?"#acb79e":"#7b866d";font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:11*Math.max(.9,stack.unit)}
         }
     }
     Repeater {

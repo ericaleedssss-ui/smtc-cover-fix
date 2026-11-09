@@ -50,7 +50,7 @@ Item {
         MouseArea { anchors.fill: parent; onClicked: {} }
         Text {
             x: 35 * page.unit; y: 24 * page.unit
-            text: page.customCategory ? page.tabTitles[page.hud.discoverTab] : "精选"; font.pixelSize: 34 * page.unit; font.bold: true
+            text: page.customCategory ? page.tabTitles[page.hud.discoverTab] : "精选"; font.pixelSize: 34 * page.unit; font.bold: true;font.variableAxes:({"wght":(true?700:400)})
             color: page.hud.dark ? "#f4f1e9" : "#252820"
         }
         Row {
@@ -104,7 +104,7 @@ Item {
                             radius: 7 * page.unit; color: page.hud.dark ? "#41473c" : "#d4d3c8"; clip: true
                             Image { objectName: "discoverCardImage"; anchors.fill: parent; source: String(modelData.cover || "").replace(/^http:/,"https:"); asynchronous: true; fillMode: Image.PreserveAspectCrop; sourceSize.width: 360; sourceSize.height: 360 }
                         }
-                        Text { x: 8 * page.unit; y: parent.width + 2 * page.unit; width: parent.width - 16 * page.unit; text: modelData.title || ""; font.pixelSize: 16 * page.typeUnit; font.bold: true; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: page.hud.dark ? "#f4f1e9" : "#252820" }
+                        Text { x: 8 * page.unit; y: parent.width + 2 * page.unit; width: parent.width - 16 * page.unit; text: modelData.title || ""; font.pixelSize: 16 * page.typeUnit; font.bold: true;font.variableAxes:({"wght":(true?700:400)}); maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: page.hud.dark ? "#f4f1e9" : "#252820" }
                         MouseArea { id: cardMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onPositionChanged: page.keyboardIndex = -1; acceptedButtons:Qt.LeftButton|Qt.RightButton;onClicked:function(mouse){if(mouse.button===Qt.RightButton){var p=mapToItem(null,mouse.x,mouse.y);rhine.magazine.showSongMenu("discover",index,(modelData.provider||"netease")+":"+modelData.id,p.x,p.y);}else{page.remember();rhine.action("discover:item:"+index);}} }
                     }
                 }

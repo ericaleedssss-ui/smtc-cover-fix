@@ -62,27 +62,23 @@ set(RHINE_APP_SOURCES
     Qt/src/AppUpdater.cpp
     Qt/src/AppUpdater.h
     Qt/src/AudioPlayer.cpp
+    Qt/src/SoundEffects.cpp
+    Qt/src/SoundEffects.h
     Qt/src/AudioPlayer.h
+    Qt/src/AudioSpectrum.h
     Qt/src/HttpAudioStream.cpp
     Qt/src/HttpAudioStream.h
     Qt/src/PlaybackDiagnostics.cpp
     Qt/src/PlaybackDiagnostics.h
     Qt/src/AppStorage.cpp
     Qt/src/AppStorage.h
-    Qt/src/DiscGeometry.cpp
-    Qt/src/DiscGeometry.h
     Qt/src/FrameProfiler.cpp
     Qt/src/FrameProfiler.h
     Qt/src/ProcessMetrics.cpp
     Qt/src/ProcessMetrics.h
-    Qt/src/NativeCards.cpp
-    Qt/src/NativeCards.h
-    Qt/src/NativePicking.cpp
-    Qt/src/NativePicking.h
     Qt/src/UiMotion.cpp
     Qt/src/UiMotion.h
     Qt/tests/UiChecks.cpp
-    Qt/tests/SceneEnhancementChecks.cpp
     Qt/tests/NativeHostChecks.cpp
     Qt/tests/NativeMusicChecks.cpp
     Qt/src/Icon.cpp
@@ -109,37 +105,22 @@ set(RHINE_APP_SOURCES
     Qt/src/NativeHudProfile.cpp
     Qt/src/NativeHudMusic.cpp
     Qt/src/NativeHudInput.cpp
-    Qt/src/NativeHudDetail.cpp
     Qt/src/NativeHudPlayer.cpp
     Qt/src/NativeHudLibrary.cpp
     Qt/src/NativeHudModal.cpp
-    Qt/src/NativeHudBoot.cpp
-    Qt/src/SceneTypes.h
-    Qt/src/SceneAppearance.h
-    Qt/src/SceneAppearance.cpp
     Qt/src/NativeApplication.h
     Qt/src/NativeApplication.cpp
     Qt/src/NativeScene.h
     Qt/src/NativeScene.cpp
-    Qt/src/NativeSceneUpdate.cpp
-    Qt/src/NativeSceneCamera.cpp
-    Qt/src/NativeSceneFrame.cpp
-    Qt/src/NativeSceneInput.cpp
-    Qt/src/NativeViewer.h
-    Qt/src/NativeViewer.cpp
-    Qt/src/SceneMath.h
-    Qt/src/SceneMath.cpp
-    Qt/src/SceneDrag.h
-    Qt/src/SceneDrag.cpp
-    Qt/src/SceneMotion.h
-    Qt/src/SceneMotion.cpp
-    Qt/src/BootTimeline.cpp
     Qt/src/NowPlaying.cpp
     Qt/src/NowPlaying.h
     Qt/src/PlaylistShowcase.cpp
     Qt/src/PlaylistShowcase.h
     Qt/src/MessageCenter.cpp
     Qt/src/MessageCenter.h
+    Qt/src/PersonalHub.cpp
+    Qt/src/PersonalHub.h
+    Qt/src/ArtworkNetwork.h
     Qt/src/PlaylistMagazine.cpp
     Qt/src/PlaylistMagazine.h
     Qt/src/MusicDirectory.cpp
@@ -155,10 +136,6 @@ set(RHINE_APP_SOURCES
     Qt/src/Engine.h
     Qt/src/Hud.cpp
     Qt/src/Hud.h
-    Qt/src/RhiScene.cpp
-    Qt/src/RhiScene.h
-    Qt/src/OpticalScene.cpp
-    Qt/src/OpticalScene.h
     Qt/src/Glyphs.cpp
     Qt/src/Glyphs.h
     vendor/qrcodegen/qrcodegen.cpp)
@@ -170,7 +147,7 @@ endif()
 # 原生业务和场景由应用与独立回归共用，测试不需要复制整套源码目标。
 set(RHINE_CORE_SOURCES ${RHINE_APP_SOURCES})
 list(FILTER RHINE_CORE_SOURCES EXCLUDE REGEX
-     "/(main|Engine|Icon|RhiScene|OpticalScene|Hud|FrameProfiler)\\.(cpp|h)$|/tests/")
+     "/(main|Engine|Icon|Hud|FrameProfiler)\\.(cpp|h)$|/tests/")
 list(REMOVE_ITEM RHINE_APP_SOURCES ${RHINE_CORE_SOURCES})
 add_library(RhineCore STATIC ${RHINE_CORE_SOURCES})
 target_include_directories(
@@ -192,15 +169,6 @@ set_source_files_properties(Qt/qml/Main.qml TARGET_DIRECTORY RhineMusicDatabase 
 target_include_directories(RhineMusicDatabase PRIVATE vendor/qrcodegen Qt/src)
 qt_add_resources(
     RhineMusicDatabase
-    "rhine_animation"
-    PREFIX
-    "/animation"
-    BASE
-    "Assets/animation"
-    FILES
-    Assets/animation/boot-tracks.json)
-qt_add_resources(
-    RhineMusicDatabase
     "rhine_icons"
     PREFIX
     "/icons"
@@ -210,6 +178,7 @@ qt_add_resources(
     Assets/icons/archive-play.png
     Assets/icons/archive-shuffle.png
     Assets/icons/archive-more.png
+    Assets/icons/user-ranking.svg
     Assets/icons/song-like-on.png
     Assets/icons/song-like-off.png
     Assets/icons/icon-16.png
@@ -234,43 +203,20 @@ qt_add_shaders(
     MSL
     12
     FILES
-    Qt/shaders/geometry.vert
-    Qt/shaders/shadow.vert
-    Qt/shaders/shadow.frag
-    Qt/shaders/surface.frag
-    Qt/shaders/normal.frag
-    Qt/shaders/quad.vert
-    Qt/shaders/aoFragment.frag
-    Qt/shaders/blurAO.frag
-    Qt/shaders/combineAO.frag
-    Qt/shaders/bokehFragment.frag
-    Qt/shaders/finalFragment.frag
     Qt/shaders/liquidGlass.frag
+    Qt/shaders/refractiveGlass.frag
+    Qt/shaders/clearSeekGlass.frag
+    Qt/shaders/cloudyFog.frag
+    Qt/shaders/cloudyWallFrost.frag
+    Qt/shaders/cloudyGaussian.frag
+    Qt/shaders/cloudyBlurLevel.frag
+    Qt/shaders/roundedArtwork.frag
     Qt/shaders/lyricsEdge.frag
     Qt/shaders/softEdgeFade.frag
     Qt/shaders/recordAtmosphere.frag
     Qt/shaders/archiveIcon.frag
     Qt/shaders/magazineEdgeFade.frag
     Qt/shaders/circularCover.frag)
-# 增强模式单独打包
-qt_add_shaders(
-    RhineMusicDatabase
-    "rhine_enhancement_shaders"
-    PREFIX
-    "/optical"
-    BASE
-    "Qt/shaders/enhancement"
-    GLSL
-    "150,300es"
-    HLSL
-    50
-    MSL
-    12
-    FILES
-    Qt/shaders/enhancement/opticalGeometry.vert
-    Qt/shaders/enhancement/opticalQuad.vert
-    Qt/shaders/enhancement/opticalSurface.frag
-    Qt/shaders/enhancement/opticalFinalFragment.frag)
 target_compile_definitions(RhineMusicDatabase PRIVATE RHINE_APPLICATION_ID="${RHINE_APPLICATION_ID}"
                                                       $<$<CONFIG:Debug>:QT_QML_DEBUG>)
 target_link_libraries(
@@ -349,27 +295,6 @@ qt_finalize_executable(RhineMusicDatabase)
 enable_testing()
 # 冻结动画与场景基准只在手动视觉回归中启用，避免正常 UI 调整导致默认测试失败。
 option(RHINE_VISUAL_TESTS "Register frozen animation and scene snapshot regressions" OFF)
-qt_add_executable(RhineSceneMotionRegression Qt/tests/SceneMotionChecks.cpp Qt/src/SceneMotion.cpp
-                  Qt/src/BootTimeline.cpp Qt/src/SceneMath.cpp Qt/src/SceneDrag.cpp)
-target_include_directories(RhineSceneMotionRegression PRIVATE Qt/src)
-target_compile_definitions(RhineSceneMotionRegression PRIVATE RHINE_SCENE_MOTION_TEST_MAIN)
-target_link_libraries(RhineSceneMotionRegression PRIVATE Qt6::Core)
-qt_add_resources(
-    RhineSceneMotionRegression
-    "scene_motion_tracks"
-    PREFIX
-    "/animation"
-    BASE
-    "Assets/animation"
-    FILES
-    Assets/animation/boot-tracks.json)
-if(MSVC)
-    target_compile_options(RhineSceneMotionRegression PRIVATE /utf-8)
-endif()
-if(RHINE_VISUAL_TESTS)
-    add_test(NAME qt_scene_motion_regression
-             COMMAND RhineSceneMotionRegression "${CMAKE_CURRENT_SOURCE_DIR}/Qt/tests/fixtures/scene-motion.qz")
-endif()
 qt_add_executable(RhineUiMotionRegression Qt/tests/UiMotionRegression.cpp Qt/src/UiMotion.cpp)
 target_include_directories(RhineUiMotionRegression PRIVATE Qt/src)
 target_link_libraries(RhineUiMotionRegression PRIVATE Qt6::Core)
@@ -382,6 +307,9 @@ if(RHINE_VISUAL_TESTS)
 endif()
 qt_add_executable(RhinePlatformRegression Qt/tests/PlatformRegression.cpp Qt/src/AppStorage.cpp
                   Qt/src/AudioPlayer.cpp Qt/src/HttpAudioStream.cpp Qt/src/ProcessMetrics.cpp)
+# This native-only regression has no QML files. Scanning the application root
+# would recursively inspect deployed packages and dependency caches on rebuild.
+set_target_properties(RhinePlatformRegression PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 target_include_directories(RhinePlatformRegression PRIVATE Qt/src)
 target_link_libraries(RhinePlatformRegression PRIVATE Qt6::Core Qt6::Gui Qt6::Multimedia Qt6::Network
                                                       Qt6::MultimediaPrivate)
@@ -421,32 +349,18 @@ if(MSVC)
     target_compile_options(RhineAudioStreamRegression PRIVATE /utf-8)
 endif()
 add_test(NAME qt_audio_stream_regression COMMAND RhineAudioStreamRegression)
+qt_add_executable(RhineSoundEffectsRegression Qt/tests/SoundEffectsChecks.cpp)
+target_include_directories(RhineSoundEffectsRegression PRIVATE Qt/src)
+target_link_libraries(RhineSoundEffectsRegression PRIVATE Qt6::Core)
+if(MSVC)
+    target_compile_options(RhineSoundEffectsRegression PRIVATE /utf-8)
+endif()
+add_test(NAME qt_sound_effects_regression COMMAND RhineSoundEffectsRegression)
 add_test(NAME qt_offline COMMAND RhineMusicDatabase --self-test)
 set_tests_properties(
     qt_offline
     PROPERTIES ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;RHINE_RESOURCES=${CMAKE_CURRENT_SOURCE_DIR}/output/resources")
-
-qt_add_executable(RhineNativeSceneRegression Qt/tests/NativeSceneChecks.cpp)
-target_compile_definitions(RhineNativeSceneRegression PRIVATE RHINE_SCENE_REGRESSION_TEST_MAIN)
-target_link_libraries(RhineNativeSceneRegression PRIVATE RhineCore)
-qt_add_resources(
-    RhineNativeSceneRegression
-    "native_scene_tracks"
-    PREFIX
-    "/animation"
-    BASE
-    "Assets/animation"
-    FILES
-    Assets/animation/boot-tracks.json)
-if(MSVC)
-    target_compile_options(RhineNativeSceneRegression PRIVATE /utf-8)
-endif()
-if(RHINE_VISUAL_TESTS)
-    add_test(NAME qt_native_scene_regression
-             COMMAND RhineNativeSceneRegression "${CMAKE_CURRENT_SOURCE_DIR}/output/resources"
-                     "${CMAKE_CURRENT_SOURCE_DIR}/Qt/tests/fixtures/scene-frame.qz")
-endif()
 
 qt_add_executable(RhineNativeHudRegression Qt/tests/NativeHudChecks.cpp)
 target_compile_definitions(RhineNativeHudRegression PRIVATE RHINE_HUD_REGRESSION_TEST_MAIN)

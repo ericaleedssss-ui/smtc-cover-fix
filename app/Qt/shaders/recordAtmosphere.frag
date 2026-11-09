@@ -354,19 +354,18 @@ void main() {
         fragColor=vec4(rgb,a)*qt_Opacity;return;
     }
     if(shadowOnly>6.5){
-        // Shared screen-space fade: every physical layer, including gloss and
-        // shadows, loses focus and alpha together before the glass boundary.
+        // Fade the left overlap into the reading zone; keep the focal record
+        // opaque and sharp so the refracted room cannot show through its print.
         vec2 uv=qt_TexCoord0;
-        float focus=smoothstep(.26,.81,uv.x);
-        float spread=mix(.010,.00035,focus);
+        float focus=smoothstep(.24,.60,uv.x);
+        float spread=mix(.0045,.00005,focus);
         vec2 dx=vec2(spread/max(phase,1.0),0),dy=vec2(0,spread);
         vec4 colour=texture(artwork,uv)*.28;
         colour+=(texture(artwork,uv+dx)+texture(artwork,uv-dx)+texture(artwork,uv+dy)+texture(artwork,uv-dy))*.12;
         colour+=(texture(artwork,uv+dx+dy)+texture(artwork,uv+dx-dy)+texture(artwork,uv-dx+dy)+texture(artwork,uv-dx-dy))*.06;
         float lum=dot(colour.rgb,vec3(.299,.587,.114));
-        colour.rgb=mix(colour.rgb,vec3(lum),.16);
-        colour.rgb=mix(colour.rgb,vec3(.56,.53,.48)*colour.a,.08);
-        colour.rgb+=vec3(.05,.045,.036)*colour.a*(1.0-clamp(lum,0.0,1.0));
+        colour.rgb=mix(colour.rgb,vec3(lum),.045);
+        colour.rgb=mix(colour.rgb,vec3(.56,.53,.48)*colour.a,.02);
         vec2 sp=uv*vec2(phase,1.0);
         float key=1.0-smoothstep(.10,1.25,distance(sp,vec2(phase,0.0)));
         colour.rgb*=.97+.05*key;
@@ -374,14 +373,12 @@ void main() {
         float winLight=exp(-pow((s-.50)/.045,2.0))+.75*exp(-pow((s-.66)/.035,2.0));
         colour.rgb+=vec3(1.0,.95,.86)*colour.a*.04*winLight*smoothstep(.45,.75,uv.x);
         float grain=fract(sin(dot(floor(sp*900.0),vec2(12.9898,78.233)))*43758.5453)-.5;
-        colour.rgb+=grain*.05*colour.a;
-        float veil=mix(.025,.12,1.0-smoothstep(.35,.88,uv.x));
+        colour.rgb+=grain*.015*colour.a;
+        float veil=mix(.006,.045,1.0-smoothstep(.30,.66,uv.x));
         vec3 cream=mix(vec3(.965,.950,.920),vec3(.24,.27,.23),darkMode);
         colour.rgb=mix(colour.rgb,cream*colour.a,veil);
         colour.rgb=clamp(colour.rgb,vec3(0.0),vec3(colour.a));
-        float fade=.32+.68*smoothstep(.08,.74,uv.x);
-        fade*=1.0-.10*smoothstep(.87,1.0,uv.x);
-        fade*=1.0-.22*smoothstep(.82,1.0,uv.y);
+        float fade=.16+.84*smoothstep(.20,.63,uv.x);
         // LiquidGlass has a 22-unit radius in a 440-unit-high content area.
         vec2 size=vec2(phase,1.0),q=abs((uv-.5)*size)-size*.5+.05;
         float d=length(max(q,vec2(0)))+min(max(q.x,q.y),0.0)-.05;

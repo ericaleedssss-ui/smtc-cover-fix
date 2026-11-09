@@ -370,6 +370,32 @@ void LyricsController::finish(const Pending &pending) {
 }
 
 void LyricsController::accept(QJsonObject document, const QJsonObject &track) {
+    // Cloudy lyrics.Build/SpreadWords: line-only lyrics still have a finite
+    // singing interval and evenly weighted word timing, including cached LRCs.
+    auto lines=document["lines"].toArray();
+    for(int i=0;i<lines.size();++i){
+        auto line=lines[i].toObject();const double start=line["startMs"].toDouble();
+        auto words=line["words"].toArray();
+        if(words.isEmpty()){
+            const double end=std::max(start+1.,std::min(start+6000.,i+1<lines.size()?lines[i+1].toObject()["startMs"].toDouble():start+6000.));
+            line["endMs"]=end;
+            QStringList parts;QString current;
+            const auto flush=[&]{if(!current.isEmpty()){parts.append(current);current.clear();}};
+            for(const auto cp:line["text"].toString().toUcs4()){
+                const QString ch=QString::fromUcs4(&cp,1);
+                if(QChar::isSpace(cp)){if(!current.isEmpty()){current+=' ';flush();}}
+                else if((cp>=0x3400&&cp<=0x9fff)||(cp>=0x20000&&cp<=0x3134f)||(cp>=0x3040&&cp<=0x30ff)||(cp>=0xac00&&cp<=0xd7af)){flush();parts.append(ch);}
+                else current+=ch;
+            }
+            flush();int total=0;for(const auto &part:parts)total+=part.trimmed().toUcs4().size();
+            double at=start;for(const auto &part:parts){const double duration=(end-start)*.85*part.trimmed().toUcs4().size()/std::max(1,total);words.append(QJsonObject{{"text",part},{"startMs",at},{"endMs",at+duration}});at+=duration;}
+            line["words"]=words;line["wordTimingEstimated"]=true;
+        }else if(!line["endMs"].isDouble()||line["endMs"].toDouble()<=start){
+            double end=start;for(const auto &word:words)end=std::max(end,word.toObject()["endMs"].toDouble());line["endMs"]=std::max(start+150.,end);
+        }
+        lines[i]=line;
+    }
+    document["lines"]=lines;
     document["trackKey"] = trackKey(track);
     m_document = document;
     m_starts.clear();

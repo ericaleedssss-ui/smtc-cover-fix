@@ -1,4 +1,5 @@
 #include "AudioPlayer.h"
+#include <QAudioBuffer>
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QJsonDocument>
@@ -50,6 +51,40 @@ QByteArray tone(int seconds = 4) {
 
 class AudioPlayerRegression {
   public:
+    // Visual analysis must not depend on diagnostics or change decoded audio.
+    static bool levels() {
+        AudioPlayer audio;audio.enableVisualLevels(true);
+        audio.control("rate",1.5);
+        bool rateOK=check(audio.player->playbackRate()==1.5&&audio.state()["rate"].toDouble()==1.5,"Playback speed reaches the actual media backend");
+        audio.control("stop");
+        rateOK&=check(audio.player->playbackRate()==1.5,"Playback speed survives backend recreation");
+        audio.control("rate",1);
+        audio.selectOutput("not-a-real-device");
+        rateOK&=check(audio.state()["outputDevice"].toString().isEmpty()&&!audio.outputDevices().isEmpty(),"Invalid output selection preserves the default output");
+        QAudioFormat format;format.setSampleRate(48000);format.setChannelCount(2);format.setSampleFormat(QAudioFormat::Float);
+        QByteArray bytes(4800*2*int(sizeof(float)),Qt::Uninitialized);
+        auto *samples=reinterpret_cast<float*>(bytes.data());
+        for(int i=0;i<4800;++i)samples[i*2]=samples[i*2+1]=float(std::sin(2*3.141592653589793*80*i/48000)*.3);
+        const auto original=bytes;
+        const QAudioBuffer signal(bytes,format);
+        QMetaObject::invokeMethod(audio.decodedOutput.get(),"audioBufferReceived",Qt::DirectConnection,Q_ARG(QAudioBuffer,signal));
+        bool ok=check(audio.visualBass>.2&&audio.visualBass<=1&&bytes==original&&audio.decodedBuffers==0,"Visual bass analysis reads non-silent PCM without diagnostics or mutation");
+        auto bass=audio.spectrum.atMs(30);int bassPeak=int(std::max_element(bass.begin(),bass.end())-bass.begin());
+        ok&=check(*std::max_element(bass.begin(),bass.end())>.5&&bassPeak<8,"Cloudy spectrum measures actual low-frequency PCM in low bands");
+        AudioSpectrum treble;std::vector<float> high(4800);for(int i=0;i<4800;++i)high[i]=float(std::sin(2*3.141592653589793*6000*i/48000)*.3);treble.feed(0,high,48000);auto highBands=treble.atMs(30);
+        ok&=check(std::max_element(highBands.begin(),highBands.end())-highBands.begin()>16,"High-frequency PCM drives different bars from a bass tone");
+        AudioSpectrum silence;std::vector<float> zeros(4800);silence.feed(0,zeros,48000);auto quiet=silence.atMs(30);
+        ok&=check(*std::max_element(quiet.begin(),quiet.end())==0,"Silent PCM does not invent equalizer activity");
+        treble.reset();auto cleared=treble.atMs(30);ok&=check(*std::max_element(cleared.begin(),cleared.end())==0,"Song reset clears cached spectrum");
+        AudioSpectrum split;split.feed(0,std::span<const float>(high).first(333),48000);split.feed(333,std::span<const float>(high).subspan(333),48000);ok&=check(split.atMs(30)==highBands,"Chunked decode buffers preserve sample continuity and frequency response");
+        AudioSpectrum seeking;std::vector<float> longTone(514*AudioSpectrum::Size);for(size_t i=0;i<longTone.size();++i)longTone[i]=high[i%high.size()];seeking.feed(0,longTone,48000);seeking.feed(0,std::span<const float>(high).first(AudioSpectrum::Size),48000);auto rewound=seeking.atMs(10);ok&=check(*std::max_element(rewound.begin(),rewound.end())>.5,"Backward seeking after cache eviction measures new position without stale future chunks");
+        audio.enableDiagnostics(true);audio.enableDiagnostics(false);
+        QMetaObject::invokeMethod(audio.decodedOutput.get(),"audioBufferReceived",Qt::DirectConnection,Q_ARG(QAudioBuffer,signal));
+        ok&=check(audio.visualBass>.2,"Disabling diagnostics preserves active visual analysis");
+        audio.enableVisualLevels(false);
+        ok&=check(audio.visualBass==0&&audio.player->audioBufferOutput()==nullptr,"Disabling visual effects detaches audio observation");
+        return ok&&rateOK;
+    }
     /** 使用真实 HTTP、FFmpeg 与生产播放器验证断流；不访问音乐平台，不播放可听声音。 */
     static bool stream(int percent, bool transientError, bool managed = false, bool chunked = false,
                        bool repair = true, bool slow = false, bool jump = false, bool cancel = false) {
@@ -216,7 +251,8 @@ class AudioPlayerRegression {
 int main(int argc, char **argv) {
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
     QCoreApplication app(argc, argv);
-    bool ok = AudioPlayerRegression::pausedError();
+    bool ok = AudioPlayerRegression::pausedError()&&AudioPlayerRegression::levels();
+    if(app.arguments().contains("--levels-only")){std::fprintf(stderr,"Spectrum focused checks %s\n",ok?"passed":"FAILED");return ok?0:1;}
     if (QMediaDevices::defaultAudioOutput().isNull()) {
         std::fprintf(stderr, "SKIP: no audio output; real stream playback requires a device\n");
         return ok ? 0 : 1;

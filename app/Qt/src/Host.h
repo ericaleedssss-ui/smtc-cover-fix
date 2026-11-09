@@ -47,6 +47,11 @@ class Host : public QObject {
     Q_INVOKABLE bool mediaLoad(QString url, bool alternative = false);
     Q_INVOKABLE void mediaControl(QString action, double value = 0);
     Q_INVOKABLE QVariantMap mediaState() const;
+    QVariantList outputDevices() const;
+    void selectOutput(QString id);
+    void enableVisualLevels(bool enabled) { if(audio)audio->enableVisualLevels(enabled); }
+    void setSoundEffects(QVariantMap values,bool glide=false) { if(!audio)mediaControl("volume",.7);audio->setEffects(values,glide); }
+    QVariantList soundEffectLevels() const { return audio?audio->state().value("effectLevels").toList():QVariantList{}; }
     Q_INVOKABLE void copy(QString text);
     Q_INVOKABLE void open(QString url);
     Q_INVOKABLE QString modifierKey() const {
@@ -81,6 +86,7 @@ class Host : public QObject {
     static QString cacheKey(QString scope, QString route, QJsonObject params);
     void shutdown();
     void trimMemory(const QStringList &retainedImages);
+    QJsonObject diagnosticResources() const;
     void restoreMemoryBudget() {
         images.setMaxCost(32 * 1024);
     }
@@ -92,6 +98,7 @@ class Host : public QObject {
 
   private:
     friend class AudioPlayerRegression;
+    friend bool runNativeHostChecks(const QString &root);
     struct Waiter {
         JsonReply callback;
         int epoch;
@@ -111,6 +118,7 @@ class Host : public QObject {
         qint64 expiry;
         QJsonObject body;
     };
+    void cacheMetadata(const QString &key, const Entry &entry);
     QHash<QString, QList<CoverWaiter>> coverFlights;
     QHash<QString, Entry> cache;
     QHash<QString, Work> flights;

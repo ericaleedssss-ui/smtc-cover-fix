@@ -1,3 +1,4 @@
+#include "PipelineDiagnostics.h"
 #include "MusicLibrary.h"
 #include "MusicData.h"
 #include "MusicDiscover.h"
@@ -79,6 +80,7 @@ MusicApi::Valid MusicLibrary::valid(quint64 token, const quint64 *counter) {
 }
 
 void MusicLibrary::changed() {
+    PipelineDiagnostics::Scope trace("music.changed");
     ++revision;
     emit invalidated();
 }

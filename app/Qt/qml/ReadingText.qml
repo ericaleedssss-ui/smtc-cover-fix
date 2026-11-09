@@ -36,7 +36,7 @@ Flickable {
         text: reading.hudState.readerText || ""
         textFormat: Text.PlainText
         color: reading.hudState.dark ? "#eeeeE6" : "#181c17"
-        font.family: rhineFontFamily
+        font.family: rhineFontFamily;font.variableAxes:({"wght":400})
         font.pixelSize: reading.hudState.readerFont * reading.unit
         lineHeightMode: Text.FixedHeight
         lineHeight: reading.hudState.readerLeading * reading.unit

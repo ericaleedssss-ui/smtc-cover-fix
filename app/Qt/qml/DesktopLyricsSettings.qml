@@ -42,7 +42,7 @@ Rectangle {
     }
     component Label: Text {
         color: page.ink
-        font.family: page.uiFont
+        font.family: page.uiFont;font.variableAxes:({"wght":400})
         font.pixelSize: 20
         textFormat: Text.PlainText
         elide: Text.ElideRight
@@ -75,7 +75,7 @@ Rectangle {
     // The input shield keeps editing inside this page; the playback bar remains outside it.
     MouseArea { anchors.fill: parent; onClicked: { page.fontOpen = false; page.colorTarget = ""; } onWheel: function(wheel) { wheel.accepted = true; } }
     Action { x: 40; y: 22; width: 180; label: "← 返回设置"; onClicked: page.backend.action("desktop:back") }
-    Label { x: 242; y: 27; text: "桌面歌词"; font.pixelSize: 28; font.weight: Font.DemiBold }
+    Label { x: 242; y: 27; text: "桌面歌词"; font.pixelSize: 28; font.weight: Font.DemiBold ;font.variableAxes:({"wght":Font.DemiBold})}
     Label { x: 392; y: 37; text: "DESKTOP LYRICS"; color: page.muted; font.pixelSize: 13; font.letterSpacing: 2 }
     Action { x: parent.width - 330; y: 22; width: 132; label: page.settings.enabled ? "歌词已开启" : "开启歌词"; selected: page.settings.enabled === true; onClicked: page.backend.action("desktop:toggle") }
     Action { x: parent.width - 184; y: 22; width: 144; label: page.settings.locked ? "解除锁定" : "锁定位置"; onClicked: page.backend.action("desktop:lock") }
@@ -105,14 +105,14 @@ Rectangle {
             Label {
                 width:parent.width; horizontalAlignment:Text.AlignHCenter
                 text: page.settings.primary && page.settings.primary !== "选择歌曲开始播放" ? page.settings.primary : "夜が明けるまで、ここにいて"
-                font.family:!page.settings.font || page.settings.font === "MiSans" ? page.uiFont : page.settings.font; font.pixelSize:Math.min(42, Math.max(25,(page.settings.size || 26)*1.2)); font.weight:Font.DemiBold
+                font.family:!page.settings.font || page.settings.font === "MiSans" ? page.uiFont : page.settings.font; font.pixelSize:Math.min(42, Math.max(25,(page.settings.size || 26)*1.2)); font.weight:Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
                 color:(page.hoverPreview ? page.settings.hoverPrimaryColor : page.settings.primaryColor) || (page.hoverPreview ? "#30352b" : "#faf9ee")
                 style:Text.Normal
             }
             Label {
                 width:parent.width; horizontalAlignment:Text.AlignHCenter
                 text:page.settings.secondary || "在天亮之前，请留在这里"
-                font.family:!page.settings.font || page.settings.font === "MiSans" ? page.uiFont : page.settings.font; font.pixelSize:Math.min(31, Math.max(20,(page.settings.size || 26)*0.87))
+                font.family:!page.settings.font || page.settings.font === "MiSans" ? page.uiFont : page.settings.font;font.variableAxes:({"wght":400}); font.pixelSize:Math.min(31, Math.max(20,(page.settings.size || 26)*0.87))
                 color:(page.hoverPreview ? page.settings.hoverSecondaryColor : page.settings.secondaryColor) || (page.hoverPreview ? "#68704c" : "#dfdfcf")
                 style:Text.Normal
             }
@@ -136,7 +136,7 @@ Rectangle {
                 readonly property bool chosen: page.settings.primaryColor === original.toString() && page.settings.secondaryColor === translation.toString() && page.settings.backgroundColor === modelData.background
                 width:(page.width-80-54)/3; height:102; radius:2
                 color:page.lightTone ? "#2a302d" : modelData.background; border.color:chosen ? page.accent : page.line; border.width:chosen ? 2 : 1
-                Label { x:18; y:14; width:parent.width-70; text:modelData.name; color:parent.original; font.pixelSize:21; font.weight:Font.DemiBold }
+                Label { x:18; y:14; width:parent.width-70; text:modelData.name; color:parent.original; font.pixelSize:21; font.weight:Font.DemiBold ;font.variableAxes:({"wght":Font.DemiBold})}
                 Label { x:18; y:47; width:parent.width-45; text:"在天亮之前，请留在这里"; color:parent.translation; font.pixelSize:17 }
                 Row { x:18; y:80; spacing:7
                     Repeater { model:[parent.parent.original,parent.parent.translation,modelData.background]; delegate:Rectangle { required property string modelData; width:10; height:10; radius:5; color:modelData; border.color:"#30000000" } }
@@ -196,7 +196,7 @@ Rectangle {
                 required property string modelData
                 width:fontList.width; height:40
                 color:modelData===page.settings.font ? "#e5e5d7" : "transparent"
-                Label { x:10;y:8;width:parent.width-20;text:modelData;font.family:modelData === "MiSans" ? page.uiFont : modelData;font.pixelSize:19 }
+                Label { x:10;y:8;width:parent.width-20;text:modelData;font.family:modelData === "MiSans" ? page.uiFont : page.backend.preparedFont(modelData);font.variableAxes:({"wght":400});font.pixelSize:19 }
                 MouseArea { anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{page.backend.setDesktopFont(modelData);page.fontOpen=false;} }
             }
         }

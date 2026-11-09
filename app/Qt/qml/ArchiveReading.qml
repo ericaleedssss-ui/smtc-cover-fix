@@ -30,12 +30,18 @@ Item {
             background:reading.visible&&reading.frosted?reading.background:null
             sampleX:materialLoader.x;sampleY:materialLoader.y
             uiScale:reading.unit;dark:reading.dark
+            refractive:rhineRefractiveGlass
+            refraction:.80;frosting:.38;tint:.13;rimStrength:.78
+            readingComfort:reading.playing?.96:.84
         }
     }
     Loader {
         id:playingLoader;objectName:"nowPlayingLoader";anchors.fill:parent
         active:reading.playing&&!!reading.playbackController;visible:active&&reading.visible
-        sourceComponent:NowPlayingPanel {controller:reading.playbackController;unit:reading.unit}
+        sourceComponent:NowPlayingPanel {
+            controller:reading.playbackController;unit:reading.unit;background:reading.materialLayer
+            backgroundOrigin:{reading.x;reading.y;return reading.mapToItem(reading.materialLayer,0,0)}
+        }
     }
     Loader {
         id:collectionLoader

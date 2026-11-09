@@ -246,6 +246,62 @@ bool runNativeMusicChecks(const QString &root) {
     check(normalizedSong.contains("id") && normalizedSong.contains("title"),
           "music data structure");
 
+    {
+        Host metadataHost(root, true);
+        MusicApi api(&metadataHost);
+        MusicPlayer player(&metadataHost, &api);
+        int calls = 0;
+        bool fail = false;
+        metadataHost.fixture = [&](QString, QJsonObject parameters) {
+            ++calls;
+            const auto ids = parameters["args"].toArray().first().toArray();
+            check(ids.size() <= 48, "queue metadata requests bounded ID arrays");
+            QJsonArray loaded;
+            for (const auto &id : ids) loaded.append(song(id.toString()));
+            if (!fail && player.queue.size() > 1) {
+                const auto first = player.queue.first();
+                player.queue.removeAt(0); player.queue.append(first);
+            }
+            return QJsonObject{{"body", QJsonObject{{"code", fail ? 503 : 200}, {"value", loaded}}}};
+        };
+        auto deferred = song("701"); deferred["deferred"] = true;
+        deferred["queueSource"] = QJsonObject{{"id", "origin"}};
+        player.current = song("700"); player.index = 0;
+        player.queue = QJsonArray{deferred, song("702")};
+        player.hydrateQueue({0, 0}); player.hydrateQueue({0});
+        check(waitFor([&]{return calls == 1 && !player.queue.last().toObject()["deferred"].toBool();}),
+              "metadata hydration deduplicates in-flight requests and follows reordered identities");
+        check(player.queue.last().toObject()["queueSource"].toObject()["id"] == "origin" &&
+                  player.current["id"] == "700" && player.index == 0,
+              "metadata hydration preserves queue origin and never changes playback");
+        fail = true; deferred["id"] = "703"; player.queue = QJsonArray{deferred};
+        player.hydrateQueue({0});
+        check(waitFor([&]{return calls == 2;}), "failed metadata requests finish without hanging");
+        QCoreApplication::processEvents();
+        player.hydrateQueue({0});
+        QCoreApplication::processEvents();
+        check(calls == 2 && player.queue.first().toObject()["deferred"].toBool(),
+              "failed queue metadata retains its placeholder and backs off retries");
+        deferred["id"] = "704"; player.queue = QJsonArray{deferred};
+        const auto metadataEpoch = metadataHost.epoch;
+        metadataHost.fixture = [&](QString, QJsonObject) {
+            metadataHost.setProvider("qq");
+            return QJsonObject{{"body", QJsonObject{{"code", 200}, {"value", QJsonArray{song("704")}}}}};
+        };
+        player.hydrateQueue({0});
+        check(waitFor([&]{return metadataHost.epoch != metadataEpoch;}), "metadata fixture changes account epoch during a pending response");
+        check(player.queue.first().toObject()["deferred"].toBool(), "stale queue metadata cannot cross the account epoch");
+        metadataHost.setProvider("netease");
+        bool removed = false;
+        metadataHost.fixture = [&](QString, QJsonObject) {
+            player.queue = QJsonArray{song("705")}; removed = true;
+            return QJsonObject{{"body", QJsonObject{{"code", 200}, {"value", QJsonArray{song("704")}}}}};
+        };
+        player.hydrateQueue({0});
+        check(waitFor([&]{return removed;}) && player.queue.first().toObject()["id"] == "705",
+              "a late metadata response cannot replace a removed queue identity");
+        metadataHost.shutdown();
+    }
     host.shutdown();
     qInfo() << "Native music core tests:" << testCount << (ok ? "passed" : "FAILED");
     return ok;

@@ -18,6 +18,7 @@ class PlaylistMagazine : public QAbstractListModel {
     Q_PROPERTY(QString session READ session NOTIFY changed)
     Q_PROPERTY(QString query READ query NOTIFY changed)
     Q_PROPERTY(QString filter READ filter NOTIFY changed)
+    Q_PROPERTY(int sort READ sort NOTIFY changed)
     Q_PROPERTY(QString tab READ tab NOTIFY changed)
     Q_PROPERTY(double scrollPosition READ scrollPosition NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
@@ -25,6 +26,9 @@ class PlaylistMagazine : public QAbstractListModel {
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(bool downloading READ downloading NOTIFY changed)
     Q_PROPERTY(QVariantMap songMenu READ songMenu NOTIFY menuChanged)
+    Q_PROPERTY(QString playingKey READ playingKey NOTIFY playbackChanged)
+    Q_PROPERTY(bool playbackActive READ playbackActive NOTIFY playbackChanged)
+    Q_PROPERTY(int playingRow READ playingRow NOTIFY playbackChanged)
 public:
     enum Role { Track=Qt::UserRole+1, SourceIndex, Chosen, Heart, HeartKnown };
     PlaylistMagazine(MusicLibrary *music, NativeHud *hud, QObject *parent=nullptr);
@@ -39,6 +43,7 @@ public:
     QString session() const;
     QString query() const;
     QString filter() const;
+    int sort() const;
     QString tab() const;
     double scrollPosition() const;
     QString status() const { return m_status; }
@@ -47,10 +52,14 @@ public:
     bool busy() const { return !m_pending.isEmpty() || m_mutating; }
     int selectedCount() const { return m_selected.size(); }
     QVariantMap songMenu() const;
+    QString playingKey() const { return m_playingKey; }
+    bool playbackActive() const { return m_playbackActive; }
+    int playingRow() const { return m_playingRow; }
     void sync();
     Q_INVOKABLE int viewRow(int sourceIndex) const { return m_rows.indexOf(sourceIndex); }
     Q_INVOKABLE void search(QString text);
     Q_INVOKABLE void setFilter(QString filter);
+    Q_INVOKABLE void setSort(int sort);
     Q_INVOKABLE void setTab(QString tab);
     Q_INVOKABLE void savePosition(QString key, double y);
     Q_INVOKABLE void more();
@@ -64,6 +73,7 @@ public:
     Q_INVOKABLE void showSongMenu(QString scope, int index, QString key, double x, double y);
     Q_INVOKABLE void showHitMenu(QString hit, double x, double y);
     Q_INVOKABLE void songAction(QString operation);
+    Q_INVOKABLE void openSongCredit(QString identity, QString operation);
     Q_INVOKABLE void closeMenu();
     Q_INVOKABLE void share();
     Q_INVOKABLE void setSubscribed(QString sessionKey, bool subscribed);
@@ -74,9 +84,14 @@ public:
 signals:
     void changed();
     void menuChanged();
+    void playbackChanged();
     void navigate(QString action);
 private:
     MusicLibrary *m_music;
+    QString m_playingKey;
+    bool m_playbackActive=false;
+    int m_playingRow=-1;
+    void syncPlayback(bool resolveRow=false);
     NativeHud *m_hud;
     std::shared_ptr<MusicDirectory> m_folder, m_menuFolder, m_removeFolder;
     QJsonArray m_songs;
@@ -101,6 +116,7 @@ private:
     bool m_artistRequested=false;
     quint64 m_artistToken=0;
     QString m_status, m_pending, m_modelQuery, m_modelFilter;
+    int m_modelSort = 0;
     QJsonArray m_likedSnapshot;
     bool m_downloading=false;
     QJsonArray m_remove;

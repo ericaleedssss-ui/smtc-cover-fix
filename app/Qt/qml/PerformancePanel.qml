@@ -35,7 +35,7 @@ Item {
                 text: profiler.headline
                 color: "#8fe3bb"
                 font.pixelSize: 21
-                font.bold: true
+                font.bold: true;font.variableAxes:({"wght":(true?700:400)})
                 Accessible.name: text
             }
             Flickable {
@@ -50,7 +50,7 @@ Item {
                     width: parent.width
                     text: profiler.details
                     color: "#e1e6eb"
-                    font.family: rhineFontFamily
+                    font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                     font.pixelSize: 12
                     lineHeight: 1.35
                     wrapMode: Text.Wrap

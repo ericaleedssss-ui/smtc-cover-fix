@@ -54,6 +54,19 @@ Item {
         expanded = true;
     }
     function scheduleClose() { closeTimer.restart(); }
+    function consumeWheel(scenePoint,event) {
+        if(!expanded||!visible)return false;
+        var point=drawer.mapFromItem(null,scenePoint.x,scenePoint.y);
+        if(point.x<0||point.y<0||point.x>drawer.width||point.y>drawer.height)return false;
+        scrollWheel(event);
+        return true;
+    }
+    function scrollWheel(event) {
+        var delta=event.pixelDelta.y!==0?event.pixelDelta.y:event.angleDelta.y/120*48*typeUnit;
+        list.cancelFlick();
+        list.contentY=Math.max(list.originY,Math.min(list.originY+Math.max(0,list.contentHeight-list.height),list.contentY-delta));
+        event.accepted=true;
+    }
     function discover(tab) {
         if(tab === "roam") {
             rhine.action("roam:start");selected="roam";scheduleClose();return;
@@ -104,10 +117,13 @@ Item {
         opacity: navigation.expanded ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: 140 } }
         LiquidGlass {
+            objectName:"navigationRailGlass"
             anchors.fill: parent
             background: navigation.background
             sampleX: rail.x; sampleY: rail.y
             uiScale: navigation.unit; dark: rhine.state.dark === true
+            refractive:rhineRefractiveGlass
+            refraction:.78;frosting:.30;tint:.09;rimStrength:.28
         }
         HoverHandler {
             id: railHover
@@ -129,9 +145,7 @@ Item {
                     radius: 12 * navigation.typeUnit
                     color: railMouse.containsMouse ? (rhine.state.dark ? "#29bfc7b4" : "#27929c82") : "transparent"
                     VectorIcon { anchors.centerIn: parent; name: modelData.icon; tint: navigation.ink; size: 22 }
-                    Controls.ToolTip.visible: railMouse.containsMouse
-                    Controls.ToolTip.text: modelData.label
-                    Controls.ToolTip.delay: 500
+                    RhineToolTip {visible:railMouse.containsMouse;text:modelData.label;delay:500}
                     MouseArea {
                         id: railMouse
                         anchors.fill: parent
@@ -151,6 +165,7 @@ Item {
         id: drawer
         objectName: "sideNavigation"
         x: navigation.expanded ? 18 * navigation.unit : -navigation.drawerWidth - 16 * navigation.unit
+        visible: navigation.expanded || x > -navigation.drawerWidth - 16 * navigation.unit + .5
         y: navigation.drawerY
         width: navigation.drawerWidth
         height: navigation.drawerHeight
@@ -160,13 +175,21 @@ Item {
             onHoveredChanged: hovered ? navigation.open() : navigation.scheduleClose()
         }
         LiquidGlass {
+            objectName:"navigationDrawerGlass"
             anchors.fill: parent
             background: navigation.background
             sampleX: drawer.x; sampleY: drawer.y
             uiScale: navigation.unit; dark: rhine.state.dark === true
+            refractive:rhineRefractiveGlass
+            refraction:.72;frosting:.57;tint:.15;rimStrength:.28
         }
         Flickable {
             id: list
+            objectName:"navigationScroll"
+            WheelHandler {
+                target:null
+                onWheel:function(event){navigation.scrollWheel(event);}
+            }
             anchors.fill: parent
             anchors.margins: 12 * navigation.unit
             clip: true
@@ -183,7 +206,7 @@ Item {
                     height: 34 * navigation.typeUnit
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 14 * navigation.typeUnit
-                    font.bold: true
+                    font.bold: true;font.variableAxes:({"wght":(true?700:400)})
                     color: navigation.muted
                     opacity: .9
                 }
@@ -209,7 +232,7 @@ Item {
                     height: 43 * navigation.typeUnit
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 14 * navigation.typeUnit
-                    font.bold: true
+                    font.bold: true;font.variableAxes:({"wght":(true?700:400)})
                     color: navigation.muted
                     opacity: .76
                     leftPadding: 8 * navigation.unit
@@ -274,8 +297,7 @@ Item {
                         radius: 11 * navigation.unit
                         color: createPlaylistMouse.containsMouse ? (rhine.state.dark ? "#31bdc6b3" : "#3198a589") : "transparent"
                         VectorIcon { anchors.centerIn: parent; name: "plus"; tint: navigation.ink; size: 19 }
-                        Controls.ToolTip.visible: createPlaylistMouse.containsMouse
-                        Controls.ToolTip.text: "创建歌单"
+                        RhineToolTip {visible:createPlaylistMouse.containsMouse;text:"创建歌单"}
                         MouseArea {
                             id: createPlaylistMouse
                             anchors.fill: parent
@@ -388,9 +410,7 @@ Item {
             elide: Text.ElideRight
             color: navigation.ink
         }
-        Controls.ToolTip.visible: playlistMouse.containsMouse
-        Controls.ToolTip.text: playlist.entry.title || "歌单"
-        Controls.ToolTip.delay: 650
+        RhineToolTip {visible:playlistMouse.containsMouse;text:playlist.entry.title || "歌单";delay:650}
         MouseArea {
             id: playlistMouse
             anchors.fill: parent
@@ -437,7 +457,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: row.label
             font.pixelSize: row.heading ? 13 * navigation.typeUnit : 15.5 * navigation.typeUnit
-            font.bold: row.chevron && !row.heading
+            font.bold: row.chevron && !row.heading;font.variableAxes:({"wght":(row.chevron && !row.heading?700:400)})
             elide: Text.ElideRight
             color: row.heading ? navigation.muted : navigation.ink
         }

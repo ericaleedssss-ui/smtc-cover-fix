@@ -6,23 +6,8 @@ const assert = require('node:assert/strict');
 const root = path.resolve('output/resources');
 const out = path.resolve(process.argv[2]);
 const files = [
-    'room-pmrem.bin',
-    'ao-kernel.bin',
-    'ao-noise.bin',
-    'dfg-lut.bin',
-    'archive-baked-surface.bin',
-    'archive-baked-light.bin',
-    'archive-baked-normal.bin',
-    'archive-cassette.bin',
-    'archive-cassette-indices.bin',
-    'archive-cassette.json',
-    'archive-assembly.bin',
-    'archive-assembly-indices.bin',
-    'archive-assembly.json',
     'NotoSansSymbols2-Regular.ttf',
     'slots.json',
-    'scene-fixture.json',
-    'boot-lettering-art.json',
     ...[
         'netease-sq',
         'netease-hires',
@@ -42,6 +27,7 @@ const files = [
 fs.mkdirSync(out, {
     recursive: true,
 });
+fs.cpSync('vendor/cloudy-fonts', path.join(out, 'fonts'), { recursive: true });
 for (const name of files) {
     fs.mkdirSync(path.dirname(path.join(out, name)), { recursive: true });
     fs.copyFileSync(path.join(root, name), path.join(out, name));

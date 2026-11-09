@@ -6,6 +6,7 @@
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #if defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK(6, 9, 0)
 #include <QtMultimedia/private/qaudiodevice_p.h>
 #endif
@@ -18,6 +19,8 @@ AudioPlayer::AudioPlayer(std::function<void()> changed) : playbackChanged(std::m
     normalizeOutputLayout(defaultOutput());
     output.setVolume(.7f);
     decodeClock.start();
+    effectPump.setInterval(5);
+    QObject::connect(&effectPump,&QTimer::timeout,&devices,[this]{pumpEffectOutput();});
     createPlayer();
     playbackWatchdog.setInterval(250);
     QObject::connect(&playbackWatchdog, &QTimer::timeout, &devices, [this] { checkPlaybackHealth(); });
@@ -65,7 +68,9 @@ void AudioPlayer::normalizeOutputLayout(const QAudioDevice &device) {
 void AudioPlayer::createPlayer() {
     releasePlayer();
     player = std::make_unique<QMediaPlayer>();
-    decodedOutput = std::make_unique<QAudioBufferOutput>();
+    player->setPlaybackRate(playbackRate);
+    QAudioFormat effectDecode;effectDecode.setSampleRate(48000);effectDecode.setChannelCount(2);effectDecode.setSampleFormat(QAudioFormat::Float);
+    decodedOutput = std::make_unique<QAudioBufferOutput>(effectDecode);
     const auto changed = playbackChanged;
     if (changed) {
         // 播放状态事件立即唤醒；进度无需依附 60Hz 的场景循环。
@@ -77,10 +82,10 @@ void AudioPlayer::createPlayer() {
         QObject::connect(player.get(), &QMediaPlayer::durationChanged, player.get(),
                          [changed] { changed(); });
     }
-    if (diagnosticsEnabled) {
+    if (diagnosticsEnabled||visualLevelsEnabled||effects.on) {
         observeDecodedBuffers();
     }
-    player->setAudioBufferOutput(diagnosticsEnabled ? decodedOutput.get() : nullptr);
+    player->setAudioBufferOutput(diagnosticsEnabled||visualLevelsEnabled||effects.on ? decodedOutput.get() : nullptr);
     QObject::connect(player.get(), &QMediaPlayer::metaDataChanged, player.get(),
                      [this] { diagnose("metadata"); });
     QObject::connect(player.get(), &QMediaPlayer::bufferProgressChanged, player.get(),
@@ -93,6 +98,12 @@ void AudioPlayer::createPlayer() {
         player.get(), &QMediaPlayer::errorOccurred, player.get(),
         [this](QMediaPlayer::Error code, const QString &message) { diagnoseError(code, message); });
     player->setAudioOutput(&output);
+    output.setMuted(effects.on);
+    QObject::connect(player.get(),&QMediaPlayer::playbackStateChanged,player.get(),[this]{
+        if(!effectSink)return;
+        if(player->isPlaying()){effectSink->resume();effectPump.start();}
+        else if(player->playbackState()==QMediaPlayer::PausedState){effectSink->suspend();effectPump.stop();}
+    });
     QObject::connect(player.get(), &QMediaPlayer::positionChanged, player.get(), [this](qint64 position) {
         // 设备失效时原生后端可能先报 0；保留最后有效进度，主动换曲与跳转另行更新。
         if (!outputUnavailable && recoveryPosition < 0 && position > 0) {
@@ -230,7 +241,12 @@ void AudioPlayer::restorePlaybackPosition() {
  * 重连同一设备也重新绑定播放器；用户暂停或停止后不得因重连而自动播放。
  */
 void AudioPlayer::followDefaultOutput() {
-    const auto device = defaultOutput();
+    auto device = defaultOutput();
+    if (!selectedOutput.isEmpty()) {
+        for (const auto &candidate : QMediaDevices::audioOutputs())
+            if (QString::fromLatin1(candidate.id().toBase64()) == selectedOutput) { device = candidate; break; }
+    }
+    if(device!=output.device())resetEffectOutput();
     if (diagnosticsEnabled && diagnosticEvent) {
         auto values = diagnosticState();
         values["outputCount"] = QMediaDevices::audioOutputs().size();
@@ -329,6 +345,7 @@ bool AudioPlayer::load(QString input, bool offline, bool alternative, QString pr
     lastDecodedElapsedMs = -1;
     lastDecodedEndMs = -1;
     decodedFormat = {};
+    visualBass=0;bassFilter=0;spectrum.reset();
     decodeClock.restart();
     // 每次加载隔离旧媒体会话，防止旧解码器的迟到错误污染新曲目。
     createPlayer();
@@ -400,19 +417,95 @@ void AudioPlayer::control(QString action, double value) {
         failureRecoverable = false;
         progressClock.invalidate();
     } else if (action == "seek" && player->isSeekable()) {
+        resetEffectOutput();
         progressClock.restart();
         lastPosition = qint64(std::clamp(value, 0., double(player->duration())));
         if (recoveryPosition >= 0) {
             recoveryPosition = lastPosition;
         }
         player->setPosition(lastPosition);
+    } else if (action == "rate") {
+        playbackRate = std::clamp(value, .75, 2.);
+        player->setPlaybackRate(playbackRate);
+        resetEffectOutput();
     } else if (action == "volume") {
         output.setVolume(float(std::clamp(value, 0., 1.)));
+        if(effectSink)effectSink->setVolume(output.volume());
     }
+}
+QVariantList AudioPlayer::outputDevices() const {
+    QVariantList result{QVariantMap{{"id", ""}, {"label", "系统默认"}}};
+    for (const auto &device : QMediaDevices::audioOutputs())
+        result.append(QVariantMap{{"id",QString::fromLatin1(device.id().toBase64())},{"label",device.description()}});
+    return result;
+}
+void AudioPlayer::selectOutput(QString id) {
+    if (!id.isEmpty()) {
+        bool found = false;
+        for (const auto &device : QMediaDevices::audioOutputs())
+            found |= QString::fromLatin1(device.id().toBase64()) == id;
+        if (!found) return;
+    }
+    selectedOutput = id;
+    followDefaultOutput();
+    if (playbackChanged) playbackChanged();
+}
+void AudioPlayer::resetEffectOutput() {
+    effectPump.stop();effectDevice=nullptr;
+    if(effectSink)effectSink->stop();
+    effectSink.reset();effectPending.clear();effectFormat={};effectFrames=0;
+    effectProcessor.reset(48000);effectProcessor.set(effects);
+}
+void AudioPlayer::setEffects(const QVariantMap &values,bool glide) {
+    const auto next=CloudyEffects::Settings::fromMap(values);
+    if(next==effects)return;
+    const bool routing=next.on!=effects.on;effects=next;
+    effectProcessor.set(effects,glide);
+    if(!player)return;
+    if(routing){
+        resetEffectOutput();output.setMuted(effects.on);
+        if(effects.on||diagnosticsEnabled||visualLevelsEnabled)observeDecodedBuffers();
+        else {++decoderObservation;QObject::disconnect(decoderConnection);}
+        player->setAudioBufferOutput(effects.on||diagnosticsEnabled||visualLevelsEnabled?decodedOutput.get():nullptr);
+        // Discard the decoder's old lookahead, as Cloudy's SetEffects(flush).
+        if(player->isSeekable())player->setPosition(player->position());
+    }
+    if(playbackChanged)playbackChanged();
+}
+void AudioPlayer::playEffectBuffer(const QAudioBuffer &buffer) {
+    if(!effects.on||!buffer.isValid()||outputUnavailable)return;
+    const auto fmt=buffer.format();
+    if(fmt.sampleFormat()!=QAudioFormat::Float||fmt.channelCount()!=2)return;
+    QAudioFormat sinkFormat=fmt;sinkFormat.setSampleRate(qRound(fmt.sampleRate()*playbackRate));
+    if(!effectSink||effectFormat!=sinkFormat){
+        resetEffectOutput();effectFormat=sinkFormat;
+        effectProcessor.reset(fmt.sampleRate());effectProcessor.set(effects);
+        effectSink=std::make_unique<QAudioSink>(output.device(),sinkFormat);
+        effectSink->setBufferSize(sinkFormat.bytesForDuration(100000));
+        effectSink->setVolume(output.volume());effectDevice=effectSink->start();
+        if(!effectDevice){error=QStringLiteral("无法启动音效音频输出，请关闭音效后重试");if(playbackChanged)playbackChanged();return;}
+    }
+    QByteArray processed(buffer.constData<char>(),buffer.byteCount());
+    effectProcessor.process(reinterpret_cast<float*>(processed.data()),size_t(buffer.frameCount()));
+    effectFrames+=buffer.frameCount();effectPending.append(processed);
+    pumpEffectOutput();effectPump.start();
+}
+void AudioPlayer::pumpEffectOutput() {
+    if(!effectSink||!effectDevice||!player||!player->isPlaying())return;
+    const auto count=std::min(effectSink->bytesFree(),effectPending.size());
+    if(count>0){const auto written=effectDevice->write(effectPending.constData(),count);if(written>0)effectPending.remove(0,written);}
+    if(effectPending.isEmpty())effectPump.stop();
 }
 QVariantMap AudioPlayer::state() const {
     const auto position = recoveryPosition >= 0 ? recoveryPosition : player->position();
     return {{"playing", player->isPlaying()},
+            {"visualBass",player->isPlaying()?visualBass:0},
+            {"visualBands",spectrum.values(position,player->isPlaying())},
+            {"rate",playbackRate},
+            {"effectFrames",effectFrames},
+            {"effectActive",effects.on&&effectSink!=nullptr},
+            {"effectLevels",effects.on?spectrum.values(position,player->isPlaying()):QVariantList{}},
+            {"outputDevice",selectedOutput},
             {"position", position},
             {"duration", player->duration()},
             {"seekable", player->isSeekable()},
@@ -434,11 +527,18 @@ void AudioPlayer::enableDiagnostics(bool enabled) {
     diagnosticsEnabled = enabled;
     if (enabled) {
         observeDecodedBuffers();
-    } else {
+    } else if(!visualLevelsEnabled&&!effects.on) {
         ++decoderObservation;
         QObject::disconnect(decoderConnection);
     }
-    player->setAudioBufferOutput(enabled ? decodedOutput.get() : nullptr);
+    player->setAudioBufferOutput(enabled||visualLevelsEnabled||effects.on ? decodedOutput.get() : nullptr);
+}
+void AudioPlayer::enableVisualLevels(bool enabled) {
+    if(visualLevelsEnabled==enabled)return;
+    visualLevelsEnabled=enabled;visualBass=0;bassFilter=0;spectrum.reset();
+    if(enabled||diagnosticsEnabled||effects.on)observeDecodedBuffers();
+    else {++decoderObservation;QObject::disconnect(decoderConnection);}
+    player->setAudioBufferOutput(enabled||diagnosticsEnabled||effects.on?decodedOutput.get():nullptr);
 }
 
 void AudioPlayer::diagnose(const QString &event) {
@@ -543,10 +643,34 @@ void AudioPlayer::observeDecodedBuffers() {
     decoderConnection = QObject::connect(
         decodedOutput.get(), &QAudioBufferOutput::audioBufferReceived, decodedOutput.get(),
         [this, observation = decoderObservation, generation = sourceSerial](const QAudioBuffer &buffer) {
-            if (!diagnosticsEnabled || observation != decoderObservation || generation != sourceSerial ||
+            if ((!diagnosticsEnabled&&!visualLevelsEnabled&&!effects.on) || observation != decoderObservation || generation != sourceSerial ||
                 !buffer.isValid()) {
                 return;
             }
+            if(effects.on)playEffectBuffer(buffer);
+            if(visualLevelsEnabled||effects.on){
+                const auto format=buffer.format();const int channels=format.channelCount();
+                const double alpha=1-std::exp(-2*3.141592653589793*180/std::max(1,format.sampleRate()));
+                double energy=0;const auto *bytes=buffer.constData<char>();const int stride=format.bytesPerSample();
+                std::vector<float> mono(size_t(buffer.frameCount()));
+                for(int frame=0;frame<buffer.frameCount();++frame){
+                    double sample=0;
+                    for(int channel=0;channel<channels;++channel){const auto *p=bytes+(frame*channels+channel)*stride;
+                        switch(format.sampleFormat()){
+                        case QAudioFormat::UInt8:sample+=(static_cast<unsigned char>(*p)-128)/128.;break;
+                        case QAudioFormat::Int16:{qint16 v;std::memcpy(&v,p,sizeof v);sample+=v/32768.;break;}
+                        case QAudioFormat::Int32:{qint32 v;std::memcpy(&v,p,sizeof v);sample+=v/2147483648.;break;}
+                        case QAudioFormat::Float:{float v;std::memcpy(&v,p,sizeof v);if(std::isfinite(v))sample+=v;break;}
+                        default:break;}
+                    }
+                    const auto average=sample/std::max(1,channels);mono[size_t(frame)]=float(average);
+                    bassFilter+=alpha*(average-bassFilter);energy+=bassFilter*bassFilter;
+                }
+                visualBass=std::clamp(std::sqrt(energy/std::max<qsizetype>(1,buffer.frameCount()))*5.,0.,1.);
+                const auto at=buffer.startTime()<0?-1:qRound64(double(buffer.startTime())*format.sampleRate()/1000000.);
+                spectrum.feed(at,mono,format.sampleRate());
+            }
+            if(!diagnosticsEnabled)return;
             ++decodedBuffers;
             decodedBytes += buffer.byteCount();
             decodedFrames += buffer.frameCount();
@@ -563,6 +687,7 @@ AudioPlayer::~AudioPlayer() {
 
 /** 先释放解码观察对象，再释放媒体会话 */
 void AudioPlayer::releasePlayer() {
+    resetEffectOutput();
     ++decoderObservation;
     QObject::disconnect(decoderConnection);
     if (stream) {

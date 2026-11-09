@@ -1,0 +1,33 @@
+{
+  "repository": "https://github.com/nya-owo/cloudy",
+  "commit": "442a6e79df5bac337dd0ffbb75d3e6eba06276bc",
+  "license": "AGPL-3.0-only",
+  "license_copy": "../../licenses/cloudy",
+  "files": [
+    {
+      "local": "ui_wall.go",
+      "upstream": "internal/app/ui_wall.go",
+      "url": "https://github.com/nya-owo/cloudy/blob/442a6e79df5bac337dd0ffbb75d3e6eba06276bc/internal/app/ui_wall.go",
+      "sha256": "83445063619f717d4a6cab9e76cdd894b949453d33f211fb4cbaa78ee2ffe85f"
+    },
+    {
+      "local": "artwork.go",
+      "upstream": "internal/app/artwork.go",
+      "url": "https://github.com/nya-owo/cloudy/blob/442a6e79df5bac337dd0ffbb75d3e6eba06276bc/internal/app/artwork.go",
+      "sha256": "7a24d4e498c54a8dd5edfd7be432bdf29819d244c8b7ab02bf593ef534f73935"
+    },
+    {
+      "local": "ui_main.go",
+      "upstream": "internal/app/ui_main.go",
+      "url": "https://github.com/nya-owo/cloudy/blob/442a6e79df5bac337dd0ffbb75d3e6eba06276bc/internal/app/ui_main.go",
+      "sha256": "a9db8fecff11949867b0ff7f7b960478dcbb70b514569ebd5bd61e8455b9a7b1"
+    },
+    {
+      "local": "netease.go",
+      "upstream": "internal/netease/netease.go",
+      "url": "https://github.com/nya-owo/cloudy/blob/442a6e79df5bac337dd0ffbb75d3e6eba06276bc/internal/netease/netease.go",
+      "sha256": "f173686aaa7533ff82d949b6f2f2988d3243021def5d4fdb975999d34f558a86"
+    }
+  ],
+  "adaptation": "SongWall.qml row transforms adapted from wall(). Existing 240px viewport image pool retained. Qt frost pass fusion and delayed artwork/offscreen-target release are RHINE-specific; lightweight rows and scroll state retained. No Go/MyGo runtime added."
+}

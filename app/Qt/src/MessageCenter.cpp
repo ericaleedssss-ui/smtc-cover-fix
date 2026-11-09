@@ -59,6 +59,7 @@ void MessageCenter::counts(){
         for(const auto &n:names){auto v=b[n];if(v.isUndefined())v=nested[n];result.append(v.isDouble()&&v.toDouble()>=0?QVariant(v.toInteger()):QVariant());}m_counts=result;
     }else m_feedback="未读数量暂时无法更新，请刷新重试";emit changed();});
 }
+void MessageCenter::previewCounts(){syncAccount();if(supported())counts();}
 QVariantMap MessageCenter::normalize(const QJsonObject raw,int tab,bool chat,QString own){
     const auto payload=object(raw[chat?"msg":tab==0?"lastMsg":tab==3?"notice":"json"]);
     auto user=raw[tab==0||chat?"fromUser":"user"].toObject();

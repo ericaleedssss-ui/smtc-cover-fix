@@ -31,6 +31,20 @@ struct TaskbarIntegration::Native {
     bool apartment = false;
     int attempts = 0;
     HRESULT thumbnailResult = S_FALSE;
+    void configureFrame() {
+        if (!hwnd || !owner->m_window || !(owner->m_window->flags() & Qt::FramelessWindowHint)) return;
+        const bool full = owner->m_window->windowState() == Qt::WindowFullScreen;
+        const auto oldStyle = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        auto style = oldStyle;
+        if (full) style &= ~(WS_CAPTION | WS_THICKFRAME);
+        else style |= WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+        if (style != oldStyle) {
+            SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+        const BOOL disabled = FALSE;
+        DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &disabled, sizeof(disabled));
+    }
     static constexpr UINT FirstButton = 0x5201;
 
     explicit Native(TaskbarIntegration *value) : owner(value) {
@@ -122,6 +136,17 @@ struct TaskbarIntegration::Native {
     static LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
                                             UINT_PTR id, DWORD_PTR data) {
         auto *self = reinterpret_cast<Native *>(data);
+        // Keep the native caption style for DWM minimize/restore transitions,
+        // but leave all client pixels to Qt's existing custom chrome.
+        if (message == WM_NCCALCSIZE && wParam && self->owner->m_window &&
+            (self->owner->m_window->flags() & Qt::FramelessWindowHint)) {
+            if (IsZoomed(window) && self->owner->m_window->windowState() != Qt::WindowFullScreen) {
+                MONITORINFO monitor{sizeof(MONITORINFO)};
+                if (GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor))
+                    reinterpret_cast<NCCALCSIZE_PARAMS *>(lParam)->rgrc[0] = monitor.rcWork;
+            }
+            return 0;
+        }
         if (message == WM_NCDESTROY) { RemoveWindowSubclass(window, windowProcedure, id); }
         MSG event{}; event.hwnd = window; event.message = message; event.wParam = wParam; event.lParam = lParam;
         qintptr result = 0;
@@ -134,6 +159,7 @@ struct TaskbarIntegration::Native {
         if (!handle || !IsWindow(handle)) { return false; }
         if (hwnd != handle) { hwnd = handle; ready = false; }
         if (!SetWindowSubclass(hwnd, windowProcedure, reinterpret_cast<UINT_PTR>(this), reinterpret_cast<DWORD_PTR>(this))) { return false; }
+        configureFrame();
         const BOOL enabled = TRUE;
         DwmSetWindowAttribute(hwnd, DWMWA_FORCE_ICONIC_REPRESENTATION, &enabled, sizeof(enabled));
         DwmSetWindowAttribute(hwnd, DWMWA_HAS_ICONIC_BITMAP, &enabled, sizeof(enabled));
@@ -250,7 +276,7 @@ QVariantMap TaskbarIntegration::diagnostics() const {
 }
 bool TaskbarIntegration::eventFilter(QObject *watched, QEvent *event) {
 #ifdef Q_OS_WIN
-    if (watched == m_window && m_native && (event->type() == QEvent::Show || event->type() == QEvent::WinIdChange)) {
+    if (watched == m_window && m_native && (event->type() == QEvent::Show || event->type() == QEvent::WinIdChange || event->type() == QEvent::WindowStateChange)) {
         QTimer::singleShot(0, this, [this] { if (m_native) { m_native->attempts = 0; m_native->retry(); } });
     }
 #endif

@@ -40,6 +40,7 @@ class MusicPlayer : public QObject {
     QString actualQuality;
     QJsonObject localCovers;
     static QString identity(const QJsonObject &track);
+    void hydrateQueue(const QList<int> &indices);
     LyricsController lyrics;
     QJsonArray queue;
     QJsonArray history;
@@ -51,6 +52,11 @@ class MusicPlayer : public QObject {
     bool trial = false;
     QString coverImage;
     QString mode = "all";
+    bool shuffleEnabled = false;
+    bool shuffled() const { return mode == "shuffle" || (mode != "heart" && !roamActive && shuffleEnabled); }
+    double podcastSpeed = 1;
+    void setPodcastSpeed(double value);
+    static bool isEpisode(const QJsonObject &track);
     QString status;
     QString quality;
     bool alternative = false;
@@ -63,6 +69,7 @@ class MusicPlayer : public QObject {
 
   signals:
     void changed();
+    void seekRequested();
     void trackSelected(QJsonObject track);
     void roamSongStarted();
 
@@ -77,6 +84,9 @@ class MusicPlayer : public QObject {
     Host *m_host;
     MusicApi *m_api;
     quint64 m_generation = 0;
+    int m_queueHydrationEpoch = -1;
+    QSet<QString> m_queueHydrating;
+    QHash<QString, qint64> m_queueHydrationRetry;
     quint64 m_roamGeneration = 0;
     QString m_roamUid;
     MusicApi::Valid m_roamAccountValid;

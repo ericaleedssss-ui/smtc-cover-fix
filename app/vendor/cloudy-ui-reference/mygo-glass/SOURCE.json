@@ -1,0 +1,13 @@
+﻿{
+    "repository":  "https://github.com/nya-owo/mygo",
+    "commit":  "f7032a2cc755",
+    "pinned_by":  "cloudy/go.mod at 250da6d",
+    "files":  {
+                  "plugins/glass/blur.go":  "a2773f91b1b11b4b4af25a3aae9391f14667a447027665da17b72aceda577dbd",
+                  "plugins/glass/blur.metal":  "31b4863583a693078ed0c61aa743887f360fdc00ded5c5d0d967c76abdc96a98",
+                  "LICENSE":  "f0b56f4ab53beb6e18c5e155219c2e2b6000b5475c0ae3ddb3af3894fd9349b4",
+                  "plugins/glass/glass.go":  "7a02e96c3231863c848419af2fd2b3145a872defdf722549ce0588b3c8d12bf5",
+                  "plugins/glass/glass.glsl":  "a2c7a4f4bbd3d1c26a62f3f22e193038890940fac61f3a0b543439a93cfb7dac",
+                  "plugins/glass/pixels.go":  "ab93d194f4421b0223b8c7d5a78cc1fe404a456961aca1ce43c8e1a57bc548e7"
+              }
+}

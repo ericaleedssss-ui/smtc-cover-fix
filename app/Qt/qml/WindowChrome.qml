@@ -7,6 +7,8 @@ Item {
     required property Window window
     property bool dark: false
     property real topControlsWidth:0
+    property bool centerControl:false
+    readonly property real unit:Math.max(.9,window.height/1080)
     readonly property color ink: dark ? "#ebebeb" : "#141613"
     readonly property bool maximized: window.visibility === Window.Maximized
     anchors.fill: parent
@@ -23,11 +25,11 @@ Item {
         id: titleBar
         objectName: "windowTitleBar"
         width: parent.width
-        height: 32
+        height: 40*chrome.unit
 
         Item {
             x:76
-            width: Math.max(0,parent.width - x - windowButtons.width - chrome.topControlsWidth)
+            width: Math.max(0,(chrome.centerControl?chrome.width/2-28:parent.width-windowButtons.width*chrome.unit-chrome.topControlsWidth)-x)
             height: parent.height
             TapHandler {
                 acceptedButtons: Qt.LeftButton
@@ -43,10 +45,20 @@ Item {
                 }
             }
         }
+        Item {
+            x:chrome.width/2+28
+            width:chrome.centerControl?Math.max(0,chrome.width-x-windowButtons.width*chrome.unit-chrome.topControlsWidth):0
+            height:parent.height
+            visible:chrome.centerControl
+            TapHandler {acceptedButtons:Qt.LeftButton;onDoubleTapped:chrome.toggleMaximized()}
+            DragHandler {target:null;acceptedButtons:Qt.LeftButton;onActiveChanged:if(active)chrome.window.startSystemMove()}
+        }
         Row {
             id: windowButtons
             anchors.right: parent.right
-            height: parent.height
+            height: 40
+            scale:chrome.unit
+            transformOrigin:Item.TopRight
             Repeater {
                 model: ["minimize", "maximize", "close"]
                 delegate: Rectangle {
@@ -70,7 +82,7 @@ Item {
                     }
                     objectName: "windowButton_" + modelData
                     width: 44
-                    height: titleBar.height
+                    height: windowButtons.height
                     color: "transparent"
                     Accessible.role: Accessible.Button
                     Accessible.name: label
@@ -96,7 +108,7 @@ Item {
                     }
                     Rectangle {
                         x: 19
-                        y: 10
+                        y: 14
                         width: 9
                         height: 9
                         color: "transparent"
@@ -105,7 +117,7 @@ Item {
                     }
                     Rectangle {
                         x: chrome.maximized ? 16 : 17
-                        y: chrome.maximized ? 13 : 11
+                        y: chrome.maximized ? 17 : 15
                         width: 10
                         height: 10
                         color: button.color

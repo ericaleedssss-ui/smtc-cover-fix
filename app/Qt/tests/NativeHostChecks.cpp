@@ -1,4 +1,11 @@
 #include "Host.h"
+#include "ProcessMetrics.h"
+#include <QDir>
+#include <QDateTime>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QUuid>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -21,6 +28,71 @@ bool waitFor(const std::function<bool()> &ready) {
 /** 不创建脚本引擎，验证原生业务可直接使用缓存、账号代数、封面和官方播放边界。 */
 bool runNativeHostChecks(const QString &root) {
     Host host(root, true);
+    const auto cacheProbe=qEnvironmentVariable("RHINE_QA_METADATA_CACHE");
+    if(!cacheProbe.isEmpty()) {
+        // The test host starts without loading credentials. Exercise the real
+        // guest disk-cache path; a fixture catches every unexpected service call.
+        host.offline=false;host.interval=0;
+        int transported=0,replies=0,peakEntries=0;
+        bool ok=true;
+        host.fixture=[&](QString,QJsonObject){++transported;return QJsonObject{{"body",QJsonObject{{"code",200},{"source","transport"}}}};};
+        const auto nonce=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QStringList files;
+        const auto parameters=[&](int i){return QJsonObject{{"keywords","metadata-bound-"+nonce+QString::number(i)}};};
+        const auto key=[&](int i){return Host::cacheKey("enhanced-4.41.1/qq-3.3.1/kugou-ba3645f2/guest0","/search",parameters(i));};
+        const auto seed=[&](int i,qint64 expiry){
+            const auto name=host.diskPath(key(i));QDir().mkpath(QFileInfo(name).path());
+            QFile file(name);if(!file.open(QIODevice::WriteOnly)){ok=false;return;}
+            files.append(name);
+            file.write(QJsonDocument(QJsonObject{{"expiry",double(expiry)},
+                {"body",QJsonObject{{"code",200},{"ordinal",i},{"payload",QString(65536,QChar('a'+i%26))}}}}).toJson(QJsonDocument::Compact));
+        };
+        const auto expiry=QDateTime::currentMSecsSinceEpoch()+60000;
+        const auto before=readProcessMetrics().residentBytes;
+        for(int i=0;i<300;++i) {
+            seed(i,expiry);bool received=false;
+            host.offline=false;
+            host.requestJson("/search",parameters(i),[&,i](QJsonObject response,QString error){
+                ok&=error.isEmpty()&&response["body"].toObject()["ordinal"].toInt(-1)==i;
+                received=true;++replies;
+            });
+            // Disk admission above is live. Dispatch is queued, so switch its
+            // transport to the fixture before processing events: never network.
+            host.offline=true;
+            ok&=waitFor([&]{return received;});
+            peakEntries=qMax(peakEntries,int(host.cache.size()));
+        }
+        const auto loadedEntries=host.cache.size();
+        const auto after=readProcessMetrics().residentBytes;
+        const bool allFromDisk=transported==0&&replies==300;
+        // The newest hit must survive admission; repeat it with its file gone.
+        QFile::remove(host.diskPath(key(299)));bool repeat=false;
+        host.offline=false;
+        host.requestJson("/search",parameters(299),[&](QJsonObject response,QString error){
+            repeat=error.isEmpty()&&response["body"].toObject()["ordinal"].toInt(-1)==299;
+        });
+        host.offline=true;
+        ok&=waitFor([&]{return repeat;})&&transported==0;
+        seed(300,1);bool renewed=false;
+        host.offline=false;
+        host.requestJson("/search",parameters(300),[&](QJsonObject response,QString error){
+            renewed=error.isEmpty()&&response["body"].toObject()["source"]=="transport";
+        });
+        host.offline=true;
+        ok&=waitFor([&]{return renewed;})&&transported==1&&allFromDisk&&peakEntries<=256&&host.cache.size()<=256;
+        const bool noWorker=host.child.state()==QProcess::NotRunning&&!host.temporary;
+        ok&=noWorker;
+        for(const auto &file:files)QFile::remove(file);
+        QDir().mkpath(cacheProbe);QFile report(cacheProbe+"/metadata-cache.json");
+        const QJsonObject result{{"passed",ok},{"disk_requests",300},{"all_initial_replies_from_disk",allFromDisk},
+            {"entries_after_disk_hits",int(loadedEntries)},{"peak_entries",peakEntries},
+            {"repeat_hit_without_disk",repeat},{"expired_reloaded",renewed},{"transport_calls",transported},{"no_worker_started",noWorker},
+            {"resident_before_bytes",qint64(before)},{"resident_after_bytes",qint64(after)}};
+        if(report.open(QIODevice::WriteOnly))report.write(QJsonDocument(result).toJson());else ok=false;
+        qInfo()<<"Metadata disk admission / repeat / expiry"<<QJsonDocument(result).toJson(QJsonDocument::Compact);
+        host.offline=true;
+        return ok;
+    }
     int requests = 0;
     host.fixture = [&](QString, QJsonObject parameters) {
         ++requests;

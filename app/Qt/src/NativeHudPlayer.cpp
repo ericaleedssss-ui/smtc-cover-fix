@@ -117,6 +117,7 @@ void NativeHud::playerBar(double, double y, double width) {
     icon(center - 72, "M 5 3 L 5 21 M 19 3 L 8 12 L 19 21 Z");
     control(center + 72, "player:next", "下一首");
     icon(center + 72, "M 19 3 L 19 21 M 5 3 L 16 12 L 5 21 Z");
+    save();alpha(detailFlightBarOpacity);
     op({"ellipse", QJsonArray{.45,.49,.38,1}, center - 29, cy - 29, 58, 58});
     hit(center - 30, cy - 30, 60, 60, "player:toggle", player.state["playing"].toBool() ? "暂停" : "播放");
     if (player.loading || (roaming && player.roamLoading)) {
@@ -128,6 +129,7 @@ void NativeHud::playerBar(double, double y, double width) {
         save(); translate(center, cy);
         op({"fill-path", "M -6 -11 L 13 0 L -6 11 Z", light}); restore();
     }
+    restore();
     // Queue stays next to the main transport buttons, not at the far right.
     control(center + 144, "player:open", "右侧播放队列");
     icon(center + 144, "M 3 5 L 21 5 M 3 11 L 21 11 M 3 17 L 12 17 M 17 15 L 22 19 L 17 23 Z");

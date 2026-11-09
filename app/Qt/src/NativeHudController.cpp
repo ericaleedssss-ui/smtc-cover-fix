@@ -35,10 +35,12 @@ NativeHud::NativeHud(Host *host, Glyphs *glyphs, MusicLibrary *music, HudSceneAc
     }
     dark = themeMode == "system" ? host->systemDark() : themeMode == "dark";
     reduced = host->preference("motion") == "reduced";
-    startupAnimation = host->preference("startup-animation") == "on";
-    discRotation = host->preference("disc-rotation") == "on";
-    sceneEnhancement = host->preference("scene-enhancement") != "off";
     textFrosted = host->preference("text-frosted") != "off";
+    bool lyricScaleValid=false;const auto savedLyricScale=host->preference("lyric-scale").toDouble(&lyricScaleValid);
+    if(lyricScaleValid)lyricScale=std::clamp(savedLyricScale,.7,1.6);
+    lyricTranslation=host->preference("lyric-translation")!="off";
+    stageSparks=host->preference("stage-sparks")=="on";
+    if(QStringList{"flow","steps","tilt"}.contains(host->preference("stage-style")))stageStyle=host->preference("stage-style");
     desktopLyricsEnabled = host->preference("desktop-lyrics") == "on";
     desktopLyricsLocked = host->preference("desktop-lyrics-locked") == "on";
     const auto font = host->preference("desktop-lyrics-font");
@@ -163,10 +165,6 @@ void NativeHud::openModal(QString kind) {
         if (m_modalBack.size() > 16) { m_modalBack.removeFirst(); }
     }
     ++m_searchGeneration;
-    if (m_scene.pointer) {
-        m_scene.pointer("pointercancel", 0, 0, 0);
-        m_scene.pointer("pointerleave", 0, 0, 0);
-    }
     modal = kind;
     closing = false;
     motion.set(true, lastTime, reduced);
@@ -428,7 +426,6 @@ void NativeHud::openNowPlaying() {
     if(music.player.roamActive){openPlayingSong(true);return;}
     const auto origin=MusicData::queueSource(music.player.current["queueSource"].toObject());
     if(music.directory)music.leaveDirectory(false);
-    if(frame["viewer"].toBool())m_scene.viewerKey("Escape");
     if(!modal.isEmpty())closeModal(false);
     modal.clear();closing=false;m_modalBack.clear();
     closeComments();lyricsMode=false;queueOpen=false;
@@ -444,6 +441,11 @@ void NativeHud::playerAction(const QStringList &parts) {
     auto &player = music.player;
     const auto name = parts.value(1);
     if(name=="now-playing"){openNowPlaying();return;}
+    if(name=="detail-seek"){
+        const auto session=decode(parts.value(2));bool valid=false;const auto fraction=parts.value(3).toDouble(&valid);
+        if(valid&&std::isfinite(fraction)&&session==MusicPlayer::identity(player.current)&&player.state["seekable"].toBool())player.seek(std::clamp(fraction,0.,1.));
+        return;
+    }
     const auto value = parts.value(2).toDouble();
     const auto index = int(value);
     // QML sends the identity it rendered as well as the absolute queue index.
@@ -510,24 +512,36 @@ void NativeHud::playerAction(const QStringList &parts) {
     } else if (name == "comments") {
         if (!player.current.isEmpty()) {
             openPlayingSong(false);
+            tab = "comments";
             openComments();
         }
     } else if (name == "song-album") {
         const auto song=player.current;const auto albumID=song["albumID"].toString();
         if(!albumID.isEmpty()&&albumID!="0"){
+            lyricsMode=false;m_lyricsReturn.reset();closeComments();
             music.enterDirectory(MusicData::item("album",albumID,song["album"].toString(),song["artist"].toString(),song["provider"].toString(music.provider)));
             tab="overview";trackOffset=0;
         }
     } else if (name == "song-artist") {
-        openPlayingSong(false);
-        music.openSongArtist(index);
+        const auto people=player.current["artists"].toArray();
+        if(index<0||index>=people.size())return;
+        const auto artist=people[index].toObject();
+        lyricsMode=false;m_lyricsReturn.reset();closeComments();
+        music.enterDirectory(MusicData::item("artist",artist["id"].toString(),artist["name"].toString(),{},music.provider));
         artistTab = "songs";
+    } else if (name == "detail-close") {
+        const bool restored=returnFromLyrics()||restorePage();
+        if(restored&&!(frame["mode"]=="detail"&&music.current["kind"]=="song"))return;
+        lyricsMode=false;closeComments();
+        m_scene.mode("archive");frame["mode"]="archive";music.frame["mode"]="archive";
     } else if (name == "lyrics-close") {
         returnFromLyrics();
     } else if (name == "lyrics-follow") {
         m_lyricsBrowse.reset();
     } else if (name == "lyrics-earlier" || name == "lyrics-later") {
         player.lyrics.adjustOffset(name == "lyrics-earlier" ? 200 : -200);
+    } else if (name == "lyrics-shift") {
+        player.lyrics.adjustOffset(std::clamp(parts.value(2).toInt(),-600000,600000));
     } else if (name == "lyrics-sources" && music.isLocal() && player.current.value("provider") == "local") {
         if (modal == "lyrics-source" && !closing) {
             closeModal();
@@ -566,7 +580,26 @@ void NativeHud::playerAction(const QStringList &parts) {
         const auto volume = player.state["volume"].toDouble();
         if (volume > 0) { audibleVolume = volume; player.volume(0); }
         else { player.volume(audibleVolume); }
+    } else if (name == "shuffle") {
+        if (!player.roamActive) {
+            const bool wasShuffled = player.shuffled();
+            player.cancelHeart();
+            if (player.mode == "heart") player.leaveHeart();
+            if (player.mode == "shuffle") player.mode = "all";
+            player.shuffleEnabled = !wasShuffled;
+            player.changed();
+        }
+    } else if (name == "repeat") {
+        if (!player.roamActive) {
+            const bool wasShuffled = player.shuffled();
+            player.cancelHeart();
+            if (player.mode == "heart") player.leaveHeart();
+            player.mode = cycle({"off", "all", "one"}, player.mode == "shuffle" ? QString("all") : player.mode);
+            player.shuffleEnabled = wasShuffled;
+            player.changed();
+        }
     } else if (name == "mode") {
+        player.shuffleEnabled = false;
         if (player.heartPending) {
             player.leaveHeart();
         } else if (player.mode == "heart") {
@@ -660,6 +693,8 @@ void NativeHud::openRecommendations(bool retry) {
 void NativeHud::closeComments() {
     commentsOpen = false;
     commentsLoading = false;
+    commentsActionError.clear();
+    commentsPending.clear();
     ++m_commentsGeneration;
 }
 
@@ -699,6 +734,7 @@ QJsonObject commentRow(const QJsonObject &row) {
             {"avatar", row["user"].toObject()["avatarUrl"].toString()},
             {"userID", row["user"].toObject()["userId"].isString() ? row["user"].toObject()["userId"].toString() : QString::number(row["user"].toObject()["userId"].toInteger())},
             {"content", row.value("content").toString().left(16000)}, {"quote", quote},
+            {"liked",row["liked"].toBool()},{"location",row["ipLocation"].toObject()["location"].toString()},
             {"date", QDateTime::fromMSecsSinceEpoch(qint64(row.value("time").toDouble())).toLocalTime().toString("yyyy.MM.dd")},
             {"likes", std::max(0.0, row.value("likedCount").toDouble())}};
 }
@@ -742,13 +778,13 @@ void NativeHud::loadComments(bool reset) {
                 m_host->invalidate();
             }, valid);
     }
-    // 每次追加四条；超过接口的 offset 范围后用末条时间继续分页。
-    QJsonObject parameters{{"id", id}, {"limit", 4}, {"offset", m_commentsOffset}};
+    const int pageSize=album?4:20;
+    QJsonObject parameters{{"id", id}, {"limit", pageSize}, {"offset", m_commentsOffset}};
     if (m_commentsOffset >= 5000) {
         parameters["offset"] = 0;
         parameters["before"] = m_commentsCursor;
     }
-    m_music->api.request(album ? "/comment/album" : "/comment/music", parameters, [this](MusicReply reply) {
+    m_music->api.request(album ? "/comment/album" : "/comment/music", parameters, [this,pageSize](MusicReply reply) {
         commentsLoading = false;
         if (!reply.ok()) {
             commentsError = reply.error;
@@ -777,7 +813,7 @@ void NativeHud::loadComments(bool reset) {
         m_commentsOffset += batch.size();
         if (!batch.isEmpty()) { m_commentsCursor = batch.last().toObject().value("time").toDouble(); }
         commentsTotal = body.value("total").toDouble(commentsTotal);
-        commentsMore = appended > 0 && body.value("more").toBool(batch.size() == 4);
+        commentsMore = appended > 0 && body.value("more").toBool(batch.size() == pageSize);
         commentsError.clear();
         m_commentsLoadedAt = QDateTime::currentMSecsSinceEpoch();
         m_host->invalidate();
@@ -844,7 +880,6 @@ void NativeHud::action(QString value) {
         if (queueCollectionOpen) { action("queue-collection-close"); return; }
         queueOpen = false; return;
     }
-    if (value == "back" && frame["viewer"].toBool()) { m_scene.viewerKey("Escape"); return; }
     if (value == "back" && !modal.isEmpty() && !closing) {
         if (profileAction(value)) { return; }
         closeModal(); return;
@@ -854,7 +889,7 @@ void NativeHud::action(QString value) {
     if (value == "back" && restorePage()) { return; }
     const bool destination = value == "player:song-album" || value == "player:now-playing" || value == "open" || value == "navigation:likes" ||
         value.startsWith("navigation:playlist:") || value.startsWith("discover:item:") || value == "discover:open" ||
-        value.startsWith("music:collection-open:") || value.startsWith("music:context-comments:") ||
+        value.startsWith("music:collection-open:") || value.startsWith("music:context-comments:") || value.startsWith("music:context-artist:") ||
         value.startsWith("music:result:") || value.startsWith("music:track:") ||
         value.startsWith("music:artist:") || value.startsWith("music:artist-album:") ||
         value.startsWith("music:row-artist:") || value.startsWith("music:row-album:") ||
@@ -873,6 +908,9 @@ void NativeHud::action(QString value) {
         }
     });
     hoveredLink.clear();
+    if (value == "settings:lyrics" || value == "settings:effects") {
+        m_host->setPreference("settings-start-category",value.mid(9));openModal("settings");return;
+    }
     if (value == "desktop:settings") {
         desktopSettingsScroll = modal == "settings" ? settingsScroll : 0;
         openModal("desktop-settings"); return;
@@ -924,6 +962,23 @@ void NativeHud::action(QString value) {
             loadComments(false);
         } else if (commentsOpen && operation == "retry") {
             loadComments(commentsRows.isEmpty());
+        } else if(commentsOpen&&operation.startsWith("like:")){
+            if(m_music->uid.isEmpty()){commentsActionError=QStringLiteral("请先登录后给评论点赞");m_host->invalidate();return;}
+            const auto id=operation.mid(5);bool found=false,liked=false;
+            for(const auto *rows:{&commentsRows,&commentsFeatured})for(const auto &v:*rows){const auto row=v.toObject();if(row["id"].toString()==id){found=true;liked=row["liked"].toBool();break;}}
+            if(!found)return;
+            if(m_music->writeLoading){commentsActionError=QStringLiteral("正在提交操作，请稍后重试");m_host->invalidate();return;}
+            commentsActionError.clear();commentsPending=id;
+            const auto session=m_commentsKey;const auto generation=m_commentsGeneration;
+            const auto update=[this,id](bool enabled){for(auto *rows:{&commentsRows,&commentsFeatured})for(int i=0;i<rows->size();++i){auto row=rows->at(i).toObject();if(row["id"].toString()==id&&row["liked"].toBool()!=enabled){row["likes"]=std::max(0.,row["likes"].toDouble()+(enabled?1:-1));row["liked"]=enabled;(*rows)[i]=row;}}m_host->invalidate();};
+            update(!liked);
+            QPointer<NativeHud> self(this);
+            m_music->mutate("/comment/like",{{"id",commentsSong["id"]},{"cid",id},{"t",liked?0:1},{"type",commentsSong["kind"]=="album"?3:0}}, {},[self,session,generation,liked,update](bool ok){
+                if(!self||self->m_commentsKey!=session||self->m_commentsGeneration!=generation)return;
+                self->commentsPending.clear();
+                if(!ok){update(liked);self->commentsActionError=QStringLiteral("点赞未成功，请重试。")+self->m_music->status;}
+                self->m_host->invalidate();
+            });
         }
         return;
     }
@@ -1183,10 +1238,6 @@ void NativeHud::action(QString value) {
         musicAction(parts, value);
         return;
     }
-    if (value.startsWith("viewer:")) {
-        m_scene.viewer(value.mid(7));
-        return;
-    }
     if (value == "navigation:likes") {
         if (!modal.isEmpty()) { closeModal(); }
         music.showSource(1);
@@ -1211,16 +1262,10 @@ void NativeHud::action(QString value) {
     } else if (value == "skip" || value == "back") {
         m_scene.mode("archive");
     } else if (QStringList{"search", "saved", "settings"}.contains(value)) {
+        if(value=="settings")m_host->setPreference("settings-start-category","");
         openModal(value);
     } else if (value == "close-modal") {
         closeModal();
-    } else if (value == "viewer") {
-        m_scene.openViewer();
-    } else if (value == "replay") {
-        if (!modal.isEmpty()) {
-            closeModal();
-        }
-        m_scene.mode("boot");
     } else if (value == "alternative") {
         music.player.alternative = !music.player.alternative;
         m_host->setPreference("alternate-source", music.player.alternative ? "on" : "off");
@@ -1234,27 +1279,13 @@ void NativeHud::action(QString value) {
         openModal("quality");
     } else if (value.startsWith("quality:set:")) {
         music.player.setQuality(value.mid(12));
-    } else if (value == "disc-rotation") {
-        if (discRotation) {
-            discRotation = false;
-            m_host->setPreference("disc-rotation", "off");
-        } else {
-            openModal("disc-rotation-warning");
-        }
-    } else if (value == "disc-rotation:enable") {
-        discRotation = true;
-        m_host->setPreference("disc-rotation", "on");
-        openModal("settings");
-    } else if (value == "disc-rotation:cancel") {
-        openModal("settings");
-    } else if (value == "theme") {
-        themeMode = cycle({"light", "dark", "system"}, themeMode);
+    } else if (value == "theme" || value.startsWith("theme:set:")) {
+        const auto selected=value.mid(10);
+        if(value!="theme"&&!QStringList{"light","dark","system"}.contains(selected))return;
+        themeMode = value=="theme"?cycle({"light", "dark", "system"}, themeMode):selected;
         dark = themeMode == "system" ? m_host->systemDark() : themeMode == "dark";
         m_scene.theme(dark);
         m_host->setPreference("theme", themeMode);
-    } else if (value == "scene-enhancement") {
-        sceneEnhancement = !sceneEnhancement;
-        m_host->setPreference("scene-enhancement", sceneEnhancement ? "on" : "off");
     } else if (value == "text-frosted") {
         textFrosted = !textFrosted;
         m_host->setPreference("text-frosted", textFrosted ? "on" : "off");
@@ -1264,9 +1295,6 @@ void NativeHud::action(QString value) {
     } else if (value == "single-play-mode") {
         const bool append = m_host->preference("single-play-mode") == "append";
         m_host->setPreference("single-play-mode", append ? "replace" : "append");
-    } else if (value == "startup-animation") {
-        startupAnimation = !startupAnimation;
-        m_host->setPreference("startup-animation", startupAnimation ? "on" : "off");
     } else if (value == "motion") {
         reduced = !reduced;
         m_scene.reduced(reduced);
@@ -1285,10 +1313,6 @@ void NativeHud::key(QString value, bool command) {
     }
     if (value == "Enter" && command) {
         m_music->play();
-        return;
-    }
-    if (frame["viewer"].toBool()) {
-        m_scene.viewerKey(value);
         return;
     }
     if (value == "Escape") {

@@ -25,7 +25,7 @@ Item {
             textFormat: Text.PlainText
             font.family: rhineFontFamily
             font.pixelSize: 19 * viewport.unit
-            font.weight: Font.DemiBold
+            font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
             color: rhine.state.dark ? "#ecede5" : "#222821"
             renderType: Text.QtRendering
         }

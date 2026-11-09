@@ -1,10 +1,10 @@
 #include "AppIdentity.h"
 #include "AppStorage.h"
 #include "Engine.h"
+#include "StartupMemory.h"
+#include "ArtworkNetwork.h"
 #include "FrameProfiler.h"
 #include "Hud.h"
-#include "RhiScene.h"
-#include "OpticalScene.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -15,9 +15,27 @@
 #include <QQmlContext>
 #include <QQuickGraphicsConfiguration>
 #include <QQuickWindow>
+#include <QScreen>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QCryptographicHash>
 #include <QTimer>
 #include <cstdio>
 #include <cstring>
+#include "../tests/CollectionPerformanceProbe.h"
+#if defined(_MSC_VER) && defined(_DEBUG)
+#include <crtdbg.h>
+#include <process.h>
+static int __cdecl reportQaCrtFailure(int type, char *message, int *) {
+    if(type==_CRT_ASSERT||type==_CRT_ERROR) {
+        std::fprintf(stderr,"QA Debug runtime failure: %s\n",message);
+        std::fflush(stderr);
+        _exit(86);
+    }
+    return FALSE;
+}
+#endif
 int makeIcon(const QString &directory);
 int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &output);
 int runUiChecks(Engine &backend, QQuickWindow *window, const QString &output, FrameProfiler &profiler);
@@ -29,6 +47,12 @@ void initializeWindowsGraphics();
  * 离线测试与正式播放沿用同一入口，资源只从独立应用读取。
  */
 int main(int argc, char **argv) {
+#if defined(_MSC_VER) && defined(_DEBUG)
+    if(qEnvironmentVariableIsSet("RHINE_QA_PASSIVE_PROBE")||qEnvironmentVariableIsSet("RHINE_QA_CRT_REPORT"))
+        _CrtSetReportHook(reportQaCrtFailure);
+#endif
+    QElapsedTimer startupClock;
+    startupClock.start();
 #ifdef Q_OS_WIN
     const auto storageError = AppStorage::initializePortable(AppStorage::executableDirectory());
     if (!storageError.isEmpty()) {
@@ -41,6 +65,9 @@ int main(int argc, char **argv) {
     if (qEnvironmentVariableIsEmpty("QT_MEDIA_BACKEND")) {
         qputenv("QT_MEDIA_BACKEND", "ffmpeg");
     }
+    if(PipelineDiagnostics::enabled())qInstallMessageHandler([](QtMsgType type,const QMessageLogContext &context,const QString &message){
+        const auto text=qFormatLogMessage(type,context,message).toUtf8();std::fprintf(stderr,"%s\n",text.constData());std::fflush(stderr);
+    });
     // Windows GUI 子系统默认可能将 Qt 日志送到调试器；测试必须写入 CTest 的标准错误管道。
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--self-test") == 0 || std::strcmp(argv[i], "--ui-self-test") == 0 ||
@@ -63,9 +90,12 @@ int main(int argc, char **argv) {
     }
 #endif
 #ifdef Q_OS_WIN
+    startupMemory("graphics-probe-begin");
     initializeWindowsGraphics();
+    startupMemory("graphics-probe-ready");
 #endif
     QGuiApplication application(argc, argv);
+    startupMemory("gui-application-ready");
     application.setWindowIcon(QIcon(":/icons/icon-256.png"));
     QCoreApplication::setApplicationVersion(AppUpdater::currentVersion());
     QCoreApplication::setOrganizationName(AppIdentity::Organization);
@@ -101,6 +131,7 @@ int main(int argc, char **argv) {
                          args.contains("--offline") ||
                          qEnvironmentVariableIntValue("RHINE_OFFLINE") == 1;
     Engine backend(root, offline);
+    startupMemory("engine-ready");
     if (test) {
         return backend.selfTest();
     }
@@ -119,11 +150,14 @@ int main(int argc, char **argv) {
     FrameProfiler profiler(&backend, profilePath);
     QObject::connect(&backend, &Engine::performanceRequested, &profiler, &FrameProfiler::toggleVisible);
     backend.start();
-    qmlRegisterType<RhiScene>("Rhine.Native", 1, 0, "RhiScene");
-    qmlRegisterType<OpticalScene>("Rhine.Native", 1, 0, "OpticalScene");
     qmlRegisterType<Hud>("Rhine.Native", 1, 0, "Hud");
     qmlRegisterUncreatableType<Engine>("Rhine.Native", 1, 0, "Engine", "Provided by application");
+    ArtworkNetworkFactory artworkNetwork;
+    CollectionArtworkBlock collectionArtworkBlock;
     QQmlApplicationEngine engine;
+    if(qEnvironmentVariableIntValue("RHINE_QA_COLLECTION_NO_COVERS")==1)
+        engine.addUrlInterceptor(&collectionArtworkBlock);
+    engine.setNetworkAccessManagerFactory(&artworkNetwork);
     // 无边框
     if (qEnvironmentVariableIntValue("RHINE_FRAMELESS_PREVIEW") == 1) {
         engine.setInitialProperties({{"windowsFrameless", true}});
@@ -134,20 +168,30 @@ int main(int argc, char **argv) {
 #endif
     const auto fontId = QFontDatabase::addApplicationFont(root + "/RhineMiSans-regular.otf");
     const auto families = QFontDatabase::applicationFontFamilies(fontId);
-    engine.rootContext()->setContextProperty("rhineFontFamily",
-                                             families.isEmpty() ? QString("sans-serif") : families.first());
+    backend.initializeUiFont(families.isEmpty() ? QString("sans-serif") : families.first());
+    startupMemory("ui-fonts-ready");
+    engine.rootContext()->setContextProperty("rhineFontFamily", backend.uiFont());
+    QObject::connect(&backend,&Engine::uiFontChanged,&engine,[&]{engine.rootContext()->setContextProperty("rhineFontFamily",backend.uiFont());});
     engine.rootContext()->setContextProperty("rhine", &backend);
+    engine.rootContext()->setContextProperty("rhinePipelineLegacy",PipelineDiagnostics::enabled()&&qEnvironmentVariableIntValue("RHINE_QA_PIPELINE_LEGACY")==1);
+    engine.rootContext()->setContextProperty("rhineCollectionBaseline",
+        qEnvironmentVariableIsSet("RHINE_QA_COLLECTION_PROBE")&&qEnvironmentVariableIntValue("RHINE_QA_COLLECTION_ORIGINAL")==1);
+    // Temporary comparison escape hatch: launch with RHINE_GLASS_ORIGINAL=1.
+    engine.rootContext()->setContextProperty("rhineRefractiveGlass",
+                                             qEnvironmentVariableIntValue("RHINE_GLASS_ORIGINAL") != 1);
     engine.rootContext()->setContextProperty("profiler", &profiler);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &application,
         [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("RhineMusic", "Main");
+    startupMemory("qml-ready");
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
     auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
 #ifdef Q_OS_WIN
     QQuickGraphicsConfiguration graphics;
+    if(PipelineDiagnostics::enabled())graphics.setTimestamps(true);
     graphics.setAutomaticPipelineCache(false);
     const auto pipelineCache = AppStorage::cacheDirectory() + "/shaders/pipeline.cache";
     if (QFileInfo::exists(pipelineCache)) {
@@ -167,32 +211,44 @@ int main(int argc, char **argv) {
     }
     window->installEventFilter(&backend);
     profiler.attach(window);
-    // 短暂切换窗口继续复用 GPU；隐藏或最小化超过两秒才释放图形设备和可重建缓存。
-    auto backgroundRelease = new QTimer(window);
-    backgroundRelease->setSingleShot(true);
-    backgroundRelease->setInterval(2000);
-    QObject::connect(backgroundRelease, &QTimer::timeout, window, [&backend, window] {
-        if (window->isVisible() && window->visibility() != QWindow::Minimized) {
-            return;
-        }
-        backend.trimMemory();
-        window->setPersistentSceneGraph(false);
-        window->setPersistentGraphics(false);
-        window->releaseResources();
-    });
-    QObject::connect(window, &QWindow::visibilityChanged, window,
-                     [window, backgroundRelease](QWindow::Visibility visibility) {
-                         if (visibility == QWindow::Hidden || visibility == QWindow::Minimized) {
-                             backgroundRelease->start();
-                         } else {
-                             backgroundRelease->stop();
-                             window->setPersistentSceneGraph(true);
-                             window->setPersistentGraphics(true);
-                         }
-                     });
-    QObject::connect(
-        window, &QQuickWindow::sceneGraphInvalidated, &backend,
-        [&backend] { backend.recordResourceRelease(); }, Qt::DirectConnection);
+    const auto collectionOutput=qEnvironmentVariable("RHINE_QA_COLLECTION_PROBE");
+    if(!collectionOutput.isEmpty())new CollectionPerformanceProbe(backend,window,profiler,collectionOutput);
+    // Opt-in passive benchmark: normal startup, saved settings and real bridge.
+    // No fixture, navigation, account action or change to normal launches.
+    const auto passiveOutput=qEnvironmentVariable("RHINE_QA_PASSIVE_PROBE");
+    if(!passiveOutput.isEmpty()&&collectionOutput.isEmpty()) {
+        QDir().mkpath(passiveOutput);
+        const auto screenName=qEnvironmentVariable("RHINE_QA_SCREEN");
+        for(auto *screen:QGuiApplication::screens())if(screen->name()==screenName){window->setScreen(screen);window->setPosition(screen->availableGeometry().topLeft()+QPoint(40,40));break;}
+        profiler.setReportDirectory(passiveOutput);
+        profiler.startRecording();
+        QTimer::singleShot(5000,&application,[&,passiveOutput]{
+            QJsonArray images;
+            for(auto *object:window->findChildren<QObject *>()) {
+                const auto sourceSize=object->property("sourceSize");
+                if(!sourceSize.isValid())continue;
+                const auto source=object->property("source").toString();
+                QStringList ancestry;
+                for(auto *parent=object;parent&&ancestry.size()<6;parent=parent->parent())
+                    ancestry<<QString::fromLatin1(parent->metaObject()->className())+":"+parent->objectName();
+                const auto size=sourceSize.toSize();
+                images.append(QJsonObject{{"ancestry",ancestry.join(" / ")},
+                    {"source_sha256",QString::fromLatin1(QCryptographicHash::hash(source.toUtf8(),QCryptographicHash::Sha256).toHex())},
+                    {"source_width",size.width()},{"source_height",size.height()},
+                    {"width",object->property("width").toDouble()},{"height",object->property("height").toDouble()}});
+            }
+            QFile file(passiveOutput+"/image-sizes.json");if(file.open(QIODevice::WriteOnly))file.write(QJsonDocument(images).toJson());
+        });
+        QObject::connect(window,&QQuickWindow::frameSwapped,&application,[&,passiveOutput,first=true]() mutable {
+            if(!first)return;first=false;
+            QFile file(passiveOutput+"/startup.json");if(file.open(QIODevice::WriteOnly))file.write(QJsonDocument(QJsonObject{{"first_present_notification_ms",startupClock.elapsed()},{"logical_width",window->width()},{"logical_height",window->height()},{"dpr",window->devicePixelRatio()}}).toJson());
+        },Qt::QueuedConnection);
+        const int milliseconds=qMax(10000,qEnvironmentVariableIntValue("RHINE_QA_PASSIVE_MS"));
+        QTimer::singleShot(milliseconds,&application,[&,passiveOutput]{window->grabWindow().save(passiveOutput+"/window.png");profiler.saveRecording();application.quit();});
+    }
+    // Pause background animation while retaining the Qt Quick glass resources.
+    window->setPersistentSceneGraph(true);
+    window->setPersistentGraphics(true);
     if (args.contains("--frosted-self-test")) {
         return runFrostedChecks(backend, window,
                                args.value(args.indexOf("--frosted-self-test") + 1));

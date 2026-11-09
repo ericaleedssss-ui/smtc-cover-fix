@@ -31,6 +31,7 @@ struct MusicDirectory {
     double magazineScroll = 0;
     QString magazineQuery;
     QString magazineFilter = "all";
+    int magazineSort = 0;
     QString magazineTab = "songs";
     QString hudTab = "songs";
     int hudOffset = 0;

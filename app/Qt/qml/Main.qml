@@ -7,22 +7,41 @@ import Rhine.Native 1.0
 
 Window {
     id: root
+    RhineDialog {
+        objectName:"nativeCompactConfirmation"
+        visible:rhine.state.modal==="confirm"&&!rhine.state.closing
+        unit:Math.max(.9,root.stageScale)
+        title:"确认移除"
+        message:(rhine.state.confirmTitle||"")+"\n\n"+(rhine.state.localMusic?"只移除本地索引，磁盘音乐文件保持原样。":"此操作将同步至"+rhine.state.accountProviderName+"。")
+        confirmText:"确认移除";cancelText:"取消";destructive:true
+        onAccepted:rhine.action("confirm:yes")
+        onRejected:rhine.action("close-modal")
+    }
     readonly property bool rightDrawerActive:rhine.state.queueOpen===true||rhine.messages.state.open===true||globalTools.messageDrawerVisible
-    onRightDrawerActiveChanged:if(rightDrawerActive){hoverClearTimer.stop();rhine.hoverItem("",0,0);rhine.hoverLink("");rhine.pointer("pointerleave",0,0);}
+    // 清理 hover 会同步发布 stateChanged；等绑定求值结束再写后端状态。
+    onRightDrawerActiveChanged:if(rightDrawerActive)Qt.callLater(clearDrawerHover)
+    function clearDrawerHover(){if(!rightDrawerActive)return;hoverClearTimer.stop();rhine.hoverItem("",0,0);rhine.hoverLink("");rhine.pointer("pointerleave",0,0);}
     property var commentsScrollMemory: ({})
     property var discoverScrollMemory: ({})
+    property var profileViewMemory: ({})
+    readonly property bool songDetailVisible:rhine.state.currentKind==="song"&&!rhine.state.viewer&&(rhine.state.mode==="detail"||rhine.state.lyricsMode)
+    readonly property bool profileSurfaceVisible: rhine.state.modal === "profile" ||
+        (rhine.state.artistPage === true && !rhine.state.modal && !rhine.state.viewer && !rhine.state.lyricsMode)
     property real backdropStrength: rhine.state.modal === "discover" && !rhine.state.closing ? 1 : 0
     Behavior on backdropStrength { NumberAnimation { duration: rhine.state.reduced ? 0 : 180 } }
     Shortcut {
         sequence: "Escape"
         context: Qt.WindowShortcut
         onActivated: {
+              if(profileLoader.item&&profileLoader.item.dismissTopOverlay())return;
+              if(artistProfileLoader.item&&artistProfileLoader.item.dismissTopOverlay())return;
             if(archiveReading.dismissTopOverlay())return;
             if(globalTools.dismiss())return;
             if(rhine.state.mode==="archive"&&rhine.state.nowPlaying===true){rhine.nowPlaying.operate("browse");return;}
             if(magazineLoader.item&&magazineLoader.item.dismissTopOverlay())return;
             if(rhine.magazine.songMenu.visible)rhine.magazine.closeMenu();
             else if(rhine.magazine.removalCount>0)rhine.magazine.cancelRemoval();
+            else if(root.songDetailVisible&&!rhine.state.modal)rhine.action("player:detail-close");
             else rhine.action("back");
             inputLayer.forceActiveFocus();
         }
@@ -74,6 +93,7 @@ Window {
     property real stageScale: height / 1080
     function routeWheel(wheel,source,action){
         var point=source.mapToItem(root.contentItem,wheel.x,wheel.y);
+        if(sideNavigation.consumeWheel(point,wheel)){wheel.accepted=true;return;}
         if(archiveReading.collectionActive&&archiveReading.content&&point.y<976*root.stageScale&&!root.rightDrawerActive){
             archiveReading.content.wheelRecord(wheel);wheel.accepted=true;return;
         }
@@ -104,51 +124,39 @@ Window {
         id: backgroundLayer
         z:-2
         anchors.fill: parent
-        RhiScene {
-            id: originalScene
+        Rectangle {
+            objectName: "libraryBackground2D"
             anchors.fill: parent
-            engine: rhine
-            // 增强画布完全遮住底层；原版只接收预热和取出唱片真正需要的更新。
-            visible: true
-        }
-        Loader {
-            id: sceneEnhancementLoader
-            objectName: "sceneEnhancementLoader"
-            anchors.fill: parent
-            active: rhine.state.sceneEnhancement === true
-            sourceComponent: OpticalScene {
-                objectName: "enhancementComposite"
-                engine: rhine
-                originalSource: originalScene
+            // The glass surfaces still sample backgroundLayer. This static
+            // rectangle needs no scene renderer or animation-driven updates.
+            gradient: Gradient {
+                GradientStop { position: 0; color: rhine.state.dark ? "#252a23" : "#f7f4ed" }
+                GradientStop { position: 1; color: rhine.state.dark ? "#20251e" : "#efebe1" }
             }
         }
-    }
-    Loader {
-        id: discGlassLoader
-        objectName: "discGlassLoader"
-        property var panelBounds: rhine.state.discGlassPanel
-        active: rhine.state.textFrosted === true && !!panelBounds
-        x: (panelBounds ? panelBounds.x : 0) * root.stageScale
-        y: (panelBounds ? panelBounds.y : 0) * root.stageScale
-        width: (panelBounds ? panelBounds.width : 0) * root.stageScale
-        height: (panelBounds ? panelBounds.height : 0) * root.stageScale
-        sourceComponent: LiquidGlass {
-            background: backgroundLayer
-            sampleX: discGlassLoader.x; sampleY: discGlassLoader.y
-            uiScale: root.stageScale; dark: rhine.state.dark; radius: 18*root.stageScale
+        Rectangle {
+            objectName: "profileWindowBackground"
+            anchors.fill: parent
+            z: 1
+            visible: root.profileSurfaceVisible
+            color: rhine.state.dark === true ? "#22281f" : "#ffffff"
         }
     }
-
     Loader {
         objectName: "glassPlayerBar"
         active: rhine.state.mode !== "boot"
         x: 32 * root.stageScale; y: 990 * root.stageScale
         width: root.width - 64 * root.stageScale; height: 78 * root.stageScale
         sourceComponent: LiquidGlass {
-            background: backgroundLayer
+            background: magazineLoader.active && magazineLoader.visible ? playerContentBackdrop : backgroundLayer
             sampleX: 32 * root.stageScale; sampleY: 990 * root.stageScale
             uiScale: root.stageScale; radius: 39 * root.stageScale
             dark: rhine.state.dark === true
+            refractive: rhineRefractiveGlass
+            materialEnabled:rhine.visualPreferences.liquidGlass!==false
+            refraction:Number(rhine.visualPreferences.glassBend)*2.4
+            frosting:(1-Number(rhine.visualPreferences.glassClear))*.5
+            tint:(1-Number(rhine.visualPreferences.glassClear))*.25;rimStrength:.78
         }
     }
     Hud {
@@ -163,11 +171,19 @@ Window {
         width: 60 * root.stageScale
         height: 60 * root.stageScale
         z: 16
+        opacity:songDetailLayer.barElementsOpacity
         visible: rhine.state.mode !== "boot" && !!rhine.state.playerCoverUrl
+        NumberAnimation on rotation {from:0;to:360;duration:20000;loops:Animation.Infinite;running:circularPlayerCover.visible&&rhine.nowPlaying.playback.playing&&rhine.visualPreferences.barSpin&&!rhine.state.reduced&&rhine.visualPreferences.motion==="full"}
         Image {
             id: discPhoto
+            objectName: "playerBarCoverImage"
             anchors.fill: parent
             source: rhine.state.playerCoverUrl || ""
+            // Decode for this small disc, independently of the detail cover.
+            // Power-of-two buckets retain physical-pixel detail at any DPR and
+            // avoid a new decode for every pixel of a window resize.
+            readonly property int decodeSide: Math.pow(2, Math.ceil(Math.log(Math.max(128, width * Screen.devicePixelRatio)) / Math.LN2))
+            sourceSize: Qt.size(decodeSide, decodeSide)
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: true
@@ -303,6 +319,7 @@ Window {
     // text pixels move, so a long title never blocks the click handlers.
     Loader {
         id: titleMarqueeLoader
+        opacity:songDetailLayer.barElementsOpacity
         objectName: "playerTitleMarqueeLoader"
         property var bounds: rhine.state.playerTitleBounds
         active: !!bounds && !!rhine.state.playerTitle && rhine.state.mode !== "boot"
@@ -341,10 +358,15 @@ Window {
     MouseArea {
         id: inputLayer
         anchors.fill: parent
-        hoverEnabled: true
+        hoverEnabled: !(magazineLoader.active && magazineLoader.visible)
         acceptedButtons: Qt.LeftButton
         focus: true
         onPressed: function (mouse) {
+            // The magazine renders below the native player, but owns its content input.
+            if (magazineLoader.active && magazineLoader.visible && mouse.y >= 94 * root.stageScale && mouse.y < 984 * root.stageScale) {
+                mouse.accepted = false;
+                return;
+            }
             forceActiveFocus();
             rhine.pointer("pointerdown", mouse.x / root.stageScale, mouse.y / root.stageScale);
         }
@@ -357,6 +379,10 @@ Window {
         onExited: rhine.pointer("pointerleave", 0, 0)
         onCanceled: rhine.pointer("pointercancel", 0, 0)
         onWheel: function (wheel) {
+            if (magazineLoader.active && magazineLoader.visible && wheel.y >= 94 * root.stageScale && wheel.y < 984 * root.stageScale) {
+                wheel.accepted = false;
+                return;
+            }
             root.routeWheel(wheel,inputLayer,"");
         }
         Keys.onPressed: function (event) {
@@ -392,9 +418,7 @@ Window {
                     visible: modelData.fixed === true && modelData.width <= 80 && nativePointer.containsMouse
                     color: rhine.state.dark ? "#1fc1c6aa" : "#14777b60"
                 }
-                Controls.ToolTip.visible: nativePointer.containsMouse && modelData.fixed === true
-                Controls.ToolTip.delay: 550
-                Controls.ToolTip.text: modelData.label || ""
+                RhineToolTip {visible:nativePointer.containsMouse && modelData.fixed === true;delay:550;text:modelData.label || ""}
                 MouseArea {
                     id: nativePointer
                     anchors.fill: parent
@@ -442,14 +466,33 @@ Window {
     Loader {
         objectName: "desktopSettingsLoader"
         active: rhine.state.modal === "desktop-settings"
-        x: 59 * root.stageScale
-        y: 205 * root.stageScale
-        width: root.stageWidth - 118
-        height: 744
-        scale: root.stageScale
-        transformOrigin: Item.TopLeft
-        z: 180
-        sourceComponent: DesktopLyricsSettings { backend: rhine }
+        width:Math.min(root.width-40,800)
+        height:Math.min(root.height-72,800)
+        anchors.centerIn:parent
+        z:400
+        sourceComponent: DesktopLyricsPreferences { backend: rhine }
+    }
+    Loader {
+        id:settingsLoader
+        objectName:"settingsPageLoader"
+        property bool wanted:rhine.state.modal==="settings"
+        property real progress:0
+        active:["settings","desktop-settings","interface-fonts"].indexOf(rhine.state.modal)>=0||progress>0
+        visible:wanted||progress>0
+        enabled:wanted
+        onWantedChanged:{settingsMotion.stop();settingsMotion.to=wanted?1:0;settingsMotion.duration=rhine.state.reduced||rhine.visualPreferences.motion==="off"?0:280;settingsMotion.start();}
+        Component.onCompleted:if(wanted)progress=1
+        NumberAnimation {id:settingsMotion;target:settingsLoader;property:"progress";easing.type:Easing.BezierSpline;easing.bezierCurve:[.22,.8,.24,1,1,1]}
+        anchors.fill:parent;z:390
+        sourceComponent:SettingsPage {revealProgress:settingsLoader.progress}
+    }
+    Loader {
+        objectName:"interfaceFontsLoader"
+        active:rhine.state.modal==="interface-fonts"
+        width:Math.min(root.width-48*root.stageScale,720*root.stageScale)
+        height:Math.min(root.height-64*root.stageScale,760*root.stageScale)
+        anchors.centerIn:parent;z:400
+        sourceComponent:InterfaceFonts {unit:Math.max(.9,root.stageScale)}
     }
     // 密码只在输入组件和单次登录请求中短暂存在，提交后立即清空。
     Item {
@@ -477,6 +520,7 @@ Window {
             width: parent.width
             height: 55 * root.stageScale
             color: rhine.state.dark ? "#30312b" : "#d9d8ce"
+            radius:8*root.stageScale;border.width:accountField.activeFocus?1:0;border.color:"#879b7b"
         }
         TextInput {
             id: accountField
@@ -488,6 +532,8 @@ Window {
             verticalAlignment: TextInput.AlignVCenter
             color: rhine.state.dark ? "#eeeeeb" : "#161914"
             font.pixelSize: 19 * root.stageScale
+            font.family:rhineFontFamily;font.variableAxes:({"wght":400})
+            selectByMouse:true
             cursorVisible: activeFocus && !rhine.performance.idle
             maximumLength: 100
             Accessible.name: rhine.state.modal === "playlist-form" ? "歌单名称" : "登录账号"
@@ -507,6 +553,7 @@ Window {
             width: parent.width
             height: 55 * root.stageScale
             color: rhine.state.dark ? "#30312b" : "#d9d8ce"
+            radius:8*root.stageScale;border.width:passwordField.activeFocus?1:0;border.color:"#879b7b"
         }
         TextInput {
             id: passwordField
@@ -519,6 +566,8 @@ Window {
             verticalAlignment: TextInput.AlignVCenter
             color: rhine.state.dark ? "#eeeeeb" : "#161914"
             font.pixelSize: 19 * root.stageScale
+            font.family:rhineFontFamily;font.variableAxes:({"wght":400})
+            selectByMouse:true
             cursorVisible: activeFocus && !rhine.performance.idle
             maximumLength: 256
             echoMode: TextInput.Password
@@ -526,25 +575,17 @@ Window {
             Keys.onReturnPressed: formFields.submit()
             Keys.onEscapePressed: rhine.action("close-modal")
         }
-        Rectangle {
+        RhineButton {
             x: parent.width - width
             y: (rhine.state.modal === "login" ? 611 : 530) * root.stageScale
             width: 170 * root.stageScale
             height: 36 * root.stageScale
-            color: "#777b60"
-            Text {
-                anchors.centerIn: parent
-                text: rhine.state.modal === "login" ? "登录 →" : "保存 →"
-                color: "#f0eee5"
-                font.pixelSize: 14 * root.stageScale
-            }
+            unit:root.stageScale;primary:true
+            text:rhine.state.modal === "login" ? "登录" : "保存"
             Accessible.role: Accessible.Button
             Accessible.name: "提交表单"
             Accessible.onPressAction: formFields.submit()
-            MouseArea {
-                anchors.fill: parent
-                onClicked: formFields.submit()
-            }
+            onClicked:formFields.submit()
         }
     }
     Repeater {
@@ -566,6 +607,7 @@ Window {
             hoverEnabled: isSeek
             z: isSeek ? 210 : 0
             visible: !!region
+            opacity:isSeek?songDetailLayer.barElementsOpacity:1
             enabled: visible && !rhine.state.closing
             x: region ? region.x * root.stageScale : 0
             y: region ? region.y * root.stageScale : 0
@@ -580,20 +622,15 @@ Window {
                     rhine.adjustPlayer(modelData, mouse.x, width);
                 }
             }
-            Rectangle {
+            SoftSeekTrack {
                 id: seekTrack
                 objectName: "playbackSeekTrack"
                 visible: adjustment.isSeek
                 width: parent.width
-                height: (adjustment.interacting ? 5 : 3.5) * root.stageScale
+                height: 12 * root.stageScale
                 y: 10 * root.stageScale - height / 2
-                color: rhine.state.dark ? "#525d51" : "#b4bcae"
-                Behavior on height { NumberAnimation { duration: 110 } }
-                Rectangle {
-                    width: parent.width * adjustment.shownFraction
-                    height: parent.height
-                    color: rhine.state.dark ? "#bbd7a9" : "#68865d"
-                }
+                unit:root.stageScale;dark:rhine.state.dark===true;onGlass:true;active:adjustment.interacting
+                fraction:adjustment.shownFraction
             }
             Item {
                 id: chorusMarker
@@ -614,15 +651,18 @@ Window {
                     onClicked: rhine.adjustPlayer("seek", chorusMarker.seconds, adjustment.duration)
                 }
             }
-            Rectangle {
+            GlassSeekThumb {
+                id:seekThumb
                 objectName: "playbackSeekThumb"
-                visible: adjustment.interacting && adjustment.duration > 0
-                width: 15 * root.stageScale; height: width; radius: width / 2
-                x: Math.max(0, Math.min(parent.width - width, parent.width * adjustment.shownFraction - width / 2))
+                unit:root.stageScale;dark:rhine.state.dark===true;background:backgroundLayer
+                track:seekTrack
+                hovered:adjustment.isSeek&&adjustment.containsMouse&&adjustment.duration>0
+                pressed:adjustment.isSeek&&adjustment.pressed&&adjustment.duration>0
+                blocked:edgeMotion.running&&!RhineTheme.noMotion
+                session:String(rhine.state.playerTrackKey||"")
+                fraction:adjustment.shownFraction
+                x: Math.max(0, Math.min(parent.width - width, parent.width * displayFraction - width / 2))
                 y: 10 * root.stageScale - height / 2
-                color: "#faf8ef"
-                border.width: Math.max(.6, root.stageScale)
-                border.color: "#b5b6a6"
             }
             Rectangle {
                 objectName: "playbackSeekTime"
@@ -640,7 +680,7 @@ Window {
                     anchors.centerIn: parent
                     text: chorusHover.containsMouse ? "副歌 · " + adjustment.timestamp(chorusMarker.seconds) : adjustment.timestamp(adjustment.shownFraction * adjustment.duration) + " / " + adjustment.timestamp(adjustment.duration)
                     color: rhine.state.dark ? "#eeeede" : "#4b503f"
-                    font.family: rhineFontFamily; font.pixelSize: 13 * root.stageScale; font.weight: Font.DemiBold
+                    font.family: rhineFontFamily; font.pixelSize: 13 * root.stageScale; font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
                 }
             }
         }
@@ -675,7 +715,7 @@ Window {
         y: ((rhine.state.inputY || 302) + (rhine.state.modalOffset || 0)) * root.stageScale
         width: (rhine.state.inputWidth || 0) * root.stageScale
         height: 54 * root.stageScale
-        font.family: rhineFontFamily
+        font.family: rhineFontFamily;font.variableAxes:({"wght":400})
         font.pixelSize: 22 * root.stageScale
         color: rhine.state.dark ? "#ebebeb" : "#141613"
         opacity: rhine.state.modalOpacity || 0
@@ -712,15 +752,21 @@ Window {
     }
     Loader {
         id: magazineLoader
+        onStatusChanged:rhine.tracePipeline("qml.magazine.status-"+status)
         objectName: "playlistMagazineLoader"
-        x:0; y:0; width:root.width; height:984*root.stageScale
-        z:85
-        active:rhine.magazine.active && !rhine.state.viewer && rhine.state.mode!=="boot"
+        parent:baseVisual
+        x:0; y:0; width:root.width; height:1080*root.stageScale
+        z:-1
+        readonly property bool wanted:rhine.magazine.active && !rhine.state.viewer && rhine.state.mode!=="boot"
+        active:false
+        function syncActivation(){active=wanted;}
+        onWantedChanged:Qt.callLater(syncActivation)
+        Component.onCompleted:Qt.callLater(syncActivation)
         // Legacy blocking native pages paint above the room. Retain this
         // Loader and its view state beneath them; the nonblocking queue never
         // changes this visibility condition.
-        visible:active && (!rhine.state.modal || rhine.state.modal==="discover" || rhine.state.modal==="profile")
-        sourceComponent: PlaylistMagazine {controller:rhine.magazine; background:backgroundLayer; unit:root.stageScale}
+        visible:active && (!rhine.state.modal || rhine.state.modal==="discover")
+        sourceComponent: PlaylistMagazine {controller:rhine.magazine; background:backgroundLayer; glassBackground:backgroundLayer; unit:root.stageScale}
     }
     ArchiveReading {
         id:archiveReading
@@ -730,14 +776,14 @@ Window {
         width:(bounds?bounds.width:0)*root.stageScale;height:(bounds?bounds.height:0)*root.stageScale
         z:84
         background:backgroundLayer;materialLayer:baseVisual;controller:rhine.showcase
-        unit:root.stageScale;dark:rhine.state.dark;frosted:rhine.state.textFrosted===true
+        unit:root.stageScale;dark:rhine.state.dark===true;frosted:rhine.state.textFrosted===true
         playing:rhine.state.nowPlaying===true;playbackController:rhine.nowPlaying
         collection:(rhine.state.archiveCollection===true||rhine.state.currentKind==="playlist"||rhine.state.currentKind==="album")&&!rhine.state.directoryOpen
     }
     ArchiveNavigator {
         id:archiveNavigator
         controller:rhine;navigation:rhine.state.archiveNavigation||({})
-        unit:root.stageScale;dark:rhine.state.dark;reduced:rhine.state.reduced
+        unit:root.stageScale;dark:rhine.state.dark===true;reduced:rhine.state.reduced===true
         width:implicitWidth;height:implicitHeight
         x:archiveReading.x+(archiveReading.width-width)/2
         y:Math.min(archiveReading.y+archiveReading.height+16*root.stageScale,976*root.stageScale-height-12*root.stageScale)
@@ -763,16 +809,81 @@ Window {
         tint:rhine.state.dark?"#b8c7a6":"#738063"
         visible:rhine.state.mode!=="boot"&&rhine.state.playerMode==="shuffle"&&!rhine.state.roamActive
     }
-    GlobalTools {id:globalTools;anchors.fill:parent;z:330;background:backgroundLayer;drawerBackground:queueGlassBackdrop;unit:root.stageScale;topRightReserved:root.windowsFrameless&&root.visibility!==Window.FullScreen?132:0}
-    SongContextMenu {anchors.fill:parent;z:500;controller:rhine.magazine;background:backgroundLayer}
+    GlobalTools {id:globalTools;objectName:"globalTools";anchors.fill:parent;z:330;background:backgroundLayer;drawerBackground:queueGlassBackdrop;unit:root.stageScale;topRightReserved:root.windowsFrameless&&root.visibility!==Window.FullScreen?132*Math.max(.9,root.stageScale):0}
+    // Overlay popups sample these lower layers; they never capture themselves.
+    readonly property var popupGlassSources:songDetailVisible?[songDetailLayer]:[baseVisual,archiveReading]
+    Rectangle {anchors.fill:parent;z:339;color:"black";opacity:songDetailLayer.progress*.4;visible:opacity>0}
+    Item {
+        id:songDetailLayer;objectName:"songDetailTransition"
+        // Cloudy ui_nowplaying.go: reveal the fixed-size view through the bar's box.
+        property real progress:0
+        property bool retained:false
+        property real flightRotation:0
+        readonly property real barElementsOpacity:songDetailLoader.item&&songDetailLoader.item.flying?1-songDetailLoader.item.easeRange(progress,.001,.005):1
+        onBarElementsOpacityChanged:rhine.setDetailFlightBarOpacity(barElementsOpacity)
+        readonly property bool opened:root.songDetailVisible
+        readonly property real barX:32*root.stageScale
+        readonly property real barY:990*root.stageScale
+        readonly property real barWidth:root.width-64*root.stageScale
+        readonly property real barHeight:78*root.stageScale
+        x:barX*(1-progress);y:barY*(1-progress)
+        width:barWidth+(root.width-barWidth)*progress
+        height:barHeight+(root.height-barHeight)*progress
+        z:340;clip:true
+        layer.enabled:progress>0&&progress<1
+        layer.effect:MultiEffect {
+            maskEnabled:true
+            maskSource:detailRevealMask
+            maskThresholdMin:.5;maskSpreadAtMin:1
+        }
+        Rectangle {
+            id:detailRevealMask
+            anchors.fill:parent
+            radius:songDetailLayer.barHeight/2*(1-songDetailLayer.progress)
+            color:"white";visible:false
+            layer.enabled:rhinePipelineLegacy||(songDetailLayer.progress>0&&songDetailLayer.progress<1)
+        }
+        visible:retained
+        enabled:opened
+        function syncOpen(){
+            flightRotation=((circularPlayerCover.rotation+180)%360)-180;
+            if(opened)retained=true;
+            detailReveal.stop();detailReveal.to=opened?1:0;
+            detailReveal.duration=rhine.state.reduced||rhine.visualPreferences.motion==="off"?0:opened?580:500;
+            detailReveal.easing.bezierCurve=opened?[.32,.72,0,1,1,1]:[.42,0,.12,1,1,1];
+            detailReveal.start();
+        }
+        onOpenedChanged:syncOpen()
+        Component.onCompleted:syncOpen()
+        NumberAnimation {id:detailReveal;target:songDetailLayer;property:"progress";easing.type:Easing.BezierSpline;onFinished:if(!songDetailLayer.opened)songDetailLayer.retained=false}
+        Loader {
+            id:songDetailLoader;objectName:"songDetailLoader"
+            onStatusChanged:rhine.tracePipeline("qml.song.status-"+status)
+            active:songDetailLayer.retained
+            x:-songDetailLayer.x;y:-songDetailLayer.y;width:root.width;height:root.height
+            sourceComponent:SongDetailPage {
+                revealProgress:songDetailLayer.progress;transitionOpen:songDetailLayer.opened
+                barCover:Qt.rect(circularPlayerCover.x,circularPlayerCover.y,circularPlayerCover.width,circularPlayerCover.height)
+                barTitle:Qt.rect(titleMarqueeLoader.x,titleMarqueeLoader.y,titleMarqueeLoader.width,titleMarqueeLoader.height)
+                barScrub:Qt.rect((rhine.state.seek||{}).x*root.stageScale,(rhine.state.seek||{}).y*root.stageScale,(rhine.state.seek||{}).width*root.stageScale,(rhine.state.seek||{}).height*root.stageScale)
+                barPlay:Qt.rect(root.width/2-29*root.stageScale,1000*root.stageScale,58*root.stageScale,58*root.stageScale)
+                barRotation:songDetailLayer.flightRotation
+                barDark:rhine.state.dark
+            }
+        }
+    }
+    SongContextMenu {anchors.fill:parent;z:500;controller:rhine.magazine;background:backgroundLayer;unit:root.stageScale}
+    SoundEffectsDialog {controller:rhine.soundEffects}
     Rectangle {
         id:operationToast
         property string lastMessage:""
+        readonly property bool wanted:(toastExpiry.running || rhine.magazine.downloading) && lastMessage!==""
         z:480;anchors.horizontalCenter:parent.horizontalCenter;y:root.height-150*root.stageScale
-        visible:(toastExpiry.running || rhine.magazine.downloading) && lastMessage!==""
-        width:Math.min(root.width-40,toastText.implicitWidth+40);height:48;radius:16
+        opacity:wanted?1:0;visible:opacity>0;enabled:wanted
+        Behavior on opacity {NumberAnimation {duration:RhineTheme.noMotion?0:160}}
+        width:Math.min(root.width-40,toastText.implicitWidth+40);height:Math.max(48,toastText.implicitHeight+24);radius:16
         color:rhine.state.dark?"#ef30382b":"#f2f3f0e5";border.color:"#50758265"
-        Text {id:toastText;anchors.centerIn:parent;width:Math.min(implicitWidth,parent.width-30);text:operationToast.lastMessage+(rhine.magazine.downloading?" · 点击取消下载":"");elide:Text.ElideRight;color:rhine.state.dark?"#e3e8d9":"#4a5940";font.family:rhineFontFamily;font.pixelSize:14}
+        Text {id:toastText;anchors.centerIn:parent;width:Math.min(implicitWidth,parent.width-30);text:operationToast.lastMessage+(rhine.magazine.downloading?" · 点击取消下载":"");wrapMode:Text.Wrap;color:rhine.state.dark?"#e3e8d9":"#4a5940";font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:14}
         MouseArea {anchors.fill:parent;enabled:rhine.magazine.downloading;cursorShape:Qt.PointingHandCursor;onClicked:rhine.magazine.cancelDownload()}
         Timer {id:toastExpiry;interval:4500}
         Connections {target:rhine.magazine;function onChanged(){var message=rhine.magazine.status;if(message!==operationToast.lastMessage){operationToast.lastMessage=message;toastExpiry.restart();}}}
@@ -797,12 +908,22 @@ Window {
     Loader {
         id: profileLoader
         objectName: "userProfileLoader"
-        x: 40 * root.stageScale; y: 205 * root.stageScale
-        width: root.width - 80 * root.stageScale; height: 740 * root.stageScale
+          x: 0; y: 112 * root.stageScale
+          width: root.width; height: 872 * root.stageScale
         z: 190
         active: rhine.state.modal === "profile"
-        sourceComponent: UserProfile { unit: root.stageScale }
+          sourceComponent: UserProfile { unit: Math.max(.9,root.stageScale); viewMemory:root.profileViewMemory; onViewSaved:function(memory){root.profileViewMemory=memory;} onConversationRequested:function(uid,name){globalTools.openConversation(uid,name)} }
     }
+      Loader {
+          id: artistProfileLoader
+          objectName: "artistProfileLoader"
+          x: 0; y: 112 * root.stageScale
+          width: root.width; height: 872 * root.stageScale
+          z: 89
+          active: rhine.state.artistPage === true && !rhine.state.viewer && !rhine.state.lyricsMode
+          visible: active && !rhine.state.modal
+          sourceComponent: UserProfile { unit: Math.max(.9,root.stageScale); artistMode: true; viewMemory:root.profileViewMemory; onViewSaved:function(memory){root.profileViewMemory=memory;} }
+      }
     Loader {
         objectName: "lyricsReadingLoader"
         property var bounds: rhine.state.lyricBounds
@@ -841,7 +962,8 @@ Window {
             if (rhine.state.queueOpen) return;
             if (profileLoader.active && profileLoader.item) profileLoader.item.navigateKey(key);
             else if (!rhine.state.modal) {
-                if(magazineLoader.active && magazineLoader.item)magazineLoader.item.navigateKey(key);
+                if(artistProfileLoader.active && artistProfileLoader.item)artistProfileLoader.item.navigateKey(key);
+                else if(magazineLoader.active && magazineLoader.item)magazineLoader.item.navigateKey(key);
                 else if (commentsLoader.active && commentsLoader.visible && commentsLoader.item) commentsLoader.item.navigateKey(key);
                 else if (recommendationsLoader.active && recommendationsLoader.item) recommendationsLoader.item.navigateKey(key);
                 else if (detailReaderLoader.active && detailReaderLoader.item && rhine.state.currentKind === "song") detailReaderLoader.item.navigateKey(key);
@@ -859,6 +981,28 @@ Window {
     // Acyclic, queue-sized lower-layer capture. These sources contain the
     // actual page and navigation glasses, but never the foreground queue.
     // Half-resolution tiles bound the extra texture cost to the panel area.
+    Item {
+        id:playerContentBackdrop
+        objectName:"playerContentBackdrop"
+        anchors.fill:parent;visible:false
+        Loader {
+            anchors.fill:parent
+            active:magazineLoader.active && magazineLoader.visible
+            sourceComponent:Item {
+                ShaderEffectSource {
+                    x:10*root.stageScale;y:968*root.stageScale;width:root.width-20*root.stageScale;height:112*root.stageScale
+                    sourceItem:backgroundLayer;sourceRect:Qt.rect(x,y,width,height)
+                    live:true;smooth:true;hideSource:false
+                }
+                ShaderEffectSource {
+                    objectName:"playerMagazineTile"
+                    x:10*root.stageScale;y:968*root.stageScale;width:root.width-20*root.stageScale;height:112*root.stageScale
+                    sourceItem:magazineLoader;sourceRect:Qt.rect(x,y,width,height)
+                    live:true;smooth:true;hideSource:false
+                }
+            }
+        }
+    }
     Item {
         id: queueGlassBackdrop
         objectName: "queueGlassBackdrop"
@@ -882,7 +1026,8 @@ Window {
                 }
                 Loader {
                     anchors.fill:parent
-                    active:magazineLoader.active && magazineLoader.visible
+                    // The magazine now belongs to baseVisual, already captured above.
+                    active:false
                     sourceComponent:Item {
                         ShaderEffectSource {
                             objectName:"queueMagazineTile"
@@ -1033,7 +1178,7 @@ Window {
             color: rhine.state.dark ? "#292d29" : "#f4f3eb"
             MouseArea { anchors.fill: parent; onClicked: {} }
             Text { x:24; y:22; text:"收藏到歌单"; color:rhine.state.dark ? "#e6e9df" : "#414a3c"
-                font.family:rhineFontFamily; font.pixelSize:20 }
+                font.family:rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize:20 }
             Text { anchors.right:parent.right; anchors.rightMargin:24; y:24; text:"关闭"; color:"#77816d"
                 MouseArea { anchors.fill:parent; enabled:!rhine.state.queueWriteLoading
                     cursorShape:Qt.PointingHandCursor; onClicked:rhine.action("queue-collection-close") } }
@@ -1050,7 +1195,7 @@ Window {
                     color:pickMouse.containsMouse ? (rhine.state.dark ? "#424b3d" : "#e3e9d9") : "transparent"
                     Text { anchors.fill:parent; anchors.margins:12; verticalAlignment:Text.AlignVCenter
                         text:parent.modelData.title || "未命名歌单"; elide:Text.ElideRight
-                        font.family:rhineFontFamily; font.pixelSize:16; color:rhine.state.dark ? "#e6e9df" : "#414a3c" }
+                        font.family:rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize:16; color:rhine.state.dark ? "#e6e9df" : "#414a3c" }
                     MouseArea { id:pickMouse; anchors.fill:parent; hoverEnabled:true; enabled:!rhine.state.queueWriteLoading
                         cursorShape:Qt.PointingHandCursor
                         onClicked:rhine.action("music:playlist-pick:" + parent.modelData.id) }
@@ -1058,7 +1203,7 @@ Window {
             }
             Text { x:24; y:parent.height-56; width:parent.width-48; height:40; wrapMode:Text.Wrap
                 text:rhine.state.queueWriteLoading ? "正在收藏…" : ((rhine.state.navigationCreated || []).length ? (rhine.state.queueWriteStatus || "选择要收藏到的歌单") : "暂无歌单，或正在加载")
-                color:"#77816d"; font.family:rhineFontFamily; font.pixelSize:13 }
+                color:"#77816d"; font.family:rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize:13 }
         }
     }
     SideNavigation {
@@ -1070,10 +1215,11 @@ Window {
     }
     WindowChrome {
         window: root
+        centerControl:root.songDetailVisible
         topControlsWidth:globalTools.occupiedWidth
         enabled: root.windowsFrameless
         visible: root.windowsFrameless && root.visibility !== Window.FullScreen
-        dark: rhine.state.dark === true
+        dark: root.songDetailVisible || rhine.state.dark === true
         z: 999
     }
     PerformancePanel {

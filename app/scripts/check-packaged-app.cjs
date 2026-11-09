@@ -16,8 +16,8 @@ const platform = platforms[process.platform];
 const app = path.resolve(process.argv[2]);
 const resources = path.join(app, resourceDirectory);
 assert(
-    fs.existsSync(path.join(resources, 'scene-fixture.json')),
-    'Package is missing the offline scene fixture',
+    fs.existsSync(path.join(resources, 'slots.json')),
+    'Package is missing the library navigation data',
 );
 if (mac) {
     assert(

@@ -58,7 +58,6 @@ function prepareResources() {
     });
     run(python, ['scripts/check-qt-project.py']);
     run(python, ['scripts/export-assets.py']);
-    run(python, ['scripts/bake-archive-lighting.py']);
     for (const file of fs.readdirSync('Assets/fonts')) {
         fs.copyFileSync(path.join('Assets/fonts', file), path.join('output/resources', file));
     }
@@ -149,10 +148,6 @@ function prepareResources() {
     fs.copyFileSync(binary, path.join(bridge, nodeName));
     fs.copyFileSync(license, path.join(bridge, 'NODE-LICENSE'));
     fs.chmodSync(path.join(bridge, nodeName), 0o755);
-    for (const name of ['dfg-lut.bin', 'ao-kernel.bin', 'ao-noise.bin']) {
-        fs.copyFileSync(path.join('Assets/lighting', name), path.join('output/resources', name));
-    }
-    fs.copyFileSync('Assets/room-pmrem.bin', 'output/resources/room-pmrem.bin');
     // 同步清理旧暂存文件，开发运行与发布包使用相同的纯原生资源。
     for (const name of [
         'runtime.js',
@@ -779,6 +774,13 @@ function deployApp(qt, config, existingBundle = '') {
             path.join(app, 'RHINE MUSIC DATABASE.exe'),
         ]);
         deployWindowsRuntime(app, config);
+        const webp = config === 'Debug' ? 'qwebpd.dll' : 'qwebp.dll';
+        const webpSource = path.join(qt, 'plugins/imageformats', webp);
+        if (!fs.existsSync(webpSource)) {
+            throw new Error('Qt Image Formats is required for WebP artwork');
+        }
+        fs.mkdirSync(path.join(app, 'imageformats'), { recursive: true });
+        fs.copyFileSync(webpSource, path.join(app, 'imageformats', webp));
         // 系统网络状态后端通过插件动态载入，不能仅依靠可执行文件依赖扫描。
         const networkPlugins = path.join(qt, 'plugins/networkinformation');
         if (fs.existsSync(networkPlugins)) {
@@ -817,6 +819,9 @@ function deployApp(qt, config, existingBundle = '') {
     const thirdParty = path.join(resources, 'third-party');
     fs.mkdirSync(path.join(thirdParty, 'taglib'), { recursive: true });
     fs.mkdirSync(path.join(thirdParty, 'utfcpp'), { recursive: true });
+    fs.cpSync('licenses/liquid-glass', path.join(thirdParty, 'liquid-glass'), { recursive: true });
+    fs.cpSync('licenses/bilibili-margin', path.join(thirdParty, 'bilibili-margin'), { recursive: true });
+    fs.cpSync('licenses/cloudy', path.join(thirdParty, 'cloudy'), { recursive: true });
     fs.copyFileSync(path.join('vendor/taglib/COPYING.LGPL'), path.join(thirdParty, 'taglib/COPYING.LGPL'));
     fs.copyFileSync(path.join('vendor/taglib/COPYING.MPL'), path.join(thirdParty, 'taglib/COPYING.MPL'));
     fs.copyFileSync(path.join('vendor/taglib/source.json'), path.join(thirdParty, 'taglib/source.json'));

@@ -1,4 +1,5 @@
 #include "FrameProfiler.h"
+#include "PipelineDiagnostics.h"
 #include "Engine.h"
 #include "ProcessMetrics.h"
 #include <QCoreApplication>
@@ -94,6 +95,10 @@ void FrameProfiler::attach(QQuickWindow *window) {
         [this] {
             if (m_enabled.load(std::memory_order_relaxed) && renderTimer.isValid()) {
                 submitNs.store(renderTimer.nsecsElapsed(), std::memory_order_relaxed);
+                if(PipelineDiagnostics::enabled()) {
+                    auto *swap=static_cast<QRhiSwapChain*>(m_window->rendererInterface()->getResource(m_window,QSGRendererInterface::RhiSwapchainResource));
+                    if(swap)PipelineDiagnostics::duration("frame.gpu",swap->currentFrameCommandBuffer()->lastCompletedGpuTime()*1000);
+                }
             }
         },
         Qt::DirectConnection);
@@ -103,6 +108,7 @@ void FrameProfiler::attach(QQuickWindow *window) {
             if (!m_enabled.load(std::memory_order_relaxed)) {
                 return;
             }
+            if(const int marker=PipelineDiagnostics::pendingFrame.exchange(0))PipelineDiagnostics::mark("frame.after-marker",{{"marker",marker}});
             const auto now = clock.nsecsElapsed();
             const auto previous = presentNs.exchange(now, std::memory_order_relaxed);
             presentGapNs.store(previous ? now - previous : 0, std::memory_order_relaxed);

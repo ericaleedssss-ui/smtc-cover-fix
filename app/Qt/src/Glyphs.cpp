@@ -1,5 +1,8 @@
 #include "Glyphs.h"
+#include "StartupMemory.h"
 #include <QFile>
+#include <QFont>
+#include <QFontMetricsF>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRadialGradient>
@@ -27,26 +30,51 @@ static QColor color(const QJsonValue &value) {
     };
     return QColor::fromRgbF(channel(0), channel(1), channel(2), a.size() > 3 ? a[3].toDouble() : 1);
 }
-Glyphs::Glyphs(const QString &root) {
-    for (auto weight : {"light", "regular", "demibold", "bold"}) {
-        fonts[weight] = QRawFont(root + "/RhineMiSans-" + weight + ".otf", 1000, QFont::PreferNoHinting);
+double Glyphs::measureText(QString text, QString family, int size, int weight, bool italic) {
+    QFont font(family);font.setPixelSize(size);font.setWeight(static_cast<QFont::Weight>(weight));font.setItalic(italic);
+    font.setVariableAxis(QFont::Tag("wght"),weight);
+    return QFontMetricsF(font).horizontalAdvance(text);
+}
+Glyphs::Glyphs(const QString &root) : m_fontThread(QThread::currentThread()), m_root(root) {
+    startupMemory("glyphs-fonts-begin");
+    // Font faces are expensive on Windows. JSON outlines already cover the
+    // archive lettering; open a full font only for an actual fallback glyph.
+    startupMemory("glyphs-fonts-ready");
+    // The immutable JSON storage is implicitly shared by all three renderers.
+    // Build paths only for glyphs that are measured or drawn.
+    static QMutex definitionsMutex;
+    static QHash<QString, QJsonObject> definitions;
+    {
+        QMutexLocker lock(&definitionsMutex);
+        auto found = definitions.constFind(root);
+        if (found == definitions.cend())
+            found = definitions.insert(root, load(root + "/misans-glyphs.json"));
+        m_glyphDefinitions = found.value();
     }
-    fonts["symbols"] = QRawFont(root + "/NotoSansSymbols2-Regular.ttf", 1000, QFont::PreferNoHinting);
-    const auto data = load(root + "/misans-glyphs.json");
-    for (auto font = data.begin(); font != data.end(); ++font) {
-        auto entries = font.value().toObject()["glyphs"].toObject();
-        for (auto it = entries.begin(); it != entries.end(); ++it) {
-            auto o = it.value().toObject();
-            glyphs[font.key() + ":" + it.key()] = {o["advance"].toDouble(), path(o["path"].toString())};
+
+}
+QRawFont Glyphs::bundledFont(const QString &requested) {
+    const auto weight = requested == "symbols" || requested == "light" || requested == "demibold" ||
+                        requested == "bold" ? requested : QString("regular");
+    const auto file = weight == "symbols" ? "/NotoSansSymbols2-Regular.ttf"
+                                          : "/RhineMiSans-" + weight + ".otf";
+    const auto path = m_root + file;
+    // The HUD measures on the GUI thread and paints on the render thread.
+    // Geometry may cross that boundary, but a QRawFont face may not.
+    if(QThread::currentThread()!=m_fontThread)
+        return QRawFont(path,1000,QFont::PreferNoHinting);
+    if (!m_bundledFaces.contains(weight)) {
+        // QRawFont is bound to its creating thread. Both scene renderers use
+        // one render thread; share there, while keeping GUI-thread faces separate.
+        static thread_local QHash<QString, std::weak_ptr<QRawFont>> sharedFaces;
+        auto face = sharedFaces.value(path).lock();
+        if (!face) {
+            face = std::make_shared<QRawFont>(path, 1000, QFont::PreferNoHinting);
+            sharedFaces.insert(path, face);
         }
+        m_bundledFaces.insert(weight, face);
     }
-    const auto art = load(root + "/boot-lettering-art.json");
-    for (auto it = art.begin(); it != art.end(); ++it) {
-        for (auto letter : it.value().toObject()["letters"].toArray()) {
-            auto o = letter.toObject();
-            lettering[it.key()].append({o["width"].toDouble(), path(o["path"].toString())});
-        }
-    }
+    return *m_bundledFaces.value(weight);
 }
 QPainterPath Glyphs::path(const QString &svg) {
     QMutexLocker lock(&mutex);
@@ -127,13 +155,35 @@ QPainterPath Glyphs::path(const QString &svg) {
 Glyphs::Glyph Glyphs::glyph(QString ch, QString weight) {
     QMutexLocker lock(&mutex);
     const auto key = weight + ":" + ch;
-    if (glyphs.contains(key)) {
+    if (m_family.isEmpty() && glyphs.contains(key)) {
         return glyphs[key];
     }
-    auto font = fonts.value(weight, fonts["regular"]);
+    if(!m_family.isEmpty()&&glyphs.contains("custom:"+key))return glyphs["custom:"+key];
+    if (m_family.isEmpty()) {
+        const auto definition = m_glyphDefinitions.value(weight).toObject()
+                                    .value("glyphs").toObject().value(ch).toObject();
+        if (!definition.isEmpty())
+            return glyphs[key] = {definition["advance"].toDouble(), path(definition["path"].toString())};
+    }
+    QRawFont font;
+    if (!m_family.isEmpty()) {
+        const auto customKey="custom:"+weight;
+        const bool ownThread=QThread::currentThread()==m_fontThread;
+        if(!ownThread||!fonts.contains(customKey)) {
+            QFont custom(m_family);custom.setPixelSize(1000);
+            custom.setWeight(weight=="bold"?QFont::Bold:weight=="demibold"?QFont::DemiBold:weight=="light"?QFont::Light:QFont::Normal);
+            custom.setVariableAxis(QFont::Tag("wght"),custom.weight());
+            font=QRawFont::fromFont(custom);
+            if(ownThread)fonts[customKey]=font;
+        } else font=fonts[customKey];
+    } else font = bundledFont(weight);
     auto ids = font.glyphIndexesForString(ch);
+    if (!m_family.isEmpty() && (ids.isEmpty() || !ids.first())) {
+        font = bundledFont(weight);
+        ids = font.glyphIndexesForString(ch);
+    }
     if (ids.isEmpty() || !ids.first()) {
-        font = fonts["symbols"];
+        font = bundledFont("symbols");
         ids = font.glyphIndexesForString(ch);
     }
     if (ids.isEmpty() || !ids.first()) {
@@ -142,7 +192,14 @@ Glyphs::Glyph Glyphs::glyph(QString ch, QString weight) {
     auto advances = font.advancesForGlyphIndexes(ids);
     // Qt 字形坐标朝下；资源轮廓保持原始字体朝上的坐标。
     auto outline = QTransform::fromScale(1, -1).map(font.pathForGlyph(ids.first()));
-    return glyphs[key] = {advances.first().x() / 1000, outline};
+    return glyphs[m_family.isEmpty()?key:"custom:"+key] = {advances.first().x() / 1000, outline};
+}
+void Glyphs::setFamily(QString family) {
+    QMutexLocker lock(&mutex);
+    m_family=family;
+    for(auto it=glyphs.begin();it!=glyphs.end();)if(it.key().startsWith("custom:"))it=glyphs.erase(it);else ++it;
+    for(auto it=fonts.begin();it!=fonts.end();)if(it.key().startsWith("custom:"))it=fonts.erase(it);else ++it;
+    widths.clear();wrapped.clear();
 }
 double Glyphs::width(QString text, double size, QString weight, double tracking) {
     QMutexLocker lock(&mutex);
@@ -221,16 +278,6 @@ QStringList Glyphs::wrap(QString value, double limit, double size, QString weigh
     wrapped.insert(key, new QStringList(lines), qMax(1, value.size()));
     return lines;
 }
-double Glyphs::artWidth(QString key, double size, double tracking, int count) {
-    QMutexLocker lock(&mutex);
-    double result = 0;
-    const auto letters = lettering.value(key);
-    const auto visible = letters.mid(0, count < 0 ? letters.size() : count);
-    for (auto g : visible) {
-        result += g.advance * size + tracking;
-    }
-    return visible.isEmpty() ? 0 : result - tracking;
-}
 void Glyphs::text(QPainter &c, QString value, double x, double y, double size, QString weight,
                   double tracking, QColor ink) {
     QMutexLocker lock(&mutex);
@@ -244,15 +291,15 @@ void Glyphs::text(QPainter &c, QString value, double x, double y, double size, Q
         x += g.advance * size + tracking;
     }
 }
-void Glyphs::art(QPainter &c, QString key, double x, double y, double size, int count, double tracking) {
+void Glyphs::prepareCommands(const QJsonArray &commands) {
     QMutexLocker lock(&mutex);
-    for (auto g : lettering[key].mid(0, count < 0 ? lettering[key].size() : count)) {
-        c.save();
-        c.translate(x, y);
-        c.scale(size / 1000, size / 1000);
-        c.fillPath(g.path, c.brush());
-        c.restore();
-        x += g.advance * size + tracking;
+    // Resolve only the text actually submitted for drawing, on the GUI thread.
+    // paint() then consumes immutable outlines without opening another font face.
+    for (const auto &value : commands) {
+        const auto command = value.toArray();
+        if (command.size() < 6 || command.at(0).toString() != "text") continue;
+        const auto weight = command.at(5).toString();
+        for (const auto ch : command.at(1).toString()) glyph(QString(ch), weight);
     }
 }
 void Glyphs::commands(QPainter &c, const QJsonArray &commands, std::function<QImage(QString)> image) {
@@ -278,15 +325,15 @@ void Glyphs::commands(QPainter &c, const QJsonArray &commands, std::function<QIm
             c.setClipRect(QRectF(n(1), n(2), n(3), n(4)), Qt::IntersectClip);
         } else if (op == "fill") {
             c.fillRect(QRectF(n(2), n(3), n(4), n(5)), color(a[1]));
+        } else if (op == "rounded-fill") {
+            c.setPen(Qt::NoPen);c.setBrush(color(a[1]));
+            c.drawRoundedRect(QRectF(n(2),n(3),n(4),n(5)),n(6),n(6));
         } else if (op == "ellipse") {
             c.setPen(Qt::NoPen);
             c.setBrush(color(a[1]));
             c.drawEllipse(QRectF(n(2), n(3), n(4), n(5)));
         } else if (op == "text") {
             text(c, a[1].toString(), n(2), n(3), n(4), a[5].toString(), n(6), color(a[7]));
-        } else if (op == "art") {
-            c.setBrush(color(a[7]));
-            art(c, a[1].toString(), n(2), n(3), n(4), a[5].toInt(-1), n(6));
         } else if (op == "fill-path") {
             // 实心几何图标不受字体字形边距影响。
             c.fillPath(path(a[1].toString()), color(a[2]));
@@ -325,35 +372,6 @@ void Glyphs::commands(QPainter &c, const QJsonArray &commands, std::function<QIm
             }
         }
     }
-}
-QImage Glyphs::label(const QJsonObject &value) {
-    QMutexLocker lock(&mutex);
-    QImage img(1024, 440, QImage::Format_RGBA8888_Premultiplied);
-    img.fill(QColor::fromRgbF(.902, .886, .851));
-    QPainter c(&img);
-    c.setRenderHint(QPainter::Antialiasing);
-    QColor ink = QColor::fromRgbF(.09, .09, .075);
-    c.fillRect(QRectF(12, 12, 1000, 6), ink);
-    auto fit = [&](QString s, double y, double maximum, QString weight) {
-        double size = maximum;
-        while (width(s, size, weight) > 954 && size > 34) {
-            size -= 2;
-        }
-        QString shown = s;
-        while (width(shown, size, weight) > 954 && shown.size() > 1) {
-            shown.chop(1);
-        }
-        if (shown != s) {
-            shown.chop(1);
-            shown += "…";
-        }
-        text(c, shown, 30, y, size, weight, 0, ink);
-    };
-    fit(value["title"].toString("音乐资料库"), 40, 125, "bold");
-    auto artist = value["artist"].toString();
-    fit(artist.isEmpty() ? "暂无歌手" : artist, 210, 78, "demibold");
-    fit(value["kind"].toString("MUSIC").toUpper() + " ID " + value["id"].toString("—"), 340, 40, "regular");
-    return img;
 }
 void saveImageNative(const QImage &image, const QString &path) {
     image.save(path);

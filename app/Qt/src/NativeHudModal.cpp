@@ -20,7 +20,6 @@ QString modalTitle(const QString &modal, const MusicLibrary &music) {
     static const QHash<QString, QString> titles{{"provider", "MUSIC PLATFORM"},
                                                 {"settings", "SYSTEM SETTINGS"},
                                                 {"quality", "AUDIO QUALITY"},
-                                                {"disc-rotation-warning", "DISC ROTATION"},
                                                 {"saved", "MY MUSIC"},
                                                 {"player", "NOW PLAYING"},
                                                 {"discover", "DISCOVER MUSIC"},
@@ -45,7 +44,6 @@ QString modalSubtitle(const QString &modal, const MusicLibrary &music) {
     static const QHash<QString, QString> subtitles{{"provider", "直接选择音乐平台 / 各平台账号独立保存"},
                                                    {"settings", "终端偏好设置"},
                                                    {"quality", "声音档案 / 播放音质"},
-                                                   {"disc-rotation-warning", "开启前请确认资源与功耗风险"},
                                                    {"player", "播放队列 / QUEUE"},
                                                    {"discover", "推荐 / 排行榜 / 新专辑"},
                                                    {"playlist-form", "编辑我的歌单"},
@@ -70,7 +68,7 @@ QString modalSubtitle(const QString &modal, const MusicLibrary &music) {
 
 /** 弹窗共用一次绘制栈与命中表，关闭曲线结束后才释放当前面板。 */
 void NativeHud::modalDraw(double width) {
-    if (modal == "desktop-settings" || modal == "profile") { hits = {}; return; }
+    if (modal == "desktop-settings" || modal == "profile" || modal == "interface-fonts" || modal == "confirm") { hits = {}; return; }
     const auto commandStart = commands.size();
     auto &music = *m_music;
     save();
@@ -87,8 +85,7 @@ void NativeHud::modalDraw(double width) {
     if (modal == "lyrics-source") {
         const auto bounds = modalBounds(width);
         translate(0, motion.offset);
-        fill(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
-             dark ? QJsonArray{0.15, 0.15, 0.15, 1, "calibratedWhite"} : QJsonArray{0.929, 0.922, 0.894, 1});
+        op({"rounded-fill",dark?QJsonArray{.137,.137,.153,1}:QJsonArray{.965,.965,.973,1},bounds.x(),bounds.y(),bounds.width(),bounds.height(),22});
         hits = {};
         m_modalControls = true;
         const QStringList sources{"auto", "local", "netease", "qq", "kugou"};
@@ -113,8 +110,7 @@ void NativeHud::modalDraw(double width) {
     const auto x = bounds.x();
     const auto y = bounds.y();
     const auto usable = bounds.width();
-    fill(x, y, usable, 836,
-         dark ? QJsonArray{0.15, 0.15, 0.15, 1, "calibratedWhite"} : QJsonArray{0.929, 0.922, 0.894, 1});
+    op({"rounded-fill",dark?QJsonArray{.137,.137,.153,1}:QJsonArray{.965,.965,.973,1},x,y,usable,836,30});
     hits = {};
     m_modalControls = true;
     QString category = "MUSIC DIRECTORY";
@@ -129,14 +125,7 @@ void NativeHud::modalDraw(double width) {
     button("← 返回", x + usable - 220, y + 18, 167, 54, "close-modal", 20, "demibold");
     text(modalTitle(modal, music), x + 53, y + 91, 38, "demibold");
     text(modalSubtitle(modal, music), x + 53, y + 147, 15);
-    if (modal == "disc-rotation-warning") {
-        text("唱片旋转需要持续刷新画面。", x + 53, y + 250, 22, "demibold");
-        text("开启后会增加 CPU / GPU 占用、耗电和发热，可能缩短电池续航。", x + 53, y + 310, 16);
-        text("仅当前歌曲的详情页和歌词页旋转；资源库、暂停和后台均不旋转。", x + 53, y + 352, 16);
-        text("该功能默认关闭，减少动态效果开启时也不会旋转。", x + 53, y + 394, 16);
-        button("了解风险，仍然开启", x + 53, y + 480, 260, 48, "disc-rotation:enable", 16);
-        button("保持关闭", x + 340, y + 480, 180, 48, "disc-rotation:cancel", 16);
-    } else if (modal == "quality") {
+    if (modal == "quality") {
         qualityPanel(x, y, usable);
     } else if (modal == "provider") {
         platformPanel(x, y, usable);
@@ -186,7 +175,7 @@ void NativeHud::modalDraw(double width) {
     restore();
     // The QML glass page draws discover content, while the native hit model is
     // retained for keyboard navigation and non-visual regression checks.
-    if (modal == "discover") {
+    if (modal == "discover" || modal == "settings") {
         while (commands.size() > commandStart) { commands.removeLast(); }
     }
 }
@@ -408,10 +397,8 @@ void NativeHud::settings(double x, double y, double width) {
     }
     QVector<QStringList> rows{
         {"COLOR THEME / 界面配色", theme, "theme"},
-        {"RhineLab Enhance", sceneEnhancement ? "开启" : "关闭", "scene-enhancement"},
         {"TEXT BACKDROP / 文字毛玻璃", textFrosted ? "开启" : "关闭", "text-frosted"},
         {"REDUCED MOTION / 动态效果", reduced ? "减少动态效果" : "完整动效", "motion"},
-        {"STARTUP ANIMATION / 初始化动画", startupAnimation ? "开启" : "关闭", "startup-animation"},
         {"AUDIO QUALITY / 音质", qualities.value(music.player.quality), "quality"}};
     if (music.provider == "netease") {
         rows.append({"ALTERNATE SOURCE / 替代音源",
@@ -434,6 +421,9 @@ void NativeHud::settings(double x, double y, double width) {
         text(row.at(0), left + 12, yy + 12, 15, "demibold");
         button(row.at(1), left + usable - 235, yy + 4, 225, 36, row.at(2), 13);
     }
+    fill(left, y + 837, usable, 50, tint);
+    text("INTERFACE FONT / 界面字体", left + 12, y + 851, 15, "demibold");
+    button("选择与导入 →", left + usable - 235, y + 844, 225, 36, "interface:fonts", 13);
     fill(left, y + 900, usable, 54, tint);
     text("DESKTOP LYRICS / 桌面歌词", left + 12, y + 918, 15, "demibold");
     button("配置与预览 →", left + usable - 235, y + 909, 225, 36, "desktop:settings", 13);
@@ -463,11 +453,6 @@ void NativeHud::settings(double x, double y, double width) {
     text("帧数显示 / 性能面板", left + 12, y + 972, 15, "demibold");
     button("显示 / 隐藏 · F10", left + usable - 235, y + 964, 225, 36, "performance:toggle", 13);
     text("在性能面板内手动收集、导出诊断文件。", left, y + 1021, 12);
-    fill(left, y + 1064, usable, 44, tint);
-    text("DISC ROTATION / 唱片旋转", left + 12, y + 1076, 15, "demibold");
-    button(discRotation ? "开启 / 点击关闭" : "关闭 / 点击了解风险", left + usable - 235, y + 1068, 225, 36,
-           "disc-rotation", 13);
-    text("默认关闭；开启会增加持续渲染、耗电和发热。", left, y + 1125, 12);
     rule(left, y + 1170, usable, 0.2);
     text("SOFTWARE UPDATE / 软件更新", left, y + 1188, 12, "demibold");
     const auto &updater = m_host->updater;

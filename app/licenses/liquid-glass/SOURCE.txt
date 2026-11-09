@@ -1,0 +1,13 @@
+# Sources and scope
+
+Rhine's opt-in refractive glass material adapts the SDF displacement field from **Shu Ding's liquid-glass**, copyright (c) 2025 Shu Ding, under the MIT license. The full license is preserved in `LICENSE` beside this file.
+
+- Original: https://github.com/shuding/liquid-glass
+- Inspected reference: https://github.com/xiaofangstudio/liquid-glass-web
+- Reference commit: `3094add905e60ee5aeb45e806751beb94425dd73`
+
+The inspected reference's README declares MIT and attributes Shu Ding. It has no standalone LICENSE file. Rhine ports the attributed SDF formula rather than redistributing the whole site or its image assets. The original upstream license is retained. Existing Rhine hover motion is unchanged; the reference site's spring animation is not used in this integration.
+
+The native GPU implementation, background capture, animated silhouette, restrained lighting and RGB edge separation are Rhine additions. The inspected SVG displacement filter itself uses R/G channels for displacement, not separate RGB refraction. The normalization cap is estimated on a 33×33 grid on resize, so this is not a pixel-identical reproduction.
+
+The background, existing glass material, icons and fonts are reused unchanged from the local Rhine project. No third-party demo photographs are included. Their existing project notices continue to apply.

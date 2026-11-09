@@ -1,12 +1,17 @@
+#include "PipelineDiagnostics.h"
 #include "Engine.h"
+#include "StartupMemory.h"
+#include "FontCatalog.h"
 #include "MusicData.h"
-#include "DiscGeometry.h"
-#include "RhiScene.h"
+#include "AppStorage.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QEvent>
+#include <QMouseEvent>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
+#include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QPainter>
 #include <QGuiApplication>
@@ -24,21 +29,52 @@ bool runGpuReferenceCheck(const QImage &expected, const QImage &actual);
 
 /** 建立纯原生音乐、HUD 和场景状态；Qt 定时器只在输入或动画尚未收束时运行。 */
 Engine::Engine(QString path, bool offline, QObject *parent)
-    : QObject(parent), host(path, offline), scene(path), m_glyphs(path) {
+    : QObject(parent), host(startupMemoryValue("host-begin", path), offline),
+      scene(startupMemoryValue("scene-begin", path)),
+      m_glyphs(startupMemoryValue("glyphs-begin", path)) {
+    startupMemory("application-begin");
     const auto content = QJsonDocument::fromJson(host.read("slots.json").toUtf8()).object();
     app = std::make_unique<NativeApplication>(&host, &m_glyphs, &scene, content);
+    startupMemory("application-created");
+    m_sleepTimer.setSingleShot(true);
+    connect(&m_sleepTimer,&QTimer::timeout,this,[this]{setSleep(0);app->music.player.setPaused(true);wake();});
+    app->music.player.onEnd=[this]{
+        if(m_sleepMinutes==-1){setSleep(0);app->music.player.setPaused(true);}
+        else app->music.player.next(1,true);
+    };
     connect(&app->music, &MusicLibrary::playbackInvalidated, this, &Engine::refreshPlayback);
     connect(&app->music, &MusicLibrary::invalidated, this, &Engine::refreshTaskbar);
+    connect(&app->music, &MusicLibrary::invalidated, this, [this] {
+        if (m_signatureAccount != app->music.accountGeneration()) {
+            m_signatureAccount = app->music.accountGeneration();
+            app->hud.profileSignatureSaving = false;
+            app->hud.profileSignatureError.clear();
+        }
+    });
     connect(&app->hud, &NativeHud::localImportRequested, this, &Engine::localImportRequested);
     m_showcase = new PlaylistShowcase(&app->music,&app->hud,this);
     connect(m_showcase,&PlaylistShowcase::navigate,this,&Engine::action);
     m_messages = new MessageCenter(&app->music,this);
     connect(m_messages,&MessageCenter::navigate,this,&Engine::action);
+    m_personal = new PersonalHub(&app->music,this);
+    connect(m_personal,&PersonalHub::navigate,this,&Engine::action);
+    connect(m_personal,&PersonalHub::externalRequested,&host,&Host::open);
     m_magazine = new PlaylistMagazine(&app->music, &app->hud, this);
     connect(m_magazine,&PlaylistMagazine::navigate,this,&Engine::action);
     m_nowPlaying=new NowPlaying(&app->music,m_magazine,this);
     connect(m_nowPlaying,&NowPlaying::navigate,this,&Engine::action);
     app->initialize();
+    startupMemory("application-initialized");
+    m_soundEffects=new SoundEffects(&app->music,this);
+    m_visualPreferences={{"powerSaver",false},{"liquidGlass",true},{"glassClear",.6},{"glassBend",.3},{"barSpin",true},{"npLight",true},{"glowLevel",.5},{"fog",false},{"smoke",false},{"glassPanels",true},{"motion","full"}};
+    const auto savedVisual=QJsonDocument::fromJson(host.preference("visual-effects").toUtf8()).object().toVariantMap();
+    for(auto it=m_visualPreferences.begin();it!=m_visualPreferences.end();++it){
+        const auto value=savedVisual.value(it.key());
+        if(it.key()=="motion"){if(QStringList{"full","lite","off"}.contains(value.toString()))it.value()=value;}
+        else if(it.value().metaType().id()==QMetaType::Bool){if(value.metaType().id()==QMetaType::Bool)it.value()=value;}
+        else if(value.canConvert<double>()&&std::isfinite(value.toDouble()))it.value()=std::clamp(value.toDouble(),0.,1.);
+    }
+    if(savedVisual.contains("saverBefore"))m_visualPreferences["saverBefore"]=savedVisual["saverBefore"];
     connect(&app->music.player.lyrics, &LyricsController::changed, this, &Engine::refreshDesktopLyrics);
     refreshDesktopLyrics();
     connect(&host, &Host::invalidated, this, [this] { wake(false); });
@@ -60,9 +96,11 @@ Engine::~Engine() {
     timer.stop();
     mediaTimer.stop();
     m_taskbar.reset();
+    delete m_soundEffects;m_soundEffects=nullptr;
     delete m_nowPlaying;m_nowPlaying=nullptr;
     delete m_showcase;m_showcase=nullptr;
     delete m_messages; m_messages=nullptr;
+    delete m_personal; m_personal=nullptr;
     delete m_magazine; m_magazine=nullptr;
     app.reset();
     host.shutdown();
@@ -113,30 +151,14 @@ bool equivalent(const QJsonValue &a, const QJsonValue &b) {
     }
     return a == b;
 }
-bool equivalent(const QByteArray &a, const QByteArray &b) {
-    if (a == b) {
-        return true;
-    }
-    if (a.size() != b.size()) {
-        return false;
-    }
-    for (qsizetype i = 0; i + 4 <= a.size(); i += 4) {
-        float x;
-        float y;
-        memcpy(&x, a.constData() + i, 4);
-        memcpy(&y, b.constData() + i, 4);
-        if (qAbs(x - y) > 0.00001f) {
-            return false;
-        }
-    }
-    return true;
-}
+
 }
 bool Engine::eventFilter(QObject *watched, QEvent *event) {
     // 原生文本框和滑块也属于用户输入，不能只依赖资料库 MouseArea 的事件。
     switch (event->type()) {
     case QEvent::MouseButtonPress:
         m_pressed = true;
+        if (const auto *mouse = dynamic_cast<QMouseEvent*>(event)) emit pointerPressed(mouse->position().x(), mouse->position().y());
         wake();
         break;
     case QEvent::MouseButtonRelease:
@@ -167,39 +189,9 @@ QVariantMap Engine::performance() const {
             {"steps", qulonglong(m_steps)},
             {"sceneUpdates", qulonglong(m_sceneUpdates)},
             {"hudUpdates", qulonglong(m_hudUpdates)},
-            {"renderFrames", qulonglong(m_renderFrames.load(std::memory_order_relaxed))},
-            {"gpuResources", qulonglong(m_gpuResources.load(std::memory_order_relaxed) +
-                                        m_opticalGpuResources.load(std::memory_order_relaxed))},
-            {"bindingCreations", qulonglong(m_bindingCreations.load(std::memory_order_relaxed))},
-            {"gpuMusicTextureBytes", qulonglong(m_musicTextureBytes.load(std::memory_order_relaxed) +
-                                                m_opticalTextureBytes.load(std::memory_order_relaxed))},
-            {"coverUploads", qulonglong(m_coverUploads.load(std::memory_order_relaxed))},
-            {"gpuDrawCalls", qulonglong(m_lastDrawCalls.load(std::memory_order_relaxed))},
+            {"renderFrames", 0}, {"gpuResources", 0}, {"bindingCreations", 0},
+            {"gpuMusicTextureBytes", 0}, {"coverUploads", 0}, {"gpuDrawCalls", 0},
             {"timerActive", timer.isActive()}};
-}
-/**
- * 只唤醒当前选用的渲染分支
- */
-void Engine::notifySceneRenderers(bool visualChanged) {
-    const bool enhanced = app->hud.sceneEnhancement;
-    if (enhanced) {
-        m_originalSceneDirty |= visualChanged;
-        // 进入资料库时预热一次原版管线，避免抽取末尾才同步编译和分配整套资源。
-        const bool prewarm = !m_originalSceneWarm && m_frame["mode"] != "boot";
-        if ((prewarm || m_frame["originalActorBlend"].toDouble() > 0) && m_originalSceneDirty) {
-            m_originalSceneDirty = false;
-            m_originalSceneWarm = true;
-            emit sceneUpdated();
-        }
-        if (visualChanged || !m_sceneEnhancement) {
-            emit opticalSceneUpdated();
-        }
-    } else if (visualChanged || (m_sceneEnhancement && m_originalSceneDirty)) {
-        m_originalSceneDirty = false;
-        m_originalSceneWarm = true;
-        emit sceneUpdated();
-    }
-    m_sceneEnhancement = enhanced;
 }
 void Engine::wake(bool input) {
     const bool wasSleeping = m_sleeping;
@@ -208,7 +200,6 @@ void Engine::wake(bool input) {
         m_lastInput = now;
         m_sceneSleeping = false;
         m_stableFrames = 0;
-        scene.energyIdle(false);
     } else if (scene.changed()) {
         m_sceneSleeping = false;
         m_stableFrames = 0;
@@ -239,9 +230,7 @@ void Engine::setVisible(bool value) {
         m_sleeping = true;
     } else {
         host.restoreMemoryBudget();
-        m_originalSceneWarm = false;
         wake(false);
-        notifySceneRenderers(true);
         emit hudUpdated();
     }
     emit stateChanged();
@@ -275,15 +264,18 @@ void Engine::refreshPlayback() {
         return;
     }
     step(m_animationTime);
-    if (m_discRotating || app->hud.animating(m_animationTime)) {
+    if (app->hud.animating(m_animationTime)) {
         wake(false);
     }
 }
 
 void Engine::pollMedia() {
+    const bool levels=m_visible&&m_visualPreferences["motion"]=="full"&&!app->hud.reduced;
+    host.enableVisualLevels(levels);
     app->poll(clock.elapsed() / 1000.0, true);
     refreshDesktopLyrics();
-    const auto interval = app->hud.desktopLyricsEnabled ? 80 : 1000;
+    const bool fullPlayer = m_visible && app->hud.frame["mode"]=="detail" && app->music.current["kind"]=="song";
+    const auto interval = fullPlayer || (levels&&app->music.player.state["playing"].toBool()) ? 40 : app->hud.desktopLyricsEnabled ? 80 : 1000;
     if (mediaTimer.interval() != interval) { mediaTimer.setInterval(interval); }
     const auto &player = app->music.player;
     const bool active = player.loading || player.state["playing"].toBool();
@@ -330,17 +322,10 @@ void Engine::tick() {
         m_wheelDelta = 0;
         m_wheelDistance = 0;
     }
-    if (now - m_lastInput >= 750 && !m_pressed) {
-        scene.energyIdle(true);
-    }
     step(m_animationTime);
-    // 只有盘面在运动时以 30Hz 刷新；交互和原有动画仍使用原频率。
-    timer.setInterval(m_discRotating && m_sceneSleeping && !app->hud.animating(m_animationTime) &&
-                              now - m_lastInput >= 750 && !m_pressed
-                          ? 33
-                          : 16);
+    timer.setInterval(16);
     if (now - m_lastInput >= 750 && !m_pressed && m_sceneSleeping && !scene.changed() &&
-        !app->hud.animating(m_animationTime) && !m_discRotating && m_frame["mode"] != "boot") {
+        !app->hud.animating(m_animationTime)) {
         timer.stop();
         m_sleeping = true;
         emit stateChanged();
@@ -356,6 +341,8 @@ void Engine::resize(double width, double height) {
     wake();
 }
 void Engine::action(QString value) {
+    if(value=="sound:effects"){m_soundEffects->open();return;}
+    if (value == "interface:fonts") { app->hud.openModal("interface-fonts"); wake(); return; }
     if (value == "desktop:reset") { m_desktopPosition = {}; }
     if (value == "desktop:font" || value.startsWith("desktop:color:")) { value = "desktop:settings"; }
     if (value == "performance:toggle") {
@@ -371,13 +358,159 @@ void Engine::action(QString value) {
     pollMedia();
     wake();
 }
+void Engine::indexApplicationFonts() const {
+    if (m_fontCatalogReady) return;
+    m_fontCatalogReady = true;
+    for (const auto &root : {host.root + "/fonts", AppStorage::dataDirectory() + "/fonts"}) {
+        const QDir directory(root);
+        for (const auto &name : directory.entryList({"*.ttf", "*.otf", "*.ttc"}, QDir::Files)) {
+            const auto path = directory.filePath(name);
+            for (const auto &family : fontFileFamilies(path)) m_applicationFontFiles[family].append(path);
+        }
+    }
+}
+bool Engine::ensureFontFamily(const QString &family) const {
+    if (family == "MiSans" && QFontDatabase::hasFamily(family)) return true;
+    indexApplicationFonts();
+    for (const auto &path : m_applicationFontFiles.value(family)) {
+        if (!m_registeredFontFiles.contains(path)) {
+            m_registeredFontFiles.insert(path);
+            if (QFontDatabase::addApplicationFont(path) < 0) m_registeredFontFiles.remove(path);
+        }
+    }
+    return QFontDatabase::hasFamily(family);
+}
+QStringList Engine::QFontDatabaseFamilies() const {
+    indexApplicationFonts();
+    auto result = QFontDatabase::families();
+    for (const auto &family : m_applicationFontFiles.keys()) if (!result.contains(family)) result.append(family);
+    result.sort();
+    return result;
+}
+void Engine::initializeUiFont(QString fallback) {
+    startupMemory("font-registration-begin");
+    indexApplicationFonts();
+    const auto saved = host.preference("ui-font");
+    ensureFontFamily(saved);
+    ensureFontFamily(app->hud.desktopLyricsFont);
+    startupMemory("font-registration-ready");
+    // Match Cloudy's Windows font chain; use the bundled family as last resort.
+    const auto available = QFontDatabase::families();
+    startupMemory("font-families-ready");
+    if (available.contains("Noto Sans SC")) fallback = "Noto Sans SC";
+    else if (available.contains("Microsoft YaHei UI")) fallback = "Microsoft YaHei UI";
+    m_defaultUiFont = fallback;
+    m_uiFont = QFontDatabase::families().contains(saved) ? saved : fallback;
+    m_glyphs.setFamily(m_uiFont);
+    startupMemory("font-family-selected");
+}
+void Engine::setUiFont(QString family) {
+    if (!ensureFontFamily(family)) return;
+    m_uiFont = family; m_fontError.clear();
+    m_glyphs.setFamily(family);
+    app->hud.resetTextMetrics();
+    host.setPreference("ui-font", family);
+    m_commands = {}; m_sceneSignature = {};
+    emit uiFontChanged(); emit hudUpdated(); wake();
+}
+void Engine::importUiFont(QUrl file) {
+    if (!file.isLocalFile()) return;
+    const QFileInfo info(file.toLocalFile());
+    if (!QStringList{"ttf", "otf", "ttc"}.contains(info.suffix().toLower()) || info.size() > 64*1024*1024) {
+        m_fontError = "请选择小于 64 MB 的 TTF、OTF 或 TTC 字体"; emit uiFontChanged(); return;
+    }
+    const int id = QFontDatabase::addApplicationFont(info.absoluteFilePath());
+    const auto families = QFontDatabase::applicationFontFamilies(id);
+    if (families.isEmpty()) { m_fontError = "无法读取这个字体文件"; emit uiFontChanged(); return; }
+    QFile input(info.absoluteFilePath());
+    if (!input.open(QIODevice::ReadOnly)) return;
+    const auto bytes = input.readAll();
+    const auto directory = AppStorage::dataDirectory()+"/fonts";
+    QDir().mkpath(directory);
+    const auto target = directory+"/"+QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex()+"."+info.suffix().toLower();
+    if (!QFileInfo::exists(target) && !QFile::copy(info.absoluteFilePath(),target)) {
+        m_fontError="无法将字体保存到应用目录";emit uiFontChanged();return;
+    }
+    setUiFont(families.first());
+}
+void Engine::saveProfileSignature(QString signature) {
+    auto &hud=app->hud; auto &music=app->music;
+    if(hud.profileSignatureSaving || music.provider!="netease" || music.uid.isEmpty() || hud.profileID!=music.uid)return;
+    if(signature.size()>300){hud.profileSignatureError="签名不能超过 300 个字符";wake();return;}
+    auto fields=hud.profile;
+    for(const auto &key:{"nickname","gender","birthday","province","city"}) {
+        if(!fields.contains(key)) {hud.profileSignatureError="个人资料尚未完整加载，请稍后重试";wake();return;}
+    }
+    hud.profileSignatureSaving=true;hud.profileSignatureError.clear();wake();
+    const auto account=music.accountGeneration();const auto uid=music.uid;
+    m_signatureAccount=account;
+    QJsonObject parameters{{"signature",signature}};
+    for(const auto &key:{"nickname","gender","birthday","province","city"})if(fields.contains(key))parameters[key]=fields[key];
+    QPointer<Engine> self(this);
+    music.api.request("/user/update",parameters,[self,signature,uid](MusicReply reply){
+        if(!self)return;
+        auto &hud=self->app->hud;hud.profileSignatureSaving=false;
+        if(!reply.ok())hud.profileSignatureError=reply.error.isEmpty()?QString("签名保存失败，请稍后重试"):reply.error;
+        else{
+            self->host.invalidateMetadata();
+            if(hud.profileID==uid)hud.profile["signature"]=signature;
+            self->m_personal->updateSignature(signature);
+            self->app->music.accountDetails["signature"]=signature;
+            emit self->profileSignatureSaved();
+        }
+        self->wake();
+    },[self,account,uid]{return self&&self->app->music.accountGeneration()==account&&self->app->music.uid==uid;});
+}
 void Engine::hoverLink(QString value) {
     if (app->hud.hoveredLink == value) { return; }
     app->hud.hoveredLink = value;
     wake();
 }
+void Engine::setPlayerPreference(QString key, QString value) {
+    if(key=="lyric-scale") {bool ok=false;const auto scale=value.toDouble(&ok);if(!ok||!std::isfinite(scale))return;value=QString::number(std::clamp(scale,.7,1.6));}
+    else if(key=="stage-style") {if(!QStringList{"flow","steps","tilt"}.contains(value))return;}
+    else if(key=="desktop-lyrics-style") {if(!QStringList{"dark","light","outline","color","plain"}.contains(value))return;}
+    else if(key=="lyric-translation"||key=="stage-sparks") {if(value!="on"&&value!="off")return;}
+    else if(key=="podcast-speed") {bool ok=false;const auto speed=value.toDouble(&ok);if(!ok||!QList<double>{.75,1,1.25,1.5,1.75,2}.contains(speed))return;app->music.player.setPodcastSpeed(speed);wake();return;}
+    else return;
+    if(key=="lyric-scale")app->hud.lyricScale=value.toDouble();
+    else if(key=="stage-style")app->hud.stageStyle=value;
+    else if(key=="stage-sparks")app->hud.stageSparks=value=="on";
+    else if(key=="lyric-translation")app->hud.lyricTranslation=value!="off";
+    m_playerPreferences.insert(key,value);host.setPreference(key,value);refreshDesktopLyrics();wake();
+}
+void Engine::setDetailFlightBarOpacity(double opacity) {
+    if (!std::isfinite(opacity)) return;
+    opacity = std::clamp(opacity, 0., 1.);
+    if (app->hud.detailFlightBarOpacity == opacity) return;
+    app->hud.detailFlightBarOpacity = opacity;
+    wake(false);
+}
+void Engine::setSleep(int minutes) {
+    if (!QList<int>{-1,0,15,30,45,60,90}.contains(minutes)) return;
+    m_sleepTimer.stop();m_sleepMinutes=minutes;
+    if(minutes>0)m_sleepTimer.start(minutes*60000);
+    emit sleepChanged();
+}
+// Cloudy power_saver.go: restore the saved effects, but leave saver on manual enable.
+void Engine::setVisualPreference(QString key,QVariant value) {
+    if(!m_visualPreferences.contains(key)||key=="saverBefore")return;
+    if(key=="motion") {if(!QStringList{"full","lite","off"}.contains(value.toString()))return;}
+    else if(key=="glassClear"||key=="glassBend"||key=="glowLevel") {
+        bool ok=false;const auto number=value.toDouble(&ok);if(!ok||!std::isfinite(number))return;value=std::clamp(number,0.,1.);
+    }else if(value.metaType().id()!=QMetaType::Bool)return;
+    if(m_visualPreferences.value(key)==value)return;
+    const QStringList costly{"liquidGlass","barSpin","npLight","fog","smoke"};
+    if(key=="powerSaver") {
+        if(value.toBool()) {QVariantMap before;for(const auto &effect:costly){before[effect]=m_visualPreferences[effect];m_visualPreferences[effect]=false;}m_visualPreferences["saverBefore"]=before;}
+        else {const auto before=m_visualPreferences["saverBefore"].toMap();for(const auto &effect:costly)if(before.contains(effect))m_visualPreferences[effect]=before[effect];m_visualPreferences.remove("saverBefore");}
+    }else if(costly.contains(key)&&value.toBool()){m_visualPreferences["powerSaver"]=false;m_visualPreferences.remove("saverBefore");}
+    m_visualPreferences[key]=value;
+    host.setPreference("visual-effects",QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(m_visualPreferences)).toJson(QJsonDocument::Compact)));
+    emit visualPreferencesChanged();wake();
+}
 void Engine::setDesktopFont(QString family, int size) {
-    if (family.isEmpty() || family.size() > 128 || (family != "MiSans" && !QFontDatabase::families().contains(family))) { return; }
+    if (family.isEmpty() || family.size() > 128 || (family != "MiSans" && !ensureFontFamily(family))) { return; }
     app->hud.desktopLyricsFont = family;
     host.setPreference("desktop-lyrics-font", family);
     if (size > 0) {
@@ -412,7 +545,7 @@ void Engine::setDesktopColor(QString target, QString value) {
     wake();
 }
 QStringList Engine::desktopFonts() const {
-    auto fonts = QFontDatabase::families();
+    auto fonts = QFontDatabaseFamilies();
     fonts.removeAll("MiSans"); fonts.removeAll("Rhine MiSans"); fonts.prepend("MiSans"); return fonts;
 }
 void Engine::setDesktopOpacity(int opacity) {
@@ -454,6 +587,7 @@ void Engine::refreshDesktopLyrics() {
     const auto &player = app->music.player;
     const auto &lyrics = player.lyrics;
     QString primary, secondary;
+    QJsonArray currentWords;
     const auto lines = lyrics.document().value("lines").toArray();
     if (!player.current.isEmpty()) {
         if (player.failed) { primary = "播放暂不可用"; }
@@ -462,6 +596,7 @@ void Engine::refreshDesktopLyrics() {
             const auto index = lyrics.index;
             if (index >= 0 && index < lines.size()) {
                 primary = lines.at(index).toObject().value("text").toString().trimmed();
+                currentWords = lines.at(index).toObject().value("words").toArray();
                 secondary = lines.at(index).toObject().value("translation").toString().trimmed();
                 if (secondary == primary) { secondary.clear(); }
             }
@@ -511,6 +646,8 @@ void Engine::refreshDesktopLyrics() {
         if (QColor::fromString(hoverSecondary).lightnessF() > 0.6) { hoverSecondary = darkSecondary; }
     }
     const QVariantMap next{{"enabled", hud.desktopLyricsEnabled}, {"locked", hud.desktopLyricsLocked},
+        {"style",m_playerPreferences.value("desktop-lyrics-style",host.preference("desktop-lyrics-style")).isEmpty()?QString("outline"):m_playerPreferences.value("desktop-lyrics-style",host.preference("desktop-lyrics-style"))},
+        {"words",currentWords.toVariantList()},{"positionMs",lyrics.positionMs+lyrics.document()["offsetMs"].toDouble()+lyrics.offsetMs},
         {"font", hud.desktopLyricsFont}, {"size", hud.desktopLyricsSize}, {"primary", primary},
         {"secondary", secondary}, {"x", x}, {"y", y}, {"width", width}, {"height", height}, {"reduced", hud.reduced},
         {"tone", hud.desktopLyricsTone}, {"hoverPrimaryColor", hoverPrimary}, {"hoverSecondaryColor", hoverSecondary},
@@ -725,6 +862,7 @@ void Engine::wheel(double x, double y, double delta, bool pixels) {
  * 按顺序同步场景、音乐和 HUD 帧数据，保持绘制与命中区域一致。
  */
 void Engine::step(double time) {
+    PipelineDiagnostics::Scope trace("engine.step");
     if (!ready()) {
         return;
     }
@@ -740,99 +878,30 @@ void Engine::step(double time) {
     if (object.isEmpty()) {
         return;
     }
-    const auto previousDiscAngle = m_frame["discAngle"].toDouble();
     m_frame = scene.frame;
-    m_frame["originalActorBlend"] = scene.originalActorBlend();
-    if(m_magazine && m_magazine->active() && !m_frame["viewer"].toBool()){
-        QJsonArray room;
-        for(const auto &v:m_frame["draws"].toArray())if(!v.toObject()["musicSelected"].toBool())room.append(v);
-        m_frame["draws"]=room;m_frame["originalActorBlend"]=0;
-    }
-
-    auto signature = m_frame;
-    for (const auto &key : {"time", "stats", "labels", "boot", "pointerCursor", "originalActorBlend"}) {
-        signature.remove(key);
-    }
-    bool stable =
-        equivalent(signature, m_sceneSignature) && m_previousBuffers.size() == scene.drawBuffers.size();
-    for (auto it = scene.drawBuffers.begin(); stable && it != scene.drawBuffers.end(); ++it) {
-        const auto old = m_previousBuffers.value(it.key());
-        stable = equivalent(it->matrices, old.matrices) && equivalent(it->themes, old.themes);
-    }
+    const bool stable = equivalent(m_frame, m_sceneSignature);
+    m_sceneSignature = m_frame;
     m_stableFrames = stable ? m_stableFrames + 1 : 0;
-    if (!stable) {
-        ++m_geometryRevision;
-    }
-    if (!stable || scene.changed()) {
-        m_sceneSleeping = false;
-    }
-    m_sceneSignature = signature;
-    m_previousBuffers = scene.drawBuffers;
-    if (m_stableFrames >= 4 && !scene.changed() && m_frame["mode"] != "boot" &&
-        !m_frame["pendingAnimations"].toBool()) {
-        m_sceneSleeping = true;
-    }
-    const auto current = object["current"].toObject();
-    const auto cover = object["cover"].toString();
-    const auto coverRevision = host.image(cover).cacheKey();
-    const auto &player = app->music.player;
-    const auto identity = MusicPlayer::identity(player.current);
-    if (identity != m_discIdentity) {
-        m_discIdentity = identity;
-        m_discAngle = 0;
-    }
-    const bool wasRotating = m_discRotating;
-    m_discRotating = m_visible && app->hud.discRotation && !app->hud.reduced && app->hud.modal.isEmpty() &&
-                     m_frame["mode"] == "detail" && !m_frame["viewer"].toBool() &&
-                     current["kind"] == "song" && MusicPlayer::identity(current) == identity &&
-                     !player.loading && !player.failed && player.state["playing"].toBool();
-    if (wasRotating && m_discRotating) {
-        // 20 秒一圈；接续可见视觉时钟，暂停或隐藏期间不补转。
-        m_discAngle = std::fmod(m_discAngle + std::clamp(time - m_discTime, 0., .05) *
-                                                  (2 * 3.14159265358979323846 / 20),
-                                2 * 3.14159265358979323846);
-    }
-    m_discTime = time;
-    const bool showDiscAngle = current["kind"] == "song" && MusicPlayer::identity(current) == identity;
-    m_frame["discAngle"] = showDiscAngle ? m_discAngle : 0;
-    const bool discChanged = m_discRotating || previousDiscAngle != m_frame["discAngle"].toDouble();
-    const bool visualChanged = discChanged || !stable || current != m_current || cover != m_cover ||
-                               coverRevision != m_coverRevision;
-    m_coverRevision = coverRevision;
-    m_current = current;
+    m_sceneSleeping = m_stableFrames >= 2 && !m_frame["pendingAnimations"].toBool();
+    m_current = object["current"].toObject();
     m_cover = object["cover"].toString();
-    // 图形设备在后台可销毁；仅保存当前与可见归位卡片的图片，供恢复时重建纹理。
-    const auto musicKey = current["key"].toString("empty");
-    m_musicTextures[musicKey] = {current, host.image(m_cover)};
-    QSet<QString> retainedKeys{musicKey};
-    for (const auto &key : m_frame["returningMusicKeys"].toArray()) {
-        retainedKeys.insert(key.toString());
-    }
-    for (const auto &value : m_frame["draws"].toArray()) {
-        const auto key = value.toObject()["musicKey"].toString();
-        if (!key.isEmpty()) {
-            retainedKeys.insert(key);
-        }
-    }
-    for (auto it = m_musicTextures.begin(); it != m_musicTextures.end();) {
-        if (!retainedKeys.contains(it.key())) {
-            it = m_musicTextures.erase(it);
-        } else {
-            ++it;
-        }
-    }
     auto commands = object["commands"].toArray();
     if (commands != m_commands) {
         m_commands = commands;
         ++m_hudUpdates;
         emit hudUpdated();
     }
-    if (visualChanged) {
-        ++m_sceneUpdates;
-    }
-    notifySceneRenderers(visualChanged);
     auto state = object["state"].toObject().toVariantMap();
-    state["originalActorVisible"] = m_frame["originalActorBlend"].toDouble() > 0;
+    state["originalActorVisible"] = false;
+    // Collection data is independent of hover, playback and tab animation.
+    // QML must not re-filter/serialize hundreds of cards on every state tick.
+    QVariantMap profileContent;
+    for (const auto *key : {"profileCollections", "profileRows", "artistSongs", "artistAlbums"})
+        profileContent.insert(QString::fromLatin1(key), state.value(QString::fromLatin1(key)));
+    if (profileContent != m_profileContent) {
+        m_profileContent = std::move(profileContent);
+        emit profileContentChanged();
+    }
     // PlaylistMagazine syncs from MusicLibrary::invalidated; never rescan it per render step.
     if (state != m_state) {
         m_state = state;
@@ -859,8 +928,14 @@ void Engine::snapshot(QString path) {
     }
     QDir().mkpath(path);
     const QSize size(1920, 1080);
-    auto metal = renderReference(root(), m_frame, m_current, cover(), size, scene.drawBuffers);
-    saveImageNative(metal, path + "/qt-metal.png");
+    QImage metal(size, QImage::Format_RGBA8888_Premultiplied);
+    QPainter background(&metal);
+    QLinearGradient gradient(0, 0, 0, size.height());
+    gradient.setColorAt(0, QColor(app->hud.dark ? "#252a23" : "#f7f4ed"));
+    gradient.setColorAt(1, QColor(app->hud.dark ? "#20251e" : "#efebe1"));
+    background.fillRect(metal.rect(), gradient);
+    background.end();
+    saveImageNative(metal, path + "/qt-background.png");
     QImage hud(size, QImage::Format_RGBA8888_Premultiplied);
     hud.fill(Qt::transparent);
     QPainter hudPainter(&hud);
@@ -876,44 +951,20 @@ void Engine::snapshot(QString path) {
         file.write(QJsonDocument(m_frame).toJson());
     }
 }
-/** 独立包离线验收直接检查原生状态、原始模型与实际 QRhi 输出，不创建脚本引擎。 */
+/** Offline package checks cover the remaining navigation and music paths. */
 int Engine::selfTest() {
-    bool ok =
-        ready() && DiscGeometry::validate() && runNativeHostChecks(root()) && runNativeMusicChecks(root());
-    scene.review("archive");
-    step(2.101);
-    ok &= !m_frame["draws"].toArray().isEmpty() && m_frame["stats"].toObject()["archiveCount"].toInt() > 0;
-    QFile fixture(root() + "/scene-fixture.json");
-    if (!fixture.open(QIODevice::ReadOnly)) {
-        qCritical() << "Missing offline scene fixture";
-        return 1;
-    }
-    const auto expected = QJsonDocument::fromJson(fixture.readAll()).object();
-    const auto legacy = expected["frame"].toObject();
-    ok &= equivalent(m_frame["view"], legacy["view"]) &&
-          equivalent(m_frame["projection"], legacy["projection"]);
-    for (const auto &entry : expected["rays"].toArray()) {
-        const auto ray = entry.toObject();
-        const auto hit = scene.pick(ray["x"].toDouble(), ray["y"].toDouble());
-        const auto cell = ray["hit"].toObject();
-        if (cell.isEmpty()) {
-            ok &= !hit;
-        } else {
-            ok &= hit && hit->lane == cell["lane"].toInt() && hit->row == cell["row"].toInt();
-        }
-    }
-    if (qEnvironmentVariableIntValue("RHINE_GPU_TEST") == 1) {
-        const QSize size(960, 540);
-        const auto actual =
-            renderReference(root(), m_frame, m_current, host.image(m_cover), size, scene.drawBuffers);
-        const auto original = renderReference(root(), legacy, m_current, host.image(m_cover), size);
-        ok &= runGpuReferenceCheck(original, actual);
-        if (!ok) {
-            qCritical() << "Native GPU frame differs from original fixture";
-        }
-    }
-    qInfo() << "Qt native scene, Host, music, playback and offline package checks:"
-            << (ok ? "passed" : "FAILED");
+    bool ok = ready() && runNativeHostChecks(root()) && runNativeMusicChecks(root());
+    scene.review("archive"); step(2.101);
+    ok &= m_frame["mode"] == "archive" && !m_frame.contains("draws");
+    scene.navigate("row", 1);
+    const auto selected = scene.selection();
+    scene.navigate("row", -1);
+    ok &= scene.selection() == 0 && selected != 0;
+    scene.setMode("detail"); step(2.2);
+    ok &= m_frame["mode"] == "detail" && !m_frame["viewer"].toBool();
+    scene.setMode("boot"); step(2.3);
+    ok &= m_frame["mode"] == "archive";
+    qInfo() << "Qt 2D navigation, Host, music and playback:" << (ok ? "passed" : "FAILED");
     return ok ? 0 : 1;
 }
 

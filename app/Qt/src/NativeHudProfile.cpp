@@ -53,6 +53,10 @@ void NativeHud::requestListCover(QString url) {
 
 void NativeHud::openProfile(QString id) {
     if (m_music->provider != "netease" || !validID(id)) { return; }
+    if (m_profileReturn && modal == "profile" && !profileID.isEmpty() && profileID != id && profileSnapshotAccount == m_music->accountGeneration()) {
+        profileHistory.append(QJsonObject{{"id",profileID},{"section",profileSection},{"filter",profileFilter}});
+        if(profileHistory.size()>20)profileHistory.removeFirst();
+    }
     if (!m_profileReturn) {
         m_profileLyrics = lyricsMode;
         m_profileComments = commentsOpen ? QJsonObject{{"rows",commentsRows},{"featured",commentsFeatured},
@@ -63,7 +67,10 @@ void NativeHud::openProfile(QString id) {
             m_music->directoryInfo, m_music->accountGeneration()};
     }
     profileID = id; profile = {}; profileRows = {}; profileError.clear();
-    profileSection = "music"; profileFilter = id == m_music->uid ? "recent" : "created";
+    profileSignatureError.clear();
+    profileSnapshotAccount = m_music->accountGeneration();
+    profileSection = "music"; profileFilter = "all";
+    profileCollections = {}; ++profileCollectionGeneration; profileCollectionRequests.clear();
     profileRecentKind = "playlist"; profileRankPeriod = "all";
     m_profileItem.clear();
     openModal("profile");
@@ -81,6 +88,70 @@ void NativeHud::openProfile(QString id) {
     }, [owner, id, account] { return owner && owner->profileID == id && owner->m_profileReturn &&
         owner->m_music->accountGeneration() == account; });
     loadProfileRows();
+    loadProfileCollection("playlists");
+    if (id == m_music->uid) {
+        loadProfileCollection("albums"); loadProfileCollection("artists"); loadProfileCollection("subscriptions");
+    }
+}
+
+// Independent, paged snapshots keep the overview stable while another group loads.
+void NativeHud::loadProfileCollection(QString section, bool more) {
+    if (section == "created" || section == "collected") section = "playlists";
+    if (!QStringList{"playlists", "albums", "artists", "subscriptions"}.contains(section) ||
+        !validID(profileID) || m_music->provider != "netease" ||
+        (section != "playlists" && profileID != m_music->uid)) return;
+    auto snapshot = profileCollections[section].toObject();
+    if (snapshot["loading"].toBool() || (more && !snapshot["more"].toBool())) return;
+    const int offset = more ? snapshot["offset"].toInt() : 0;
+    if (!more) snapshot = {};
+    snapshot["loading"] = true; snapshot["error"] = "";
+    profileCollections[section] = snapshot;
+    const auto token = ++profileCollectionRequests[section];
+    const auto generation = profileCollectionGeneration;
+    const auto account = m_music->accountGeneration(); const auto id = profileID;
+    const bool own = id == m_music->uid;
+    QString route = section == "playlists" ? "/user/playlist" : section == "albums" ? "/album/sublist" :
+        section == "artists" ? "/artist/sublist" : "/dj/sublist";
+    QJsonObject parameters{{"limit",100},{"offset",offset}};
+    if (section == "playlists") parameters["uid"] = id;
+    QPointer<NativeHud> owner(this);
+    m_music->api.request(route, parameters, [this, section, token, offset, own, id](MusicReply reply) {
+        auto snapshot = profileCollections[section].toObject(); snapshot["loading"] = false;
+        if (!reply.ok()) snapshot["error"] = reply.error.isEmpty() ? QString("暂时无法读取，请重试") : reply.error;
+        else {
+            const auto body = reply.value.toObject();
+            const auto raw = body[section == "playlists" ? "playlist" : section == "subscriptions" ? "djRadios" : "data"].toArray();
+            auto rows = snapshot["rows"].toArray(); QSet<QString> seen;
+            for (const auto &row : rows) seen.insert(row.toObject()["key"].toString());
+            for (const auto &entry : raw) {
+                const auto value = entry.toObject(); QJsonObject item;
+                if (section == "subscriptions") {
+                    item = MusicData::item("radio", numberID(value["id"]), value["name"].toString());
+                    item["cover"] = value["picUrl"]; item["trackCount"] = value["programCount"];
+                    item["artist"] = value["dj"].toObject()["nickname"]; item["creatorID"] = numberID(value["dj"].toObject()["userId"]);
+                    item["description"] = value["desc"];
+                } else item = musicItem(value, section == "playlists" ? "playlist" : section == "albums" ? "album" : "artist");
+                if (section == "playlists") {
+                    const bool created = numberID(value["creator"].toObject()["userId"]) == id;
+                    if (!own && (!created || value["privacy"].toInt() == 10)) continue;
+                    item["owned"] = created;
+                }
+                const auto key = item["key"].toString();
+                if (!item["id"].toString().isEmpty() && !seen.contains(key)) { rows.append(item); seen.insert(key); }
+            }
+            snapshot["rows"] = rows; snapshot["loaded"] = true; snapshot["offset"] = offset + raw.size();
+            const int total = body["count"].toInt(body["total"].toInt(rows.size()));
+            snapshot["total"] = std::max(total, int(rows.size()));
+            snapshot["more"] = !raw.isEmpty() && body["more"].toBool(body["hasMore"].toBool(offset + raw.size() < total));
+        }
+        profileCollections[section] = snapshot;
+        m_host->invalidate();
+    }, [owner, section, token, generation, account, id] {
+        return owner && owner->profileCollectionGeneration == generation && owner->profileID == id &&
+            owner->profileCollectionRequests.value(section) == token && owner->m_profileReturn &&
+            owner->m_music->accountGeneration() == account && owner->m_music->provider == "netease";
+    });
+    m_host->invalidate();
 }
 
 void NativeHud::loadProfileRows(bool more) {
@@ -94,7 +165,12 @@ void NativeHud::loadProfileRows(bool more) {
     QString route = "/user/playlist";
     QJsonObject parameters{{"uid", profileID}, {"limit", 30}, {"offset", profileOffset}};
     const auto section = profileSection; const auto filter = profileFilter; const auto recentKind = profileRecentKind;
-    if (section == "notes") {
+    if (section == "music" && QStringList{"all", "playlists", "artists"}.contains(filter)) {
+        profileLoading = false; m_host->invalidate(); return;
+    }
+    if (section == "follows" || section == "followers") {
+        route = section == "follows" ? "/user/follows" : "/user/followeds";
+    } else if (section == "notes") {
         route = "/user/event"; parameters = {{"uid", profileID}, {"limit", 20}, {"lasttime", double(profileLastTime)}};
     } else if (section == "programs") {
         route = "/dj/program"; parameters = {{"rid", profileRadioID}, {"limit",30}, {"offset",profileOffset}};
@@ -124,7 +200,8 @@ void NativeHud::loadProfileRows(bool more) {
         if (!reply.ok()) { profileError = reply.error; m_host->invalidate(); return; }
         const auto body = reply.value.toObject();
         QJsonArray raw;
-        if (section == "notes") { raw = body["events"].toArray(); profileLastTime = body["lasttime"].toInteger(-1); }
+        if (section == "follows" || section == "followers") raw = body[section == "follows" ? "follow" : "followeds"].toArray();
+        else if (section == "notes") { raw = body["events"].toArray(); profileLastTime = body["lasttime"].toInteger(-1); }
         else if (section == "podcasts") { raw = body["djRadios"].toArray(); }
         else if (section == "programs") { raw = body["programs"].toArray(); }
         else if (filter == "recent") { raw = recentKind == "ranking" ? body[rankPeriod == "week" ? "weekData" : "allData"].toArray() : body["data"].toObject()["list"].toArray(); }
@@ -134,7 +211,11 @@ void NativeHud::loadProfileRows(bool more) {
         for (const auto &entry : profileRows) { seen.insert(entry.toObject()["key"].toString()); }
         for (const auto &entry : raw) {
             auto value = entry.toObject(); QJsonObject item;
-            if (section == "notes") {
+            if (section == "follows" || section == "followers") {
+                const auto uid = numberID(value["userId"]);
+                item = {{"kind","user"},{"id",uid},{"key","user:"+uid},{"title",value["nickname"]},
+                    {"cover",value["avatarUrl"]},{"artist",value["signature"]}};
+            } else if (section == "notes") {
                 auto payload = QJsonDocument::fromJson(value["json"].toString().toUtf8()).object();
                 const auto noteID = numberID(value["id"]);
                 item = {{"kind", "note"}, {"id", noteID}, {"key", "note:" + noteID},
@@ -147,6 +228,7 @@ void NativeHud::loadProfileRows(bool more) {
                 if (item["title"].toString().isEmpty()) { item["title"] = "分享了一条动态"; }
             } else if (section == "programs") {
                 item = musicItem(value["mainSong"].toObject(), "song");
+                item["programID"] = numberID(value["id"]);
                 item["title"] = value["name"]; item["cover"] = value["coverUrl"];
             } else if (section == "podcasts") {
                 const auto radioID = numberID(value["id"]);
@@ -189,6 +271,16 @@ bool NativeHud::profileAction(const QString &value) {
     }
     if (value.startsWith("profile:open:")) { openProfile(value.mid(13)); return true; }
     if ((value == "back" || value == "close-modal") && modal == "profile") {
+        if (profileSection != "music" || profileFilter != "all") {
+            profileSection = "music"; profileFilter = "all";
+            loadProfileRows(); return true;
+        }
+        if (!profileHistory.isEmpty() && profileSnapshotAccount == m_music->accountGeneration()) {
+            const auto previous = profileHistory.takeAt(profileHistory.size()-1).toObject();
+            modal.clear(); openProfile(previous["id"].toString());
+            profileSection=previous["section"].toString("music");profileFilter=previous["filter"].toString("all");loadProfileRows();
+            return true;
+        }
         return profileAction("profile:close");
     }
     if ((value == "back" || value == "close-modal") && modal == "playlist-form" && m_profileReturn) {
@@ -200,7 +292,9 @@ bool NativeHud::profileAction(const QString &value) {
     }
     if (!value.startsWith("profile:")) { return false; }
     const auto parts = value.split(':'); const auto name = parts.value(1);
+    if (name != "close" && profileSnapshotAccount != m_music->accountGeneration()) { return true; }
     if (name == "close") {
+        profileHistory = {}; profileCollections = {}; ++profileCollectionGeneration;
         ++profileGeneration; profileLoading = false;
         modal.clear(); closing = false;
         if (m_profileReturn) {
@@ -228,7 +322,7 @@ bool NativeHud::profileAction(const QString &value) {
         }
         m_profileItem.clear(); profileNavigated = false;
     } else if (name == "section") {
-        if (QStringList{"music", "notes", "podcasts"}.contains(parts.value(2))) {
+        if (QStringList{"music", "notes", "podcasts", "follows", "followers"}.contains(parts.value(2))) {
             profileSection = parts[2]; loadProfileRows();
         }
     } else if (name == "focus") {
@@ -241,8 +335,38 @@ bool NativeHud::profileAction(const QString &value) {
     } else if (name == "rank-period") {
         if (QStringList{"week", "all"}.contains(parts.value(2))) { profileRankPeriod = parts[2]; loadProfileRows(); }
     } else if (name == "filter") {
-        if (QStringList{"recent", "created", "collected", "albums"}.contains(parts.value(2))) {
-            profileFilter = parts[2]; loadProfileRows();
+        if (QStringList{"all", "playlists", "artists", "recent", "created", "collected", "albums"}.contains(parts.value(2))) {
+            profileSection = "music"; profileFilter = parts[2]; loadProfileRows();
+        }
+    } else if (name == "collection-more" || name == "collection-retry") {
+        loadProfileCollection(parts.value(2), name == "collection-more");
+    } else if (name == "collection-focus") {
+        const auto section = parts.value(2); const int index = parts.value(3).toInt();
+        if (index >= 0 && index < profileCollections[section].toObject()["rows"].toArray().size())
+            focusAction = "profile:collection-item:" + section + ":" + QString::number(index);
+    } else if (name == "collection-item" || name == "collection-play" || name == "collection-creator") {
+        const auto rows = profileCollections[parts.value(2)].toObject()["rows"].toArray();
+        const int index = parts.value(3).toInt();
+        if (index < 0 || index >= rows.size()) return true;
+        if (name == "collection-creator") {
+            const auto item = rows[index].toObject();
+            if (item["kind"] == "playlist" || item["kind"] == "radio") {
+                const auto uid = item["creatorID"].toString(); if (validID(uid)) openProfile(uid);
+            } else {
+                const auto artists = item["artists"].toArray();
+                const auto artist = artists.isEmpty() ? QJsonObject() : artists.first().toObject();
+                const auto id = numberID(artist["id"]);
+                if (validID(id)) {
+                    auto target = MusicData::item("artist", id, artist["name"].toString());
+                    modal.clear(); profileNavigated = true; artistTab = "songs";
+                    m_music->enterDirectory(target); m_profileItem = target["key"].toString();
+                }
+            }
+        } else {
+            // Reuse the established playback and route history with an isolated row snapshot.
+            const auto previousRows = profileRows; profileRows = rows;
+            profileAction(QString("profile:") + (name == "collection-play" ? "play:" : "item:") + QString::number(index));
+            if (profileSection != "programs") profileRows = previousRows;
         }
     } else if (name == "more") { loadProfileRows(true); }
     else if (name == "retry") { if (profile.isEmpty()) { openProfile(profileID); } else { loadProfileRows(); } }
@@ -300,6 +424,7 @@ bool NativeHud::profileAction(const QString &value) {
         const auto index = parts.value(2).toInt();
         if (index < 0 || index >= profileRows.size()) { return true; }
         auto item = profileRows.at(index).toObject();
+        if (item["kind"] == "user") { openProfile(item["id"].toString()); return true; }
         if (item["kind"] == "ranking") { profileRecentKind = "ranking"; loadProfileRows(); return true; }
         if (item["kind"] == "note") { item = item["resource"].toObject(); }
         if (item.isEmpty()) { return true; }
@@ -325,6 +450,7 @@ bool NativeHud::profileAction(const QString &value) {
             }
 
         } else {
+            if (item["kind"] == "artist") artistTab = "songs";
             m_music->enterDirectory(item);
             if (item["kind"] == "playlist" && m_music->directory) {
                 m_music->directory->openDetails = true; m_music->showDirectoryInfo();

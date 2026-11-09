@@ -23,7 +23,7 @@ Item {
                     objectName:"archiveArtist_"+(modelData.id||"unknown")
                     height:view.height;verticalAlignment:Text.AlignVCenter
                     text:(index?" / ":"")+(modelData.name||"");textFormat:Text.PlainText
-                    font.family:rhineFontFamily;font.pixelSize:13*view.unit
+                    font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:13*view.unit
                     color:personHit.containsMouse?(rhine.state.dark?"#cedbbf":"#647b52"):(rhine.state.dark?"#eceee3":"#30372e")
                     Behavior on color {ColorAnimation {duration:120}}
                     MouseArea {id:personHit;hoverEnabled:true;anchors.fill:parent;enabled:!!parent.modelData.id;cursorShape:Qt.PointingHandCursor;onClicked:view.personClicked(parent.modelData.id)}

@@ -1,38 +1,53 @@
 #pragma once
 #include "Glyphs.h"
+#include "PipelineDiagnostics.h"
 #include "PlaylistMagazine.h"
 #include "MessageCenter.h"
+#include "PersonalHub.h"
 #include "PlaylistShowcase.h"
 #include "NowPlaying.h"
 #include "Host.h"
 #include "TaskbarIntegration.h"
 #include "NativeApplication.h"
+#include "SoundEffects.h"
 #include <QElapsedTimer>
 #include <QVariantMap>
 #include <QUrl>
 #include <QQuickWindow>
 #include <QPointer>
-#include <atomic>
 class Engine : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject *nowPlaying READ nowPlaying CONSTANT)
+    Q_PROPERTY(QObject *soundEffects READ soundEffects CONSTANT)
     Q_PROPERTY(QObject *showcase READ showcase CONSTANT)
     Q_PROPERTY(QObject *messages READ messages CONSTANT)
+    Q_PROPERTY(QObject *personal READ personal CONSTANT)
     Q_PROPERTY(QObject *magazine READ magazine CONSTANT)
+    Q_PROPERTY(Glyphs *glyphs READ glyphs CONSTANT)
     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap profileContent READ profileContent NOTIFY profileContentChanged)
     Q_PROPERTY(QVariantList hits READ hits NOTIFY hitsChanged)
     Q_PROPERTY(QVariantMap performance READ performance NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap desktopLyrics READ desktopLyrics NOTIFY desktopLyricsChanged)
+    Q_PROPERTY(QString uiFont READ uiFont NOTIFY uiFontChanged)
+    Q_PROPERTY(QStringList uiFonts READ uiFonts NOTIFY uiFontChanged)
+    Q_PROPERTY(QString fontError READ fontError NOTIFY uiFontChanged)
+    Q_PROPERTY(QVariantMap visualPreferences READ visualPreferences NOTIFY visualPreferencesChanged)
+    Q_PROPERTY(int sleepMinutes READ sleepMinutes NOTIFY sleepChanged)
   public:
+    Q_INVOKABLE void tracePipeline(QString stage) { PipelineDiagnostics::qml(stage); }
     Engine(QString root, bool offline = false, QObject *parent = nullptr);
     ~Engine() override;
     QObject *nowPlaying() const {return m_nowPlaying;}
+    QObject *soundEffects() const {return m_soundEffects;}
     QObject *showcase() const {return m_showcase;}
     QObject *messages() const {return m_messages;}
+    QObject *personal() const {return m_personal;}
     QObject *magazine() const { return m_magazine; }
     QVariantMap state() const {
         return m_state;
     }
+    QVariantMap profileContent() const { return m_profileContent; }
     QVariantList hits() const {
         return m_hits;
     }
@@ -60,8 +75,25 @@ class Engine : public QObject {
     Q_INVOKABLE void hoverLink(QString action);
     Q_INVOKABLE void hoverItem(QString action, double x, double y);
     Q_INVOKABLE void setDesktopFont(QString family, int size = 0);
+    Q_INVOKABLE void setPlayerPreference(QString key, QString value);
+    Q_INVOKABLE void setDetailFlightBarOpacity(double opacity);
+    Q_INVOKABLE QVariantList audioOutputs() const { return host.outputDevices(); }
+    Q_INVOKABLE void selectAudioOutput(QString id) { host.selectOutput(id); wake(); }
+    int sleepMinutes() const { return m_sleepMinutes; }
+    Q_INVOKABLE void setSleep(int minutes);
+    QVariantMap visualPreferences() const { return m_visualPreferences; }
+    Q_INVOKABLE void setVisualPreference(QString key, QVariant value);
     Q_INVOKABLE void setDesktopColor(QString target, QString color);
     Q_INVOKABLE QStringList desktopFonts() const;
+    QString uiFont() const { return m_uiFont; }
+    QStringList uiFonts() const { return QFontDatabaseFamilies(); }
+    QString fontError() const { return m_fontError; }
+    Q_INVOKABLE void setUiFont(QString family);
+    Q_INVOKABLE QString preparedFont(QString family) const { ensureFontFamily(family); return family; }
+    Q_INVOKABLE void resetUiFont() { setUiFont(m_defaultUiFont); }
+    Q_INVOKABLE void importUiFont(QUrl file);
+    Q_INVOKABLE void saveProfileSignature(QString signature);
+    void initializeUiFont(QString fallback);
     Q_INVOKABLE void setDesktopOpacity(int opacity);
     Q_INVOKABLE void applyDesktopPreset(QString preset);
     Q_INVOKABLE void setDesktopTone(QString tone);
@@ -82,45 +114,10 @@ class Engine : public QObject {
     Q_INVOKABLE void snapshot(QString path);
     void step(double time);
     QVariantMap performance() const;
-    SceneDrawBuffers drawBuffers() const {
-        return scene.drawBuffers;
-    }
-    quint64 geometryRevision() const {
-        return m_geometryRevision;
-    }
-    struct MusicTexture {
-        QJsonObject item;
-        QImage cover;
-    };
-    using MusicTextures = QHash<QString, MusicTexture>;
-    MusicTextures musicTextures() const {
-        return m_musicTextures;
-    }
     void trimMemory();
-    void recordResourceRelease() {
-        m_gpuResources.store(0, std::memory_order_relaxed);
-        m_musicTextureBytes.store(0, std::memory_order_relaxed);
-        recordOpticalRelease();
-    }
-    // 两个独立渲染器可以同时保留资源；增强实例销毁时只清理它自己的诊断计数。
-    void recordOpticalRelease() {
-        m_opticalGpuResources.store(0, std::memory_order_relaxed);
-        m_opticalTextureBytes.store(0, std::memory_order_relaxed);
-    }
     Q_INVOKABLE void setVisible(bool value);
     void wake(bool input = true);
     void start();
-    void recordRender(quint64 resources, quint64 bindings = 0, quint64 textureBytes = 0,
-                      quint64 coverUploads = 0, quint64 drawCalls = 0, bool optical = false) {
-        m_renderFrames.fetch_add(1, std::memory_order_relaxed);
-        auto &resourceCounter = optical ? m_opticalGpuResources : m_gpuResources;
-        resourceCounter.store(resources, std::memory_order_relaxed);
-        m_bindingCreations.fetch_add(bindings, std::memory_order_relaxed);
-        auto &textureCounter = optical ? m_opticalTextureBytes : m_musicTextureBytes;
-        textureCounter.store(textureBytes, std::memory_order_relaxed);
-        m_coverUploads.fetch_add(coverUploads, std::memory_order_relaxed);
-        m_lastDrawCalls.store(drawCalls, std::memory_order_relaxed);
-    }
     bool ready() const;
     int selfTest();
     int renderFixtures(QString source, QString output);
@@ -130,15 +127,19 @@ class Engine : public QObject {
     QString failure;
   signals:
     void updated();
-    void sceneUpdated();
-    void opticalSceneUpdated();
     void hudUpdated();
     void stateChanged();
+    void profileContentChanged();
     void hitsChanged();
     void clearCredentials();
     void performanceRequested();
     void localImportRequested(bool folder);
     void desktopLyricsChanged();
+    void uiFontChanged();
+    void visualPreferencesChanged();
+    void sleepChanged();
+    void profileSignatureSaved();
+    void pointerPressed(double x, double y);
     void desktopFontRequested();
     void desktopColorRequested(QString target);
     void pageNavigation(QString key);
@@ -147,8 +148,18 @@ class Engine : public QObject {
     bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
+    SoundEffects *m_soundEffects=nullptr;
     PlaylistMagazine *m_magazine = nullptr;
+    QStringList QFontDatabaseFamilies() const;
+    void indexApplicationFonts() const;
+    bool ensureFontFamily(const QString &family) const;
+    mutable bool m_fontCatalogReady = false;
+    mutable QHash<QString, QStringList> m_applicationFontFiles;
+    mutable QSet<QString> m_registeredFontFiles;
+    QString m_uiFont, m_defaultUiFont, m_fontError;
+    quint64 m_signatureAccount = 0;
     MessageCenter *m_messages = nullptr;
+    PersonalHub *m_personal = nullptr;
     NowPlaying *m_nowPlaying=nullptr;
     PlaylistShowcase *m_showcase=nullptr;
     QPoint m_keyboardCursor;
@@ -156,21 +167,10 @@ class Engine : public QObject {
     void refreshTaskbar();
     std::unique_ptr<TaskbarIntegration> m_taskbar;
     QString m_taskbarLikeKey;
-    void notifySceneRenderers(bool visualChanged);
-    bool m_sceneEnhancement = false;
-    bool m_originalSceneDirty = false;
-    bool m_originalSceneWarm = false;
-    quint64 m_geometryRevision = 0;
-    std::atomic<quint64> m_renderFrames{0}, m_gpuResources{0};
-    std::atomic<quint64> m_bindingCreations{0};
-    std::atomic<quint64> m_musicTextureBytes{0};
-    std::atomic<quint64> m_opticalGpuResources{0};
-    std::atomic<quint64> m_opticalTextureBytes{0};
-    std::atomic<quint64> m_coverUploads{0};
-    std::atomic<quint64> m_lastDrawCalls{0};
-    MusicTextures m_musicTextures;
     Glyphs m_glyphs;
     QTimer timer, mediaTimer;
+    QTimer m_sleepTimer;
+    int m_sleepMinutes = 0;
     bool m_started = false;
     bool m_visible = true;
     bool m_sleeping = false;
@@ -189,25 +189,23 @@ class Engine : public QObject {
     double m_wheelRemainingDistance = 0;
     qint64 m_lastTick = 0, m_lastInput = 0;
     double m_animationTime = 0;
-    double m_discAngle = 0;
-    double m_discTime = 0;
-    bool m_discRotating = false;
-    QString m_discIdentity;
     quint64 m_steps = 0, m_sceneUpdates = 0, m_hudUpdates = 0;
     int m_stableFrames = 0;
     QJsonObject m_sceneSignature;
-    SceneDrawBuffers m_previousBuffers;
     void tick();
     void flushPointer();
     void pollMedia();
     void refreshPlayback();
     void refreshDesktopLyrics();
     QVariantMap m_desktopLyrics;
+    QHash<QString,QString> m_playerPreferences;
+    QVariantMap m_visualPreferences;
     QJsonObject m_desktopPosition;
     QElapsedTimer clock;
     double m_width = 1280;
     double m_height = 720;
     QVariantMap m_state;
+    QVariantMap m_profileContent;
     QVariantList m_hits;
     QJsonObject m_frame, m_current;
     QJsonArray m_commands;
@@ -216,5 +214,4 @@ class Engine : public QObject {
     QWindow::Visibility m_windowedVisibility = QWindow::Windowed;
     QString m_loginMethod;
     QString m_cover;
-    qint64 m_coverRevision = 0;
 };

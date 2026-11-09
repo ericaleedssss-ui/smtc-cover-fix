@@ -35,8 +35,6 @@ assert not re.search(
 ), "Legacy runtime namespace"
 for name in [
     "slots.json",
-    "scene-fixture.json",
-    "room-pmrem.bin",
     "misans-glyphs.json",
     "LICENSE",
     "NOTICE",
@@ -48,12 +46,25 @@ for name in (
     "qt-logic.js",
     "archive-cassette-geometry.json",
     "archive-assembly-geometry.json",
+    "archive-cassette.bin",
+    "archive-cassette-indices.bin",
+    "archive-cassette.json",
+    "archive-assembly.bin",
+    "archive-assembly-indices.bin",
+    "archive-assembly.json",
+    "archive-baked-surface.bin",
+    "archive-baked-light.bin",
+    "archive-baked-normal.bin",
+    "room-pmrem.bin",
+    "ao-kernel.bin",
+    "ao-noise.bin",
+    "dfg-lut.bin",
+    "scene-fixture.json",
+    "boot-lettering-art.json",
 ):
     assert not (resources / name).exists(), "Retired script or geometry copy entered package: " + name
-fixture = json.loads((resources / "scene-fixture.json").read_text(encoding="utf-8"))
-assert (
-    len(fixture["frame"]["view"]) == 16 and len(fixture["frame"]["projection"]) == 16 and fixture["rays"]
-), "Invalid offline scene fixture"
+navigation = json.loads((resources / "slots.json").read_text(encoding="utf-8"))
+assert navigation["columns"] and navigation["records"], "Invalid library navigation data"
 if mac:
     with (app / "Contents/Info.plist").open("rb") as file:
         identity = plistlib.load(file)

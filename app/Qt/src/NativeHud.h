@@ -13,11 +13,7 @@ struct HudSceneActions {
     std::function<void(QString)> mode;
     std::function<void(bool)> theme;
     std::function<void(bool)> reduced;
-    std::function<void(QString, double, double, double)> pointer;
-    std::function<void(QString)> viewer;
-    std::function<void(QString)> viewerKey;
-    std::function<void()> openViewer;
-    std::function<void(bool)> coverFront;
+
 };
 
 class NativeHud : public QObject {
@@ -49,6 +45,7 @@ class NativeHud : public QObject {
     void hoverItem(QString action, double x, double y);
     QString focusAction, navigationSession;
     bool keyboardNavigation = false;
+    double detailFlightBarOpacity = 1;
     QPointF navigationPointer{-10000, -10000};
     void wheel(double x, double y, double delta, std::optional<int> steps = std::nullopt,
                std::optional<double> distance = std::nullopt);
@@ -92,6 +89,10 @@ class NativeHud : public QObject {
     double readerFont = 16;
     double readerLeading = 31;
     bool queueOpen = false;
+    double lyricScale = 1;
+    bool lyricTranslation = true;
+    QString stageStyle = "flow";
+    bool stageSparks = false;
     bool queueCollectionOpen = false;
     int queueOffset = 0;
     QJsonArray queueCollectionTracks;
@@ -107,9 +108,6 @@ class NativeHud : public QObject {
     }
     bool dark = false;
     bool reduced = false;
-    bool startupAnimation = false;
-    bool discRotation = false;
-    bool sceneEnhancement = true;
     bool textFrosted = true;
     bool desktopLyricsEnabled = false;
     bool desktopLyricsLocked = false;
@@ -130,9 +128,17 @@ class NativeHud : public QObject {
     std::optional<QRectF> lyricBounds;
     QJsonObject profile;
     QJsonArray profileRows;
+    QJsonObject profileCollections;
+    quint64 profileCollectionGeneration = 0;
+    quint64 profileSnapshotAccount = 0;
+    QJsonArray profileHistory;
+    QHash<QString, quint64> profileCollectionRequests;
+    void loadProfileCollection(QString section, bool more = false);
     QString profileID, profileSection = "music", profileFilter = "created", profileError;
     QString profileRecentKind = "playlist", profileRadioID;
     QString profileRankPeriod = "all", profilePlayKey;
+    bool profileSignatureSaving = false;
+    QString profileSignatureError;
     quint64 profilePlayGeneration = 0;
     bool profileLoading = false, profileMore = false;
     bool profileNavigated = false;
@@ -147,6 +153,7 @@ class NativeHud : public QObject {
     void openProfile(QString id);
     void loadProfileRows(bool more = false);
     bool profileAction(const QString &value);
+    void resetTextMetrics() { m_fitCache.clear(); }
     void requestListCover(QString url);
     bool trackListMode = false;
     bool recommendationsOpen = false;
@@ -163,6 +170,8 @@ class NativeHud : public QObject {
     QJsonArray commentsFeatured;
     std::optional<QRectF> commentsBounds;
     QString commentsError;
+    QString commentsActionError;
+    QString commentsPending;
     QJsonObject commentsSong;
     QJsonArray commentsRows;
     double commentsTotal = 0;
@@ -315,8 +324,6 @@ class NativeHud : public QObject {
     void rule(double x, double y, double width, double opacity = 0.4);
     void songHeart(QJsonObject song, double x, double y, const QString &action);
     void image(QString key, double x, double y, double width, double height);
-    void art(QString key, double x, double y, double size, int count = -1, double tracking = 0,
-             QJsonArray color = {});
     void brand();
     void brandLine(int index);
     void navigation(double width);
@@ -328,11 +335,6 @@ class NativeHud : public QObject {
     double archiveTrackPosition(int selected);
     void archiveTrackRuler(double x, double centerY, const QVector<TrackRulerRow> &rows);
     void actionButton(QString label, double x, double y, double width, QString action, bool primary = false);
-    void detail(double width, double opacity);
-    void lyricsPanel(double x, double width);
-    QString body() const;
-    void container(double width, double opacity);
-    void viewer(double width);
     std::array<double, 2> rowMotion(const QString &signature, int index);
     void modalDraw(double width);
     void loginPanel(double x, double y, double width);
@@ -346,8 +348,5 @@ class NativeHud : public QObject {
     void settings(double x, double y, double width);
     void qualityPanel(double x, double y, double width);
     void qualityChoice(const QString &id, int number, double x, double y, double width, bool featured);
-    void logo(double x, double y, double width);
-    void boot(double width);
-    void scan(const QJsonObject &boot);
     static QString clock(double ms);
 };

@@ -1,4 +1,5 @@
 #include "Hud.h"
+#include "PipelineDiagnostics.h"
 #include "Engine.h"
 #include <QPainter>
 Hud::Hud(QQuickItem *parent) : QQuickPaintedItem(parent) {
@@ -14,12 +15,17 @@ void Hud::setEngine(Engine *engine) {
     }
     m_engine = engine;
     if (engine) {
-        connect(engine, &Engine::hudUpdated, this, [this] { update(); });
+        engine->glyphs()->prepareCommands(engine->commands());
+        connect(engine, &Engine::hudUpdated, this, [this] {
+            m_engine->glyphs()->prepareCommands(m_engine->commands());
+            update();
+        });
     }
     emit engineChanged();
     update();
 }
 void Hud::paint(QPainter *painter) {
+    PipelineDiagnostics::Scope trace("hud.paint");
     if (!m_engine) {
         return;
     }

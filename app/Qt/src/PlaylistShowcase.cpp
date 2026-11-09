@@ -1,3 +1,4 @@
+#include "PipelineDiagnostics.h"
 #include "PlaylistShowcase.h"
 #include "MusicData.h"
 #include <QJsonDocument>
@@ -19,6 +20,7 @@ void PlaylistShowcase::syncHeart(){
     if(heart!=m_heartQuery){m_heartQuery=heart;if(m_music->player.current.value("kind")=="song"&&!m_music->likedIDs&&m_music->provider=="netease"&&!m_music->uid.isEmpty())m_music->ensureLikedIDs();}
 }
 void PlaylistShowcase::sync(){
+    PipelineDiagnostics::Scope trace("showcase.sync");
     syncHeart();
     prepareInitialRecords();
     const auto account=m_music->accountGeneration();const auto current=m_music->current;

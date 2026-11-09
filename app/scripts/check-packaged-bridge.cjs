@@ -74,10 +74,26 @@ async function main() {
                 );
             });
         }
+        for (const type of [0, 3]) {
+            for (const t of [1, 0]) {
+                const liked = await request(`comment-like-${type}-${t}`, '/comment/like',
+                    { id: '667788', cid: '1000', type, t }, { MUSIC_U: 'fixture-account' });
+                assert.equal(liked.body.code, 200, 'packaged comment like/unlike dispatches through the actual upstream module');
+            }
+        }
         for(const [route,key] of [['/pl/count','msg'],['/msg/private','msgs'],['/msg/comments','comments'],['/msg/forwards','forwards'],['/msg/notices','notices'],['/msg/private/history','msgs']]) {
             const result=await request('g77-'+route,route,{uid:'42',limit:30},{MUSIC_U:'fixture-account'});
             assert.equal(result.body.code,200);assert(Object.hasOwn(result.body,key));
         }
+        const followers=await request('profile-followers','/user/followeds',{uid:'42',limit:100,offset:0},{MUSIC_U:'fixture-account'});
+        assert.equal(followers.body.code,200);
+        assert.equal(followers.body.followeds[0].userId,99);
+        const radios=await request('profile-radios','/dj/sublist',{limit:100,offset:0},{MUSIC_U:'fixture-account'});
+        assert.equal(radios.body.code,200);
+        assert.equal(radios.body.djRadios[0].id,901);
+        const signature=await request('profile-signature','/user/update',{signature:'Offline signature fixture',nickname:'Fixture',gender:1,birthday:-1,province:110000,city:110101},{MUSIC_U:'fixture-account'});
+        assert.equal(signature.body.code,200);
+        assert.equal(signature.body.profileSignatureFixture,true);
         const sent=await request('g77-send','/send/text',{user_ids:'7',msg:'G77 offline message'},{MUSIC_U:'fixture-account'});
         assert.equal(sent.body.code,200);
         const search = await request('search', '/search', {

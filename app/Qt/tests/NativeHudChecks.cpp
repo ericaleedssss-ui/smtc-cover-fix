@@ -205,8 +205,7 @@ bool runNativeHudChecks(const QString &root, Glyphs &glyphs) {
                 hud.draw(archiveFrame, 1920, 50);
                 for (const auto &hit : hud.hits) { settingsHits.append(hit); }
             }
-            const QStringList requiredSettings = {"theme",           "motion",           "startup-animation",
-                                                  "single-play-mode", "scene-enhancement",
+            const QStringList requiredSettings = {"theme", "motion", "single-play-mode",
                                                   "quality", "text-frosted", "desktop:settings"};
             for (const auto &setting : requiredSettings) {
                 if (!hasAction(settingsHits, setting)) {
@@ -224,11 +223,17 @@ bool runNativeHudChecks(const QString &root, Glyphs &glyphs) {
             }
 
             // 验证性能相关设置项存在（下方性能区域）
-            const QStringList performanceSettings = {"disc-rotation", "performance:toggle"};
+            const QStringList performanceSettings = {"performance:toggle"};
             for (const auto &setting : performanceSettings) {
                 if (!hasAction(hud.hits, setting)) {
                     qCritical() << "Missing performance toggle:" << setting << provider
                                 << (dark ? "dark" : "light");
+                    ok = false;
+                }
+            }
+            for (const auto &retired : {"startup-animation", "scene-enhancement", "disc-rotation"}) {
+                if (hasAction(settingsHits, retired) || hasAction(hud.hits, retired)) {
+                    qCritical() << "Retired 3D setting is still reachable:" << retired;
                     ok = false;
                 }
             }
@@ -241,17 +246,6 @@ bool runNativeHudChecks(const QString &root, Glyphs &glyphs) {
             }
 
             // === 测试 3: 设置项切换功能 ===
-            const bool initialStartupAnim = hud.startupAnimation;
-            hud.action("startup-animation");
-            const bool toggledStartupAnim = hud.startupAnimation;
-            hud.action("startup-animation");
-            const bool restoredStartupAnim = hud.startupAnimation;
-
-            if (initialStartupAnim == toggledStartupAnim || restoredStartupAnim != initialStartupAnim) {
-                qCritical() << "Startup animation toggle failed" << provider << (dark ? "dark" : "light");
-                ok = false;
-            }
-
             // === 测试 4: 设置面板滚动功能 ===
             const auto bounds = hud.modalBounds(1920);
 
@@ -336,7 +330,7 @@ bool runNativeHudChecks(const QString &root, Glyphs &glyphs) {
             }
 
             // === 测试 6: 其他关键面板存在性检查 ===
-            const QStringList criticalPanels = {"search", "login", "player", "confirm"};
+            const QStringList criticalPanels = {"search", "login", "player"};
             for (const auto &panel : criticalPanels) {
                 hud.openModal(panel);
                 hud.draw(archiveFrame, 1920, 50);

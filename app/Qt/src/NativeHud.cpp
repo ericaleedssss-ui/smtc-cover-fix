@@ -128,8 +128,8 @@ void NativeHud::button(QString label, double x, double y, double width, double h
     hit(x, y, width, height, action, label);
     const auto inset = m_modalControls ? std::min(10.0, width / 8) : 0;
     if (m_modalControls) {
-        fill(x, y, width, height,
-             dark ? QJsonArray{0.55, 0.59, 0.46, 0.13} : QJsonArray{0.44, 0.49, 0.36, 0.1});
+        const bool highlighted=focusAction==action;
+        op({"rounded-fill",dark?QJsonArray{1,1,1,highlighted?.16:.07}:QJsonArray{0,0,0,highlighted?.12:.055},x,y,width,height,12});
     }
     text(m_modalControls ? fit(label, size, width - inset * 2) : label, x + inset,
          y + (height - size) / 2 - 4, size, weight);
@@ -148,11 +148,6 @@ void NativeHud::image(QString key, double x, double y, double width, double heig
         op({"image", key, x, y, width, height});
     }
 }
-void NativeHud::art(QString key, double x, double y, double size, int count, double tracking,
-                    QJsonArray color) {
-    op({"art", key, x, y, size, count, tracking, color.isEmpty() ? ink() : color});
-}
-
 QRectF NativeHud::modalBounds(double width) const {
     if (modal == "desktop-settings") { return {59, 205, width - 118, 744}; }
 
@@ -199,21 +194,17 @@ QJsonObject NativeHud::state() const {
     // 只覆盖资料库右侧的阅读区；详情页和弹窗已有独立底色。
     std::optional<QRectF> readingPanel;
     if (frame["mode"] == "archive" && !frame["viewer"].toBool() &&
-        modal.isEmpty() && !lyricsMode && !commentsOpen) {
+        modal.isEmpty() && !lyricsMode && !commentsOpen && !m_music->directoryInfo) {
         const auto left = width * 0.50520833 - 28;
         const bool list = !m_music->archiveNowPlaying&&trackListMode && m_music->current.value("kind") == "song";
         readingPanel = QRectF(left, list ? 205 : 400, std::max(1.0, width - left - 31),
                               list ? 642 : 440);
     }
-    std::optional<QRectF> discGlassPanel;
-    if (textFrosted && frame["mode"] == "detail" && !frame["viewer"].toBool() &&
-        modal.isEmpty() && m_music->current.value("kind") == "song") {
-        discGlassPanel = QRectF(40, 800, std::min(370.0, width * .46 - 40), 153);
-    }
     return {{"inputX", bounds.x() + 53},
+            {"confirmTitle",confirmTitle},
             {"returnSource", navigationSourceName()},
             {"focusAction", focusAction}, {"keyboardNavigation", keyboardNavigation},
-            {"profile", profile}, {"profileID", profileID}, {"profileOwn", profileID == m_music->uid},
+            {"profile", profileSnapshotAccount == m_music->accountGeneration() ? profile : QJsonObject()}, {"profileID", profileID}, {"profileOwn", profileID == m_music->uid},
             {"accountUID", m_music->uid}, {"accountName", m_music->nickname}, {"accountAvatar", m_music->accountDetails["avatar"]},
             {"accountProvider",m_music->provider}, {"accountProviderName",m_music->providerName()},
             {"accountMember", m_music->uid.isEmpty()?QString():m_music->provider=="netease"?(m_music->accountDetails["vipType"].toInt()>0?QString("VIP"):QString()):m_music->provider=="qq"?(m_music->vipLevel=="green"?QString("绿钻"):m_music->vipLevel=="super"?QString("超级会员"):QString()):QString()}, {"directoryOpen", bool(m_music->directory)}, {"lyricsMode", lyricsMode},
@@ -227,9 +218,18 @@ QJsonObject NativeHud::state() const {
             {"discoverLoading", m_music->discover->loading}, {"discoverStatus", m_music->discover->status},
             {"discoverMore", m_music->discover->more},
             {"lyricRows", lyricRows}, {"lyricBounds", modal.isEmpty() && lyricsMode ? rect(lyricBounds) : QJsonValue::Null},
-            {"profileRows", profileRows}, {"profileSection", profileSection}, {"profileFilter", profileFilter},
+            {"profileRows", profileSnapshotAccount == m_music->accountGeneration() ? profileRows : QJsonArray()}, {"profileSection", profileSection}, {"profileFilter", profileFilter},
+            {"profileCollections", profileSnapshotAccount == m_music->accountGeneration() ? profileCollections : QJsonObject()},
+            {"artistPage", m_music->directoryInfo && m_music->directory && m_music->current["kind"] == "artist"},
+            {"artistProfile", m_music->current["kind"] == "artist" ? m_music->current : QJsonObject()},
+            {"artistSongs", m_music->directory && m_music->current["kind"] == "artist" ? m_music->directory->songs : QJsonArray()},
+            {"artistAlbums", m_music->directory && m_music->current["kind"] == "artist" ? m_music->directory->albums : QJsonArray()},
+            {"artistAlbumsMore", m_music->directory && m_music->directory->albumsMore},
+            {"artistAlbumsLoading", m_music->directory && m_music->directory->albumsLoading},
+            {"artistTab", artistTab}, {"artistLoading", m_music->directoryLoading},
             {"profileRecentKind", profileRecentKind},
             {"profileRankPeriod", profileRankPeriod}, {"profilePlayKey", profilePlayKey},
+            {"profileSignatureSaving", profileSignatureSaving}, {"profileSignatureError", profileSignatureError},
             {"profileLoading", profileLoading}, {"profileMore", profileMore}, {"profileError", profileError},
             {"inputY", bounds.y() + 180},
             {"inputWidth", bounds.width() - 106},
@@ -295,11 +295,12 @@ QJsonObject NativeHud::state() const {
             {"modalOpacity", motion.opacity},
             {"modalOffset", motion.offset},
             {"dark", dark},
+            {"preferences",QJsonObject{{"theme",themeMode},{"quality",m_music->player.quality},{"alternative",m_music->player.alternative},{"officialWindow",m_host->activates()},{"appendSingle",m_host->preference("single-play-mode")=="append"},{"autoUpdate",m_host->preference("auto-update")!="off"}}},
+            {"settingsStartCategory",m_host->preference("settings-start-category")},
+            {"update",QJsonObject{{"version",AppUpdater::currentVersion()},{"status",m_host->updater.status()},{"busy",m_host->updater.busy()},{"available",m_host->updater.available()},{"downloaded",!m_host->updater.downloadedPath().isEmpty()}}},
             {"reduced", reduced},
-            {"sceneEnhancement", sceneEnhancement},
             {"textFrosted", textFrosted},
             {"readingPanel", rect(readingPanel)},
-            {"discGlassPanel", rect(discGlassPanel)},
             {"readerBounds", modal.isEmpty() && !frame["viewer"].toBool() ? rect(readerBounds) : QJsonValue::Null},
             {"readerText", readerText}, {"readerSession", readerSession},
             {"readerFont", readerFont}, {"readerLeading", readerLeading},
@@ -318,6 +319,8 @@ QJsonObject NativeHud::state() const {
             {"commentsMore", commentsMore},
             {"commentsSort", commentsSort},
             {"commentsError", commentsError},
+            {"commentsActionError", commentsActionError},
+            {"commentsPending", commentsPending},
             {"commentsSong", commentsSong},
             {"commentsRows", commentsRows},
             {"commentsTotal", commentsTotal},
@@ -330,6 +333,14 @@ QJsonObject NativeHud::state() const {
             {"archiveNavigation", QJsonObject{{"index",m_music->sourceOrder().indexOf(m_music->selectedLane)+1},{"total",m_music->sourceOrder().size()},{"name",m_music->libraryName()}}},
             {"nowPlaying", m_music->archiveNowPlaying&&!m_music->player.current.isEmpty()&&!m_music->player.roamActive&&!m_music->directory},
             {"currentKind", m_music->current["kind"]},
+            {"detailSong",m_music->current["kind"]=="song"?m_music->current:QJsonObject()},
+            {"detailTracks",frame["mode"]=="detail"&&tab=="history"?m_music->tracks:QJsonArray()},
+            {"detailTab",tab},{"detailLoading",m_music->detailLoading},
+            {"playerPreferences",QJsonObject{{"lyricScale",lyricScale},{"translation",lyricTranslation},{"stageStyle",stageStyle},{"stageSparks",stageSparks}}},
+            {"playerShuffle",m_music->player.shuffled()},
+            {"podcastSpeed",m_music->player.podcastSpeed},
+            {"audioOutput",m_music->player.state.value("outputDevice")},
+            {"playerVolume",m_music->player.state["volume"]},
             {"viewer", frame["viewer"]},
             {"status", m_music->status}};
 }
@@ -367,7 +378,7 @@ void NativeHud::draw(QJsonObject next, double stageWidth, double time) {
     const bool readingComments = frame["mode"] == "detail" && !frame["viewer"].toBool() &&
         m_music->provider == "netease" &&
         (m_music->current.value("kind") == "song" || m_music->current.value("kind") == "album") &&
-        tab == "comments" && (modal.isEmpty() || modal == "profile") && !lyricsMode;
+        tab == "comments" && (modal.isEmpty() || modal == "profile");
     const bool readingRecommendations = frame["mode"] == "detail" && !frame["viewer"].toBool() &&
         m_music->provider == "netease" && m_music->current.value("kind") == "song" &&
         tab == "recommendations" && modal.isEmpty() && !lyricsMode;
@@ -382,22 +393,11 @@ void NativeHud::draw(QJsonObject next, double stageWidth, double time) {
     } else if (commentsOpen && modal != "profile") {
         closeComments();
     }
-    if (frame["viewer"].toBool()) {
-        viewer(width);
-    } else if (frame["mode"] == "boot") {
-        boot(width);
-    } else {
-        brand();
-        navigation(width);
-        footer(width);
-        if (modal != "search") {
-            if (frame["mode"] == "detail" || (lyricsMode && !m_music->player.current.isEmpty())) {
-                detail(width, lyricsMode ? 1 : frame["detail"].toDouble());
-            } else {
-                archive(width);
-            }
-        }
-    }
+    brand();
+    navigation(width);
+    footer(width);
+    if (modal != "search" && modal != "profile" && frame["mode"] == "archive" &&
+        !lyricsMode && !m_music->directoryInfo) archive(width);
     if (!modal.isEmpty()) {
         modalDraw(width);
     }

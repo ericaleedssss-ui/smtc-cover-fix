@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/nya-owo/cloudy",
+  "commit": "250da6df710fef0534e06ae518b52c5e22dd2e31",
+  "files": {
+    "icons.go": "f527c39ea27a4f2cf1fcbe8ecb601789cd5c40f2ee8b096991a547f6c2a19820",
+    "style_icons.go": "b64b9323323cf32329622c7e5ef3343df6af0da1432c36171a35280fbe25e6a8",
+    "fonts.go": "3b97068792a1bf81535d0dc8b1100fcce5fe0ca9e0563e1b51136ba654c7bad2",
+    "ui_nowplaying.go": "ea64790dc4774c8767273b9cbdde15dd7cbdb73fdc54ae624d8da7fc6315209c",
+    "ui_wall.go": "b4922e08d08b26b047c1a4a542452d387884d27b39d4e57fd99f1e0b290e573b",
+    "ui_pages.go": "62f9ee9d7b720d975141f44d032dc9031192ecc0b03af8fc8a128f0437198895",
+    "ui_mine.go": "976bdce13d53480323b0a9c4d4ff3ffb25e71e9fd712eb765a8f91430a565ef1",
+    "ui_albums.go": "35a0a1615285ee1b1a487700e26307dcf7f6ce3040475c345c85888c5192111e",
+    "ui_main.go": "146b56c6e1de1f4f57df8d6e4cb772ecc300763256f33404a91577162c555444",
+    "ui_stage.go": "4d1fdab3bf62f7e91e165c5f7bc18ca1b928522afea301afacd2d79be628626a",
+    "ui_comments.go": "fb47eb671eafa2d10032efede4f57e19444ede42a0ce32b6ab3b4bcfb9b869e5",
+    "ui_player.go": "a0eeffd95a19c04f348bcc096c4b206fb76379c18f0ea0c8959ae25052f1010e",
+    "ui_kit.go": "da8f625199739d1eeb7a6c8278e32b91eeab7275e63a1dfe6e005badf41bdb8a",
+    "player/stream.go": "46e09aaec1f2f854c9a2bd42e7069d93107ec46ca5ce596304276143e3aef562",
+    "ui_expand.go": "cba6b7f711c98e636e7382da30b8d3135da3cba744142cbcfffcf7f5f6a74de0",
+    "ui_effects.go": "f330ac61dbe2d205eba104546af140fa4e276bb563bd502e8a98ac6e76707769",
+    "auto_effects.go": "847ca498fa845697b5a78416324ee918c6788852c221bb2f96dc7ece3be32d9f",
+    "player/effects.go": "bbbfb6ec492eea58f95fdea6fe308acfe439f91bebabed04ee2b4ae17d7b5290",
+    "player/reverb.go": "50f973f4f18053a3298bbdd8484293531db4834958f802df5e9a3034ef573f95",
+    "player/spatial.go": "6c0f099d7e19b24f30bd3cac003f374f3c780a3a4e789626df90d2113284681f",
+    "netease/songtags.go": "5412bc011e79e57b60388f158fa7b33d90c3b041dc69f9f725d35a1f32fa392e"
+  }
+}

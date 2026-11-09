@@ -1,2 +1,9 @@
-# Local verification outputs only. app/ retains its original ignore rules.
-/migration/results/
+app/output/
+app/node_modules/
+app/data/
+app/build/
+app/build-*/
+dist/
+*.log
+.env
+.env.*

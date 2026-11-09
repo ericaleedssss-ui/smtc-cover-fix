@@ -71,6 +71,19 @@ function encryptFixture(value, key) {
 }
 axios.defaults.adapter = async (settings) => {
     const destination = (settings.baseURL || '') + settings.url;
+    if(process.env.RHINE_TEST_TRACE==='1')console.error('Fixture HTTP',destination.split('?')[0]);
+    if (/music\.163\.com\/weapi\/v1\/comment\/(?:like|unlike)/.test(destination)) {
+        return {status:200,data:{code:200},headers:{},config:settings};
+    }
+    if (/music\.163\.com\/(?:weapi|eapi|api)\/user\/profile\/update/.test(destination)) {
+        return {status:200,data:{code:200,profileSignatureFixture:true},headers:{},config:settings};
+    }
+    if (/music\.163\.com\/(?:weapi|eapi|api)\/user\/getfolloweds\/42/.test(destination)) {
+        return {status:200,data:{code:200,followeds:[{userId:99,nickname:'Profile follower'}],more:false},headers:{},config:settings};
+    }
+    if (/music\.163\.com\/(?:weapi|eapi|api)\/djradio\/get\/subed/.test(destination)) {
+        return {status:200,data:{code:200,djRadios:[{id:901,name:'Profile radio',programCount:12}],count:1,hasMore:false},headers:{},config:settings};
+    }
     if (destination === 'https://music.163.com/api/song/chorus') {
         if (settings.method !== 'get' || settings.headers.Cookie) throw new Error('Invalid chorus request');
         const ids = JSON.parse(settings.params.ids);

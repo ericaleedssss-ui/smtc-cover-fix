@@ -1,15 +1,11 @@
+#include "PipelineDiagnostics.h"
 #include "NativeApplication.h"
 #include <cmath>
 
 HudSceneActions NativeApplication::sceneActions(NativeScene *scene) {
     return {[scene](QString mode) { scene->setMode(mode); },
             [scene](bool dark) { scene->theme(dark); },
-            [scene](bool reduced) { scene->reduced(reduced); },
-            [scene](QString type, double x, double y, double delta) { scene->pointer(type, x, y, delta); },
-            [scene](QString action) { scene->viewerAction(action); },
-            [scene](QString key) { scene->viewerKey(key); },
-            [scene]() { scene->openViewer(); },
-            [scene](bool front) { scene->coverFront(front); }};
+            [scene](bool reduced) { scene->reduced(reduced); }};
 }
 
 /** 建立原生音乐、HUD、场景的值接口；所有异步失效统一唤醒 Qt 帧调度。 */
@@ -23,24 +19,12 @@ NativeApplication::NativeApplication(Host *host, Glyphs *glyphs, NativeScene *sc
     connect(&music, &MusicLibrary::modeRequested, this, [scene](QString mode) { scene->setMode(mode); });
     connect(&music, &MusicLibrary::navigationRequested, this,
             [scene](QString axis, int direction) { scene->navigate(axis, direction); });
-    connect(&music, &MusicLibrary::musicIdentityRequested, this,
-            [scene](QString key) { scene->musicIdentity(key); });
-    connect(&music, &MusicLibrary::musicClearRequested, this, [scene]() { scene->musicClear(); });
+
 }
 void NativeApplication::initialize() {
     m_scene->theme(hud.dark);
     m_scene->reduced(hud.reduced);
-    const auto startupPreference = m_host->preference("startup-animation");
-    // 仅首次启动展示动画
-    const bool firstLaunch = startupPreference.isEmpty() && m_host->preference("theme").isEmpty() &&
-                             m_host->preference("provider").isEmpty() &&
-                             m_host->preference("volume").isEmpty();
-    if (startupPreference.isEmpty()) {
-        m_host->setPreference("startup-animation", "off");
-    }
-    if (!firstLaunch && !hud.startupAnimation) {
-        m_scene->setMode("archive");
-    }
+    m_scene->setMode("archive");
     const auto saved = m_host->preference("volume");
     bool valid = false;
     const auto volume = saved.toDouble(&valid);
@@ -49,6 +33,7 @@ void NativeApplication::initialize() {
     music.restoreIdentityName();
 }
 QJsonObject NativeApplication::step(double time, double width, bool reuseScene) {
+    PipelineDiagnostics::Scope trace("native.step");
     const auto viewChanged =
         m_scene->setTrackListView(hud.trackListMode && music.current.value("kind") == "song");
     const auto frame = reuseScene && !viewChanged ? music.frame : m_scene->sample(time);
@@ -99,34 +84,5 @@ void NativeApplication::pointer(QString type, double x, double y) {
         }
         return;
     }
-    if (type == "pointerdown") {
-        m_dragging = true;
-        m_down = {x, y};
-        m_moved = false;
-    }
-    if (type == "pointermove" && m_dragging && std::hypot(x - m_down.x(), y - m_down.y()) > 6) {
-        m_moved = true;
-    }
-    if (type == "pointerup" && m_dragging) {
-        const auto picked = m_scene->pick(x, y);
-        m_scene->pointer(type, x, y);
-        m_dragging = false;
-        const bool isClick = !m_moved && std::hypot(x - m_down.x(), y - m_down.y()) <= 6;
-        if (isClick && !hud.frame["viewer"].toBool() && hud.frame["mode"] == "detail") {
-            const auto bounds = hud.detailBounds(hud.width);
-            const bool isInspectingSong =
-                music.current.value("kind") == "song" && picked && m_scene->isSelectedCell(*picked);
-            // 详情卡片外的完整点击复用返回路径；封面检查和拖动继续交给场景。
-            if (!bounds.contains(m_down) && !bounds.contains(x, y) && !isInspectingSong) {
-                hud.action("back");
-            }
-        } else if (isClick && hud.frame["mode"] == "archive" && picked) {
-            music.observe(m_scene->selection());
-            if (!music.current.isEmpty() && music.current.value("kind") != "song") {
-                music.enterDirectory(music.current);
-            }
-        }
-        return;
-    }
-    m_scene->pointer(type, x, y);
+
 }

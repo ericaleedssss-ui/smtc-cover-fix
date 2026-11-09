@@ -16,6 +16,6 @@ void main(){
     float y=uv.y*panelSize.y;
     float band=max(1.0,fadePx);
     float top=fadeTop>.5?smoothstep(topInset,topInset+band,y):1.0;
-    float bottom=smoothstep(0.0,max(1.0,bottomFadePx),panelSize.y-y);
+    float bottom=bottomFadePx>0.0?smoothstep(0.0,bottomFadePx,panelSize.y-y):1.0;
     fragColor=texture(source,uv)*top*bottom*qt_Opacity;
 }

@@ -4,11 +4,64 @@
 #include <QFileInfo>
 #include <QUrl>
 #include <QJsonDocument>
-#include <QPointer>
+#include <QDateTime>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
+
+void MusicPlayer::hydrateQueue(const QList<int> &indices) {
+    if (m_api->provider == "local") return;
+    if (m_queueHydrationEpoch != m_host->epoch) {
+        m_queueHydrationEpoch = m_host->epoch;
+        m_queueHydrating.clear();
+        m_queueHydrationRetry.clear();
+    }
+    if (m_queueHydrating.size() >= 96) return;
+    QJsonArray ids;
+    QSet<QString> keys;
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    for (const int at : indices) {
+        if (at < 0 || at >= queue.size()) continue;
+        const auto row = queue[at].toObject();
+        const auto key = identity(row);
+        if (!row["deferred"].toBool() || row["provider"].toString() != m_api->provider ||
+            keys.contains(key) || m_queueHydrating.contains(key) || m_queueHydrationRetry.value(key) > now) continue;
+        keys.insert(key); ids.append(row["id"]);
+        if (ids.size() == 48 || m_queueHydrating.size() + keys.size() >= 96) break;
+    }
+    if (ids.isEmpty()) return;
+    m_queueHydrating.unite(keys);
+    QPointer<MusicPlayer> self(this);
+    const auto epoch = m_host->epoch;
+    const auto provider = m_api->provider;
+    m_api->call("songs", {QJsonValue(ids)}, [self, keys, epoch, provider](MusicReply reply) {
+        if (!self || self->m_host->epoch != epoch || self->m_api->provider != provider) return;
+        for (const auto &key : keys) {
+            self->m_queueHydrating.remove(key);
+            self->m_queueHydrationRetry.insert(key, QDateTime::currentMSecsSinceEpoch() + 15000);
+        }
+        if (!reply.ok()) return;
+        QHash<QString, QJsonObject> loaded;
+        for (const auto &value : reply.value.toArray()) {
+            const auto row = value.toObject();
+            const auto key = identity(row);
+            if (keys.contains(key) && !row["deferred"].toBool() && !row["title"].toString().isEmpty()) loaded.insert(key, row);
+        }
+        bool changed = false;
+        for (int i = 0; i < self->queue.size(); ++i) {
+            const auto old = self->queue[i].toObject();
+            const auto key = identity(old);
+            if (!old["deferred"].toBool() || !loaded.contains(key)) continue;
+            auto row = loaded[key];
+            if (old["queueSource"].isObject()) row["queueSource"] = old["queueSource"];
+            self->queue.replace(i, row);
+            self->m_queueHydrationRetry.remove(key);
+            changed = true;
+        }
+        if (changed) emit self->changed();
+    });
+}
 
 double MusicPlayer::chorusStart(const QJsonObject &reply, const QString &id) {
     auto rows = reply.value("chorus").toArray();
@@ -27,6 +80,16 @@ double MusicPlayer::chorusStart(const QJsonObject &reply, const QString &id) {
 
 QString MusicPlayer::identity(const QJsonObject &track) {
     return track["provider"].toString("netease") + ":" + track["id"].toString();
+}
+bool MusicPlayer::isEpisode(const QJsonObject &track) {
+    return track.value("programID").toVariant().toLongLong()>0 || track.value("programId").toVariant().toLongLong()>0 || track.value("queueSource").toObject().value("section")=="programs";
+}
+void MusicPlayer::setPodcastSpeed(double value) {
+    if (!std::isfinite(value) || !QList<double>{.75,1,1.25,1.5,1.75,2}.contains(value)) return;
+    podcastSpeed=value;
+    m_host->setPreference("podcast-speed",QString::number(value));
+    m_host->mediaControl("rate",isEpisode(current)?podcastSpeed:1);
+    emit changed();
 }
 
 /** 本地音质近似分级 */
@@ -166,6 +229,8 @@ void MusicPlayer::setQuality(const QString &value) {
 MusicPlayer::MusicPlayer(Host *host, MusicApi *api, QObject *parent)
     : QObject(parent), lyrics(host), m_host(host), m_api(api) {
     state = {{"playing", false}, {"position", 0}, {"duration", 0}, {"volume", 0.7}, {"seekable", false}};
+    const auto speed=host->preference("podcast-speed").toDouble();
+    if(QList<double>{.75,1,1.25,1.5,1.75,2}.contains(speed))podcastSpeed=speed;
     quality = host->preference("quality");
     if (!QStringList{"standard", "higher", "exhigh", "lossless", "hires", "jymaster", "best", "ape"}.contains(
             quality)) {
@@ -492,6 +557,7 @@ void MusicPlayer::prepare(QJsonObject track, quint64 generation, bool reload) {
             fail(QStringLiteral("本地音频无法加载"));
             return;
         }
+        m_host->mediaControl("rate",isEpisode(track)?podcastSpeed:1);
         m_endSerial = m_host->mediaState().value("ended").toLongLong();
         actualQuality = localQuality(track);
         status = QStringLiteral("正在播放本地文件：") + track["format"].toString();
@@ -536,6 +602,7 @@ void MusicPlayer::prepare(QJsonObject track, quint64 generation, bool reload) {
                 fail(QStringLiteral("音频地址不可用"));
                 return;
             }
+            m_host->mediaControl("rate",isEpisode(track)?podcastSpeed:1);
             if (m_resumePosition && m_resumePaused) {
                 m_host->mediaControl("pause");
             }
@@ -662,7 +729,7 @@ void MusicPlayer::updateScrobble(const QJsonObject &previousState) {
         return;
     }
     if (m_scrobbleAttempted || uid.isEmpty() || m_api->provider != "netease" ||
-        current["provider"].toString("netease") != "netease" || current["kind"] != "song" ||
+        current.value("provider").toString("netease") != "netease" || current.value("kind") != "song" ||
         loading || failed || trial || !state["playing"].toBool() ||
         !previousState["playing"].toBool() || state["buffering"].toBool() ||
         !state["error"].toString().isEmpty() || elapsedMs < 1 || elapsedMs > 1500) {
@@ -745,9 +812,11 @@ void MusicPlayer::setPaused(bool paused) {
 void MusicPlayer::seek(double fraction) {
     if (m_resumePosition) {
         m_resumePosition = std::clamp(fraction, 0., 1.) * state["duration"].toDouble();
+        emit seekRequested();
         return;
     }
     if (state["seekable"].toBool()) {
+        emit seekRequested();
         m_host->mediaControl("seek", std::clamp(fraction, 0., 1.) * state["duration"].toDouble());
     }
 }
@@ -963,7 +1032,7 @@ void MusicPlayer::next(int direction, bool ended) {
     if(m_heartResumeIndex){
         if(ended&&mode=="one"){m_host->mediaControl("seek",0);m_host->mediaControl("resume");return;}
         int target=*m_heartResumeIndex+direction;
-        if(mode=="shuffle")target=QRandomGenerator::global()->bounded(int(queue.size()));
+        if(shuffled())target=QRandomGenerator::global()->bounded(int(queue.size()));
         if(target>=queue.size()&&mode=="off"){
             status=QStringLiteral("队列已播放完");emit changed();return;
         }
@@ -980,7 +1049,7 @@ void MusicPlayer::next(int direction, bool ended) {
         return;
     }
     auto selected = index + direction;
-    if (mode == "shuffle" && queue.size() > 1) {
+    if (shuffled() && queue.size() > 1) {
         selected = (index + 1 + QRandomGenerator::global()->bounded(int(queue.size() - 1))) % queue.size();
     }
     if (selected >= queue.size() && mode == "off") {

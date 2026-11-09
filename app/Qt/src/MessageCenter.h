@@ -23,6 +23,7 @@ public:
     Q_INVOKABLE void setOpen(bool);
     Q_INVOKABLE void selectTab(int);
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void previewCounts();
     Q_INVOKABLE void more();
     Q_INVOKABLE void activate(int);
     Q_INVOKABLE void startConversation(QString uid, QString name={});

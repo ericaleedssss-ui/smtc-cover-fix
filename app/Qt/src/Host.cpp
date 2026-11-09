@@ -1,4 +1,5 @@
 #include "Host.h"
+#include "PipelineDiagnostics.h"
 #include "AppStorage.h"
 #include <QBuffer>
 #include <QClipboard>
@@ -88,7 +89,9 @@ Host::Host(QString path, bool test, QObject *parent)
         while ((end = buffer.indexOf('\n')) >= 0) {
             const auto line = buffer.left(end);
             buffer.remove(0, end + 1);
+            QElapsedTimer parseClock;if(PipelineDiagnostics::enabled())parseClock.start();
             const auto response = QJsonDocument::fromJson(line).object();
+            if(parseClock.isValid())PipelineDiagnostics::duration("ipc.parse",parseClock.nsecsElapsed()/1e6,{{"bytes",line.size()}});
             const auto id = response["id"].toString();
             if (pending.contains(id)) {
                 finish(pending.take(id), response);
@@ -180,11 +183,32 @@ QString Host::cacheKey(QString scope, QString route, QJsonObject params) {
 QString Host::diskPath(QString key) const {
     return AppStorage::cacheDirectory() + "/metadata/" + key + ".json";
 }
+void Host::cacheMetadata(const QString &key, const Entry &entry) {
+    cache.insert(key, entry);
+    if (cache.size() <= 256) return;
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    for (auto it = cache.begin(); it != cache.end();) {
+        if (it->expiry <= now) it = cache.erase(it);
+        else ++it;
+    }
+    while (cache.size() > 256) {
+        auto it = cache.begin();
+        if (it.key() == key) ++it;
+        cache.erase(it);
+    }
+}
 /**
  * 接收原生业务请求，在协议外层执行缓存、合并和限流。
  * 记录当前账号代数，异步结果只能交付给仍有效的请求。
  */
 void Host::requestJson(QString route, QJsonObject values, JsonReply callback) {
+    if(PipelineDiagnostics::enabled()) {
+        const int id=++PipelineDiagnostics::serial;PipelineDiagnostics::mark("api.enqueue",{{"request",id},{"route",route}});
+        callback=[id,route,callback=std::move(callback)](QJsonObject response,QString error){
+            PipelineDiagnostics::mark("api.deliver",{{"request",id},{"route",route},{"error",!error.isEmpty()}});
+            PipelineDiagnostics::Scope trace("api.callback");callback(response,error);
+        };
+    }
     if (stopped) {
         return;
     }
@@ -266,10 +290,13 @@ void Host::requestJson(QString route, QJsonObject values, JsonReply callback) {
         QFile f(diskPath(key));
         if (f.open(QIODevice::ReadOnly)) {
             auto obj = QJsonDocument::fromJson(f.readAll()).object();
-            cache.insert(key, {qint64(obj["expiry"].toDouble()), obj["body"].toObject()});
+            const Entry entry{qint64(obj["expiry"].toDouble()), obj["body"].toObject()};
+            if (entry.expiry > QDateTime::currentMSecsSinceEpoch()) cacheMetadata(key, entry);
         }
     }
-    if (cached && cache.contains(key) && cache[key].expiry > QDateTime::currentMSecsSinceEpoch()) {
+    if (cached && cache.contains(key) && cache[key].expiry > QDateTime::currentMSecsSinceEpoch() &&
+        (route!="/song/wiki/summary"||cache[key].body["data"].toObject()["blocks"].isArray())) {
+        PipelineDiagnostics::mark("api.cache-hit",{{"route",route}});
         auto body = cache[key].body;
         QTimer::singleShot(0, this, [=, this] { respond(waiter, {{"body", body}}, {}); });
         return;
@@ -304,7 +331,7 @@ void Host::pump() {
         const auto priority=[](const QString &route){
             if(route=="/song/url"||route=="/song/url/v1")return -1;
             if(route.endsWith("/detail")||route.endsWith("/likedIDs")||route=="/album")return 0;
-            if(route.endsWith("/wiki")||route=="/song/wiki/summary")return 2;
+            if(route.endsWith("/wiki"))return 2;
             return 1;
         };
         int selected=0;
@@ -385,7 +412,10 @@ void Host::send(QString key) {
         const auto nodeName = QStringLiteral("node");
 #endif
         pending.insert(work.id, key);
-        child.start(root + "/MusicBridge/" + nodeName, {root + "/MusicBridge/worker.cjs"});
+        // Keep V8's transient heap smaller during repeated metadata/lyric work.
+        // No hard heap limit: large valid responses retain their normal capacity.
+        child.start(root + "/MusicBridge/" + nodeName,
+                    {"--optimize-for-size", root + "/MusicBridge/worker.cjs"});
         return;
     }
     if (child.state() == QProcess::Starting) {
@@ -404,18 +434,21 @@ void Host::send(QString key) {
         QStringList{"playback", "preview"}.contains(work.route.section('/', 3, 3))) {
         envelope["_collectPlaybackDiagnostics"] = true;
     }
+    PipelineDiagnostics::mark("api.worker-send",{{"route",work.route}});
     child.write(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
-    QTimer::singleShot(30000, this, [=, this] {
+    QTimer::singleShot(work.route=="/song/wiki/summary"?9000:30000, this, [=, this] {
         if (pending.remove(work.id)) {
             finish(key, {}, "音乐请求超时，请重试");
         }
     });
 }
 void Host::finish(QString key, QJsonObject response, QString error) {
+    PipelineDiagnostics::Scope trace("host.finish");
     if (!flights.contains(key)) {
         return;
     }
     const auto work = flights.take(key);
+    PipelineDiagnostics::mark("api.worker-reply",{{"route",work.route},{"error",!error.isEmpty()}});
     // QQ 原始认证记录只经过 C++ 与子进程，禁止出现在界面回调中。
     if (response["qqSessions"].isArray() && response["qqSessions"] != cookies["__qqSessions"] &&
         !work.waiters.isEmpty() && work.waiters.first().epoch == epoch) {
@@ -442,22 +475,15 @@ void Host::finish(QString key, QJsonObject response, QString error) {
             blockedUntil[routeProvider(work.route)] =
                 QDateTime::currentMSecsSinceEpoch() + qMax(120000LL, qint64(body["retryAfterMs"].toDouble()));
         }
-        if (work.cacheRevision == metadataRevision && lifetime(work.route) && error.isEmpty() &&
+        const bool validCommentBody =
+            ((work.route != "/comment/music" && work.route != "/comment/album") ||
+             body["comments"].isArray()) &&
+            (work.route != "/comment/hot" || body["hotComments"].isArray());
+        if (validCommentBody && work.cacheRevision == metadataRevision && lifetime(work.route) && error.isEmpty() &&
+            (work.route!="/song/wiki/summary"||body["data"].toObject()["blocks"].isArray()) &&
             response["body"].isObject() && code == 200) {
             Entry entry{QDateTime::currentMSecsSinceEpoch() + lifetime(work.route) * 1000LL, body};
-            cache.insert(key, entry);
-            if (cache.size() > 256) {
-                for (auto it = cache.begin(); it != cache.end();) {
-                    if (it->expiry <= QDateTime::currentMSecsSinceEpoch()) {
-                        it = cache.erase(it);
-                    } else {
-                        ++it;
-                    }
-                }
-                if (cache.size() > 256) {
-                    cache.erase(cache.begin());
-                }
-            }
+            cacheMetadata(key, entry);
             if (work.disk) {
                 auto path = diskPath(key);
                 QDir().mkpath(QFileInfo(path).path());
@@ -646,7 +672,14 @@ QString Host::fromLink(QString input) const {
     }
     return kind + ":" + id;
 }
+QJsonObject Host::diagnosticResources() const {
+    qint64 bytes=0; for(const auto &entry:cache)bytes+=QJsonDocument(entry.body).toJson(QJsonDocument::Compact).size();
+    return {{"image_entries",images.size()},{"image_cost_bytes",qint64(images.totalCost())*1024},
+        {"metadata_entries",cache.size()},{"metadata_serialized_bytes",bytes},
+        {"cover_flights",coverFlights.size()},{"api_flights",flights.size()},{"worker_running",child.state()!=QProcess::NotRunning}};
+}
 void Host::loadCover(QString input, TextReply callback, int maximumSize) {
+    if(qEnvironmentVariableIntValue("RHINE_QA_COLLECTION_NO_COVERS")==1){callback({});return;}
     maximumSize = std::clamp(maximumSize, 64, 1024);
     const QUrl local(input);
     if (local.isLocalFile()) {
@@ -713,6 +746,8 @@ void Host::loadCover(QString input, TextReply callback, int maximumSize) {
     QNetworkRequest request(url);
     request.setTransferTimeout(20000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    const int coverTrace=PipelineDiagnostics::enabled()?++PipelineDiagnostics::serial:0;
+    PipelineDiagnostics::mark("native-cover.request",{{"request",coverTrace},{"pixels",maximumSize}});
     auto reply = network.get(request);
     connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 size, qint64) {
         if (size >= 8 * 1024 * 1024) {
@@ -721,6 +756,7 @@ void Host::loadCover(QString input, TextReply callback, int maximumSize) {
     });
     connect(reply, &QNetworkReply::finished, this, [=, this]() {
         const auto bytes = reply->readAll();
+        PipelineDiagnostics::mark("native-cover.bytes",{{"request",coverTrace},{"bytes",bytes.size()}});
         if (imageEpoch != epoch || stopped) {
             reply->deleteLater();
             return;
@@ -771,6 +807,7 @@ void Host::loadCover(QString input, TextReply callback, int maximumSize) {
             }
         });
         watcher->setFuture(QtConcurrent::run([bytes, maximumSize] {
+            PipelineDiagnostics::Scope trace("native-cover.decode");
             QBuffer buffer;
             buffer.setData(bytes);
             buffer.open(QIODevice::ReadOnly);
@@ -876,7 +913,7 @@ bool Host::mediaLoad(QString url, bool alternative) {
     return audio->load(url, offline, alternative, provider);
 }
 void Host::mediaControl(QString action, double value) {
-    if (!audio && action == "volume") {
+    if (!audio && (action == "volume" || action == "rate")) {
         audio = std::make_unique<AudioPlayer>([this] { emit mediaChanged(); });
         audio->diagnosticEvent = [this](const QString &event, const QJsonObject &values) {
             playbackDiagnostics.record(event, values);
@@ -887,6 +924,17 @@ void Host::mediaControl(QString action, double value) {
         audio->control(action, value);
     }
     emit mediaChanged();
+}
+QVariantList Host::outputDevices() const {
+    if (audio) return audio->outputDevices();
+    QVariantList result{QVariantMap{{"id", ""}, {"label", "系统默认"}}};
+    for (const auto &device : QMediaDevices::audioOutputs())
+        result.append(QVariantMap{{"id",QString::fromLatin1(device.id().toBase64())},{"label",device.description()}});
+    return result;
+}
+void Host::selectOutput(QString id) {
+    if (!audio) mediaControl("volume", .7);
+    audio->selectOutput(id);
 }
 void Host::mediaMetadata(QString title, QString artist, QString album) {
     mediaTitle = title.left(256);
@@ -938,6 +986,8 @@ QString Host::preference(QString key) const {
                                 "play-history",
                                 "local-cover-cache",
                                 "theme",
+                                "ui-font", "visual-effects", "sound-effects",
+                                "lyric-scale", "lyric-translation", "stage-style", "stage-sparks", "desktop-lyrics-style",
                                 "motion",
                                 "startup-animation",
                                 "detail-autoplay",
@@ -977,6 +1027,8 @@ void Host::setPreference(QString key, QString value) {
                     "play-history",
                     "local-cover-cache",
                     "theme",
+                    "ui-font", "visual-effects", "sound-effects",
+                    "lyric-scale", "lyric-translation", "stage-style", "stage-sparks", "desktop-lyrics-style",
                     "motion",
                     "startup-animation",
                     "detail-autoplay",

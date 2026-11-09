@@ -1,5 +1,11 @@
 # 来源与许可
 
+- Cloudy，GNU AGPL-3.0：从固定提交 `250da6df710fef0534e06ae518b52c5e22dd2e31` 移植律动歌词的排版和动画算法到 Qt Quick。来源：https://github.com/nya-owo/cloudy 。完整许可、改编文件和差异见 `licenses/cloudy/`，构建包随附于 `resources/third-party/cloudy/`。包含该移植的组合应用按 AGPL-3.0-only 提供；以下原有 MIT 及其他第三方许可和署名继续保留。
+
+- Shu Ding liquid-glass（2025），MIT：`Qt/shaders/refractiveGlass.frag` 的 inset SDF 位移公式来自该实现；参考 xiaofangstudio/liquid-glass-web 的 `3094add905e60ee5aeb45e806751beb94425dd73`。Qt 背景采样、动态轮廓和光照是本项目适配。完整许可及来源记录见 `licenses/liquid-glass/`，构建包随附于 `third-party/liquid-glass/`。
+
+- MyGo `f7032a2cc755`，MIT，Copyright (c) 2026 MyGo contributors：`Qt/shaders/clearSeekGlass.frag` 移植其 `plugins/glass/glass.glsl` 的 lens / normal / tone / rim 及 `glass.go` 的 Clear 材质参数。原始源码、许可及哈希见 `vendor/cloudy-ui-reference/mygo-glass/`，随包保留于 `resources/third-party/mygo-glass/`。
+
 - Three.js（项目锁定版本 0.183.2），MIT：保留的静态 DFG/SSAO 查找资源及共享着色器中的 ACES、GGX、CubeUV、透射采样公式参考对应实现。应用运行时不加载 Three.js，完整许可保留在下文。
 - MiSans：沿用仓库 `licenses/MiSans-license.pdf`、已转换的 `Assets/fonts/` 的许可与版本记录。导出轮廓仍属字体使用，需要在分发前核对完整许可。
 - Novecento 固定字形：沿用 `Resources/boot-lettering-art.json`。本目录不复制被 Git 排除的个人 Webfont kit；网页字体授权不能被视为桌面应用分发授权。
@@ -134,6 +140,7 @@ SOFTWARE.
 
 ## 跨平台补充资源
 
+- LXGW WenKai Regular / Medium，SIL Open Font License 1.1。原样取自 Cloudy 固定提交 `250da6df710fef0534e06ae518b52c5e22dd2e31` 的 resources/fonts；来源与完整许可保留在 vendor/cloudy-fonts，并随包分发到 resources/fonts。
 - Nayuki QR Code generator，MIT，固定提交 `3c6d0b3cefb4e049dc337e82237c9644399716a8`。来源及完整许可证保留在 `vendor/qrcodegen`。
 - Noto Sans Symbols 2，SIL Open Font License 1.1，固定 Google Fonts 提交 `8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5`。来源：https://github.com/google/fonts/tree/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notosanssymbols2；许可证：`licenses/NotoSansSymbols2-OFL.txt`。仅用于现有 MiSans 不含的符号。
 - `Qt/shaders` 将原有 Three.js r183 光照、透射和后处理方程迁移为共享 GLSL；原 Three.js MIT 署名不变。`Assets/icons` 保留原图标 PNG 结果，避免跨平台重新绘制改变阴影。
@@ -145,6 +152,13 @@ Qt 6 Core / Gui / Qml / Quick / Network 通过官方 Qt 安装包动态链接。
 原场景和素材的来源路径与输入哈希保留在 licenses/source-manifest.json；YesPlayMusic 与二维码实现的固定版本及来源分别见 MusicBridge/upstream/source.json 和 vendor/qrcodegen/source.json。
 
 Qt 6.8.3 的 LGPL v3 与 GPL v3 完整文本保留在 licenses/Qt/；来源为 https://github.com/qt/qtbase/tree/v6.8.3/LICENSES 。构建时同时保留实际 Qt SDK 提供的许可证。
+
+Cloudy performance reference: nya-owo/cloudy commit
+442a6e79df5bac337dd0ffbb75d3e6eba06276bc (AGPL-3.0-only).
+Original artwork, wall and playlist sources and URLs are preserved in
+vendor/cloudy-performance-reference/SOURCE.json; license in licenses/cloudy.
+SongWall.qml adapts wall() row-level animation. Qt frost pass fusion and delayed
+image/render-target release are RHINE adaptations; no MyGo runtime is bundled.
 
 Optional alternative audio matching uses the unchanged @unblockneteasemusic/server
 0.28.0 dependency from the locked API package (LGPL-3.0-only).
@@ -163,6 +177,25 @@ MusicBridge/lyrics-format.cjs 移植 LyricsKit 的 LyricsCore LRC 与 LyricsServ
 解析逻辑，采用 MPL-2.0。固定来源、版本及改编文件见 MusicBridge/lyrics-source.json；
 完整许可见 MusicBridge/LyricsKit-LICENSE。该文件的 MPL 许可单独保留，其他自维护源码沿用原许可。
 来源：https://github.com/MxIris-LyricsX-Project/LyricsKit 。发布包随附此文件的可编辑 JavaScript 源码。
+
+## 收藏文件夹交互
+
+MusicFolder.qml 的文件夹轮廓与交互改编参考 bilibili-margin（MIT），原始许可和来源保留在
+licenses/bilibili-margin/，随包分发到 resources/third-party/bilibili-margin/。
+来源：https://github.com/jiuyang5354/bilibili-margin ，src/content/ui/glass-folder.ts、src/content/styles/04-glass-folder.css。
+
+## 歌单封面尺寸策略
+
+PersonalHub::sizedCover 和 PlaylistMagazine.qml 的按显示用途请求缩略图策略改编自 Cloudy
+ui_kit.go 的 cover / netease.Sized 调用（AGPL-3.0-only）。参考源码与许可证保留在
+vendor/cloudy-ui-reference/ 和 licenses/cloudy/；原有 Qt 虚拟列表、缓存与音乐业务仍沿用 RHINE。
+来源：https://github.com/nya-owo/cloudy/blob/250da6df710fef0534e06ae518b52c5e22dd2e31/internal/app/ui_kit.go
+
+选歌墙和详情待播列表的逐行元数据访问参考 Cloudy 的可见区域绘制机制，改编为
+NowPlaying::queueRow / queueCount 与现有 Qt 虚拟列表适配。参考版本
+442a6e79df5bac337dd0ffbb75d3e6eba06276bc 的源码、来源及 AGPL-3.0-only 许可保留在
+vendor/cloudy-performance-reference/ 和 licenses/cloudy/；未引入 Go 运行时。
+来源：https://github.com/nya-owo/cloudy/blob/442a6e79df5bac337dd0ffbb75d3e6eba06276bc/internal/app/ui_wall.go
 
 ## 本地音乐标签
 

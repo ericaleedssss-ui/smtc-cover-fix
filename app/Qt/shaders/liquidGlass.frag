@@ -8,6 +8,7 @@ layout(std140,binding=0) uniform Params {
     float paddingWidth;
     float cornerRadius;
     float darkMode;
+    float shadowStrength;
 };
 layout(binding=1) uniform sampler2D blurred;
 layout(binding=2) uniform sampler2D scene;
@@ -75,7 +76,7 @@ void main() {
     float innerRim=gaussian((d+2.35)/.85);
     base*=1.0-innerRim*.055*(.55+.45*max(-direction,0.0));
     float shadowDistance=rounded(center-vec2(0.0,4.0),panelSize*.5,radius);
-    float shadow=.12*exp(-max(shadowDistance,0.0)*max(shadowDistance,0.0)/65.0)*(1.0-mask);
+    float shadow=shadowStrength*.12*exp(-max(shadowDistance,0.0)*max(shadowDistance,0.0)/65.0)*(1.0-mask);
     fragColor=vec4(base*mask,mask)+vec4(vec3(.12,.13,.10)*shadow,shadow);
     fragColor*=qt_Opacity;
 }

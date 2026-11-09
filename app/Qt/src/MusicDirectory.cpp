@@ -1,3 +1,4 @@
+#include "PipelineDiagnostics.h"
 #include "MusicLibrary.h"
 #include "MusicData.h"
 #include "MusicDiscover.h"
@@ -7,6 +8,7 @@
 
 /** 先建立可返回的目录状态，再加载内容；目录关闭或被替换后丢弃旧响应。 */
 void MusicLibrary::enterDirectory(QJsonObject value, bool recordBrowse) {
+    PipelineDiagnostics::Scope trace("directory.enter");
     if (value.isEmpty()) {
         return;
     }
@@ -93,6 +95,7 @@ void MusicLibrary::loadDirectoryDetails() {
                 changed();
                 return;
             }
+            PipelineDiagnostics::qml("directory.data-arrived");
             const auto values = result.value.toArray();
             next->item = values.at(0).toObject();
             if (value.contains("originType")) { next->item["originType"] = value.value("originType"); }
@@ -361,6 +364,7 @@ void MusicLibrary::loadDirectoryPage(std::optional<int> selectAfter) {
 }
 
 void MusicLibrary::showDirectoryInfo() {
+    PipelineDiagnostics::Scope trace("directory.show");
     if (!directory) {
         return;
     }
@@ -402,6 +406,7 @@ void MusicLibrary::returnToDirectory() {
 }
 
 void MusicLibrary::leaveDirectory(bool restore) {
+    PipelineDiagnostics::Scope trace("directory.leave");
     const auto folder = directory;
     if (!folder) {
         return;

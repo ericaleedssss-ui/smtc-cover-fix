@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Shapes
 
 Item {
@@ -95,7 +95,7 @@ Item {
             if (actionName) rhine.action(actionName);
             activated();
         }
-        ToolTip.visible: buttonMouse.containsMouse
+        ToolTip.visible: false
         ToolTip.text: label; ToolTip.delay: 550
         MouseArea {
             id: buttonMouse; anchors.fill: parent; hoverEnabled: true
@@ -117,12 +117,12 @@ Item {
         id: heading
         x: 25 * queue.unit; y: 24 * queue.unit
         text: "播放列表"; color: queue.ink
-        font.family: rhineFontFamily; font.pixelSize: 21 * queue.typeUnit; font.weight: Font.DemiBold
+        font.family: rhineFontFamily; font.pixelSize: 21 * queue.typeUnit; font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
     }
     Text {
         x: heading.x + heading.implicitWidth + 7 * queue.unit; y: heading.y + 3 * queue.unit
         text: Number(queue.hud.queueCount || 0).toLocaleString()
-        color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+        color: queue.muted; font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 12 * queue.typeUnit
     }
     QueueButton {
         objectName: "queueClose"
@@ -140,7 +140,7 @@ Item {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "收藏全部"; color: queue.muted
-            font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+            font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 12 * queue.typeUnit
             MouseArea {
                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                 enabled: queue.hud.queueCanCollect === true && Number(queue.hud.queueCount || 0) > 0
@@ -155,7 +155,7 @@ Item {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: queue.hud.queueRoaming ? "退出漫游" : "清空待播"; color: queue.muted
-            font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+            font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 12 * queue.typeUnit
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                 onClicked: rhine.action(queue.hud.queueRoaming ? "roam:exit" : "player:clear") }
         }
@@ -246,7 +246,8 @@ Item {
                     anchors.fill: parent
                     visible: track.hovered || track.selected
                     color: track.hovered ? "#66000000" : "#33000000"
-                    QueueIcon { anchors.centerIn: parent; kind: "play"; tint: "#ffffff" }
+                    QueueIcon { anchors.centerIn: parent; kind: "play"; tint: "#ffffff";visible:!track.selected }
+                    PlayingBars {anchors.centerIn:parent;unit:queue.unit;visible:track.selected;color:queue.accent}
                 }
                 MouseArea {
                     objectName: "queueCoverPlay_" + track.trackIndex
@@ -264,11 +265,11 @@ Item {
                     width: parent.width; text: track.trackTitle; elide: Text.ElideRight
                     color: track.selected ? queue.accent : queue.ink
                     font.family: rhineFontFamily; font.pixelSize: 15.5 * queue.typeUnit
-                    font.weight: track.selected ? Font.DemiBold : Font.Normal
+                    font.weight: track.selected ? Font.DemiBold : Font.Normal;font.variableAxes:({"wght":track.selected ? Font.DemiBold : Font.Normal})
                 }
                 Text {
                     width: parent.width; text: track.trackArtist; elide: Text.ElideRight
-                    color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+                    color: queue.muted; font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 12 * queue.typeUnit
                 }
             }
             Text {
@@ -276,7 +277,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !track.hovered
                 text: track.trackDuration; color: queue.muted
-                font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 12 * queue.typeUnit
             }
             Row {
                 visible: track.hovered
@@ -312,7 +313,7 @@ Item {
     Text {
         anchors.centerIn: songList; visible: stableQueueRows.count === 0
         text: "播放列表是空的"; color: queue.muted
-        font.family: rhineFontFamily; font.pixelSize: 15 * queue.typeUnit
+        font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 15 * queue.typeUnit
     }
     Rectangle {
         x: 25 * queue.unit; y: parent.height - 57 * queue.unit
@@ -324,7 +325,7 @@ Item {
         text: Number(queue.hud.queueCount || 0) > 0
             ? (queue.pageStart + 1) + "–" + Math.min(Number(queue.hud.queueCount), queue.pageStart + stableQueueRows.count)
               + " / " + Number(queue.hud.queueCount).toLocaleString() : "0 首"
-        color: queue.muted; font.family: rhineFontFamily; font.pixelSize: 12 * queue.typeUnit
+        color: queue.muted; font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 12 * queue.typeUnit
     }
     Row {
         anchors.right: parent.right; anchors.rightMargin: 22 * queue.unit

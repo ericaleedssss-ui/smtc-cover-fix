@@ -1,0 +1,4 @@
+Source: https://github.com/jiuyang5354/bilibili-margin
+Reference archive SHA256: 9823e671ce9b8c8d5ee2b399aa9f7d3b088f9d5183375c24c386fbe8008d7f28
+Referenced: src/content/ui/glass-folder.ts and src/content/styles/04-glass-folder.css
+Native adaptation: Qt/qml/MusicFolder.qml. Geometry, hinge, stacked-card fan and menu interaction adapted to native QML with existing Rhine LiquidGlass shader.

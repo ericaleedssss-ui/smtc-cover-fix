@@ -3,7 +3,7 @@
     "version": "0.4.0",
     "private": true,
     "type": "module",
-    "license": "MIT",
+    "license": "AGPL-3.0-only",
     "scripts": {
         "build": "node scripts/build.cjs",
         "package:cmake": "node scripts/build.cjs --cmake-package",

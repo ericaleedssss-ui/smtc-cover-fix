@@ -33,7 +33,11 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
     } else if (name == "collection-open") {
         const auto item=QJsonDocument::fromJson(QUrl::fromPercentEncoding(value.mid(QString("music:collection-open:").size()).toUtf8()).toUtf8()).object();
         if(item["provider"].toString()!=music.provider || !QStringList{"playlist","album"}.contains(item["kind"].toString()) || item["id"].toString().isEmpty())return;
-        closeModal(false);music.enterDirectory(item);tab="overview";trackOffset=0;
+        closeModal(false);lyricsMode=false;m_lyricsReturn.reset();closeComments();music.enterDirectory(item);tab="overview";trackOffset=0;
+    } else if (name == "context-artist") {
+        const auto item=QJsonDocument::fromJson(decode(value.mid(QString("music:context-artist:").size())).toUtf8()).object();
+        if(item["provider"].toString()!=music.provider||item["kind"]!="artist"||item["id"].toString().isEmpty())return;
+        closeModal(false);lyricsMode=false;m_lyricsReturn.reset();closeComments();music.enterDirectory(item);artistTab="songs";trackOffset=0;
     } else if (name == "context-comments") {
         const auto song=QJsonDocument::fromJson(QUrl::fromPercentEncoding(value.mid(QString("music:context-comments:").size()).toUtf8()).toUtf8()).object();
         if(song["kind"]!="song"||song["provider"].toString()!=music.provider)return;
@@ -431,8 +435,6 @@ void NativeHud::musicAction(const QStringList &parts, const QString &value) {
         music.startLogin();
     } else if (name == "logout") {
         music.logout();
-    } else if (name == "cover-front" || name == "cover-back") {
-        m_scene.coverFront(name == "cover-front");
     } else if (name == "activate") {
         m_host->setActivates(!m_host->activates());
     }

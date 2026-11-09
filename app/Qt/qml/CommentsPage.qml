@@ -66,7 +66,7 @@ Item {
             anchors.centerIn: parent
             visible: portrait.status !== Image.Ready
             text: avatar.name.slice(0, 1)
-            color: page.muted; font.family: rhineFontFamily; font.pixelSize: avatar.width * .4
+            color: page.muted; font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: avatar.width * .4
         }
         Rectangle { id: circle; width: avatar.width; height: avatar.height; radius: width / 2; color: "white"; visible: false }
         ShaderEffectSource { id: circleTexture; sourceItem: circle; hideSource: true; visible: false; live: true }
@@ -112,7 +112,7 @@ Item {
                 color: page.accent
                 font.family: rhineFontFamily
                 font.pixelSize: 16 * page.unit
-                font.weight: Font.DemiBold
+                font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
                 elide: Text.ElideRight
                 MouseArea {
                     anchors.fill: parent
@@ -127,7 +127,7 @@ Item {
                 y: 9 * page.unit
                 text: comment.entry.date || ""
                 color: page.muted
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 14 * page.unit
             }
         }
@@ -138,7 +138,7 @@ Item {
             text: comment.entry.content || ""
             textFormat: Text.PlainText
             color: page.ink
-            font.family: rhineFontFamily
+            font.family: rhineFontFamily;font.variableAxes:({"wght":400})
             font.pixelSize: 17 * page.unit
             lineHeight: 1.5
             wrapMode: Text.Wrap
@@ -166,7 +166,7 @@ Item {
                 text: comment.entry.quote && comment.entry.quote.content ? (comment.entry.quote.author || "原评论") + "：" + comment.entry.quote.content : ""
                 textFormat: Text.PlainText
                 color: page.muted
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 16 * page.unit
                 wrapMode: Text.Wrap
                 maximumLineCount: comment.expanded ? 10000 : 2
@@ -180,7 +180,7 @@ Item {
             Text {
                 text: Number(comment.entry.likes || 0).toLocaleString(Qt.locale("zh_CN"), "f", 0) + " 赞"
                 color: page.muted
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 14 * page.unit
             }
             Text {
@@ -189,7 +189,7 @@ Item {
                 visible: body.truncated || quote.truncated || comment.expanded
                 text: comment.expanded ? "收起 ↑" : "展开全文 ↓"
                 color: page.accent
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 15 * page.unit
                 Accessible.role: Accessible.Button
                 Accessible.name: text
@@ -224,7 +224,7 @@ Item {
                 color: page.accent
                 font.family: rhineFontFamily
                 font.pixelSize: 16 * page.unit
-                font.weight: Font.DemiBold
+                font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
             }
             Repeater {
                 model: featuredItems
@@ -237,8 +237,8 @@ Item {
             Item {
                 width: parent.width
                 height: 20 * page.unit
-                Text { text: "最新评论"; color: page.accent; font.family: rhineFontFamily; font.pixelSize: 16 * page.unit; font.weight: Font.DemiBold }
-                Text { anchors.right: parent.right; text: page.hudState.commentsTotal > 0 ? Number(page.hudState.commentsTotal).toLocaleString(Qt.locale("zh_CN"), "f", 0) + " 条" : ""; color: page.muted; font.family: rhineFontFamily; font.pixelSize: 14 * page.unit }
+                Text { text: "最新评论"; color: page.accent; font.family: rhineFontFamily; font.pixelSize: 16 * page.unit; font.weight: Font.DemiBold ;font.variableAxes:({"wght":Font.DemiBold})}
+                Text { anchors.right: parent.right; text: page.hudState.commentsTotal > 0 ? Number(page.hudState.commentsTotal).toLocaleString(Qt.locale("zh_CN"), "f", 0) + " 条" : ""; color: page.muted; font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 14 * page.unit }
             }
             Repeater {
                 model: items
@@ -253,7 +253,7 @@ Item {
                 visible: items.count === 0 && !page.hudState.commentsLoading && !page.hudState.commentsError
                 text: "这里还没有评论"
                 color: page.muted
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 16 * page.unit
                 topPadding: 12 * page.unit
                 bottomPadding: 12 * page.unit
@@ -264,7 +264,7 @@ Item {
                 text: page.hudState.commentsError || ""
                 textFormat: Text.PlainText
                 color: page.muted
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 16 * page.unit
                 wrapMode: Text.Wrap
             }
@@ -283,7 +283,7 @@ Item {
                         anchors.centerIn: parent
                         text: page.hudState.commentsLoading ? "正在读取评论…" : page.hudState.commentsError ? "重新读取" : "加载更多 ↓"
                         color: page.ink
-                        font.family: rhineFontFamily
+                        font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                         font.pixelSize: 16 * page.unit
                     }
                     Accessible.role: Accessible.Button
@@ -296,7 +296,7 @@ Item {
                     visible: !more.visible && items.count > 0
                     text: "已经读到最后一条了"
                     color: page.muted
-                    font.family: rhineFontFamily
+                    font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                     font.pixelSize: 15 * page.unit
                 }
             }

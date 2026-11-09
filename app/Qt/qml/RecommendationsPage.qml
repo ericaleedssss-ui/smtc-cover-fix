@@ -47,7 +47,7 @@ Item {
                     color: page.accent
                     font.family: rhineFontFamily
                     font.pixelSize: 16 * page.unit
-                    font.weight: Font.DemiBold
+                    font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
                 }
                 Row {
                     width: parent.width
@@ -76,7 +76,7 @@ Item {
                                     anchors.centerIn: parent
                                     visible: !card.modelData.cover
                                     text: "歌单"
-                                    font.family: rhineFontFamily
+                                    font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                                     font.pixelSize: 15 * page.unit
                                     color: page.muted
                                 }
@@ -92,7 +92,7 @@ Item {
                                 text: card.modelData.title || ""
                                 textFormat: Text.PlainText
                                 color: page.ink
-                                font.family: rhineFontFamily
+                                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                                 font.pixelSize: 16 * page.unit
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: 20 * page.unit
@@ -119,7 +119,7 @@ Item {
                     color: page.accent
                     font.family: rhineFontFamily
                     font.pixelSize: 16 * page.unit
-                    font.weight: Font.DemiBold
+                    font.weight: Font.DemiBold;font.variableAxes:({"wght":Font.DemiBold})
                     bottomPadding: 3 * page.unit
                 }
                 Repeater {
@@ -136,7 +136,7 @@ Item {
                             text: song.modelData.title || ""
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
-                            font.family: rhineFontFamily
+                            font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                             font.pixelSize: 16 * page.unit
                             color: page.ink
                         }
@@ -147,7 +147,7 @@ Item {
                             text: song.modelData.artist || ""
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
-                            font.family: rhineFontFamily
+                            font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                             font.pixelSize: 14 * page.unit
                             color: page.muted
                         }
@@ -155,7 +155,7 @@ Item {
                             anchors.right: parent.right
                             y: 4 * page.unit
                             text: song.modelData.timeLabel || ""
-                            font.family: rhineFontFamily
+                            font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                             font.pixelSize: 14 * page.unit
                             color: page.muted
                         }
@@ -179,7 +179,7 @@ Item {
                 visible: page.hudState.recommendationsLoading || !!page.hudState.recommendationsError || (page.playlists.length === 0 && page.songs.length === 0)
                 text: page.hudState.recommendationsLoading ? "正在读取推荐…" : page.hudState.recommendationsError || "这首歌暂时没有相关推荐"
                 color: page.muted
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 16 * page.unit
                 wrapMode: Text.Wrap
             }
@@ -187,7 +187,7 @@ Item {
                 visible: !!page.hudState.recommendationsError && !page.hudState.recommendationsLoading
                 text: "重新读取 ↗"
                 color: page.accent
-                font.family: rhineFontFamily
+                font.family: rhineFontFamily;font.variableAxes:({"wght":400})
                 font.pixelSize: 16 * page.unit
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: rhine.action("music:recommend-retry") }
             }

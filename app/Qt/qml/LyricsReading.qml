@@ -17,8 +17,8 @@ Item {
                 width: page.width - 145 * page.unit
                 opacity: entry.focused ? 1 : 0.28
                 Behavior on opacity { enabled: !rhine.state.reduced; NumberAnimation { duration: 200 } }
-                Text { text: parent.entry.original || ""; textFormat: Text.PlainText; color: rhine.state.dark ? "#ebebe6" : "#191b17"; font.family: rhineFontFamily; font.pixelSize: 34 * page.unit; font.weight: Font.Bold; lineHeightMode: Text.FixedHeight; lineHeight: 47 * page.unit }
-                Text { y: (parent.entry.translationY || 0) * page.unit; text: parent.entry.translation || ""; textFormat: Text.PlainText; color: rhine.state.dark ? "#c6c7bf" : "#5f6259"; font.family: rhineFontFamily; font.pixelSize: 17 * page.unit; lineHeightMode: Text.FixedHeight; lineHeight: 26 * page.unit }
+                Text { text: parent.entry.original || ""; textFormat: Text.PlainText; color: rhine.state.dark ? "#ebebe6" : "#191b17"; font.family: rhineFontFamily; font.pixelSize: 34 * page.unit; font.weight: Font.Bold;font.variableAxes:({"wght":Font.Bold}); lineHeightMode: Text.FixedHeight; lineHeight: 47 * page.unit }
+                Text { y: (parent.entry.translationY || 0) * page.unit; text: parent.entry.translation || ""; textFormat: Text.PlainText; color: rhine.state.dark ? "#c6c7bf" : "#5f6259"; font.family: rhineFontFamily;font.variableAxes:({"wght":400}); font.pixelSize: 17 * page.unit; lineHeightMode: Text.FixedHeight; lineHeight: 26 * page.unit }
             }
         }
     }

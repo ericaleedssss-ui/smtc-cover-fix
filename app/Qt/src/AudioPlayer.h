@@ -12,6 +12,9 @@
 #include <functional>
 #include <memory>
 #include "HttpAudioStream.h"
+#include "AudioSpectrum.h"
+#include "AudioEffects.h"
+#include <QAudioSink>
 
 // 在线模式只接收锁定上游的播放链接；本地模式只接收文件 URL
 class AudioPlayer {
@@ -23,6 +26,10 @@ class AudioPlayer {
     QVariantMap state() const;
     QJsonObject diagnosticState() const;
     void enableDiagnostics(bool enabled);
+    void enableVisualLevels(bool enabled);
+    QVariantList outputDevices() const;
+    void selectOutput(QString id);
+    void setEffects(const QVariantMap &values,bool glide=false);
     std::function<void(const QString &, const QJsonObject &)> diagnosticEvent;
 
   private:
@@ -35,6 +42,22 @@ class AudioPlayer {
     void startMediaSource(const QUrl &url);
     void releasePlayer();
     bool diagnosticsEnabled = false;
+    bool visualLevelsEnabled = false;
+    CloudyEffects::Settings effects;
+    CloudyEffects::Processor effectProcessor;
+    std::unique_ptr<QAudioSink> effectSink;
+    QIODevice *effectDevice=nullptr;
+    QByteArray effectPending;
+    QAudioFormat effectFormat;
+    QTimer effectPump;
+    qint64 effectFrames=0;
+    void resetEffectOutput();
+    void playEffectBuffer(const QAudioBuffer &buffer);
+    void pumpEffectOutput();
+    QString selectedOutput;
+    double playbackRate = 1;
+    double visualBass = 0, bassFilter = 0;
+    AudioSpectrum spectrum;
     QMetaObject::Connection decoderConnection;
     quint64 decoderObservation = 0;
     void observeDecodedBuffers();

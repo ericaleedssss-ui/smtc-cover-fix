@@ -40,7 +40,7 @@ Item {
     function collect(){if(controller.busy)return;if(info.canSubscribe){if(info.subscribed){controller.operate("subscribe");cancelCollect.open();}else controller.operate("subscribe");}}
     onInfoChanged:if(info.key!==session){session=info.key||"";songIndex=-1;showSongs=false;descriptionView.contentY=0;}
     property string session:""
-    component Label:Text {textFormat:Text.PlainText;color:page.ink;font.family:rhineFontFamily;font.pixelSize:16*page.unit;elide:Text.ElideRight}
+    component Label:Text {textFormat:Text.PlainText;color:page.ink;font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:16*page.unit;elide:Text.ElideRight}
     component Button:Controls.Button {
         id:button
         property bool primary:false
@@ -76,7 +76,7 @@ Item {
         objectName:"showcaseTitle";x:26*unit;y:59*unit;width:page.textWidth;height:68*unit
         color:titleHit.containsMouse?(rhine.state.dark?"#cedbbf":"#647b52"):page.ink
         Behavior on color {ColorAnimation {duration:120}}
-        text:info.title||(info.kind==="album"?"专辑":"歌单");font.pixelSize:28*unit;font.weight:Font.Bold
+        text:info.title||(info.kind==="album"?"专辑":"歌单");font.pixelSize:28*unit;font.weight:Font.Bold;font.variableAxes:({"wght":Font.Bold})
         wrapMode:Text.Wrap;maximumLineCount:2
         MouseArea {id:titleHit;hoverEnabled:true;anchors.fill:parent;enabled:!!info.key;cursorShape:Qt.PointingHandCursor;onClicked:controller.operate("details")}
     }
@@ -95,12 +95,12 @@ Item {
             property real topInset:0
             property real fadePx:14*page.unit
             property real fadeTop:songList.contentY>1?1:0
-            property real bottomFadePx:12*page.unit
+            property real bottomFadePx:0
             fragmentShader:"qrc:/shaders/magazineEdgeFade.frag.qsb"
         }
         WheelHandler {target:null;onWheel:e=>{page.scrollSongs(e);e.accepted=true;}}
         onContentYChanged:{var row=indexAt(1,contentY+height*.5);if(row>=0)controller.preview(row);}
-        delegate:Rectangle {required property var modelData;required property int index;width:songList.width;height:32*page.unit;opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(1,Math.max(0,(y-songList.contentY+height/2)/(14*page.unit)),Math.max(0,(songList.height-y+songList.contentY-height/2)/(12*page.unit))):1;radius:5*page.unit;color:page.songIndex===index?"#286f845e":songHit.containsMouse?"#126f845e":"transparent"
+        delegate:Rectangle {required property var modelData;required property int index;width:songList.width;height:32*page.unit;opacity:GraphicsInfo.api===GraphicsInfo.Software?Math.min(1,Math.max(0,(y-songList.contentY+height/2)/(14*page.unit))):1;radius:5*page.unit;color:page.songIndex===index?"#286f845e":songHit.containsMouse?"#126f845e":"transparent"
             Behavior on color {ColorAnimation {duration:100}}
             Label {x:9*page.unit;width:parent.width-18*page.unit;anchors.verticalCenter:parent.verticalCenter;text:(index+1)+"  "+modelData.title+(modelData.artist?" · "+modelData.artist:"");font.pixelSize:16*page.unit}
             MouseArea {id:songHit;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;anchors.fill:parent;onClicked:{page.songIndex=index;page.controller.preview(index);}onDoubleClicked:page.controller.playSong(index)}
@@ -129,23 +129,21 @@ Item {
             text:(info.tags||[]).length?info.tags.join(" / "):"暂无标签"
             width:Math.min(implicitWidth,Math.max(24*unit,metadataRow.width-identityInfo.width-trackCountInfo.implicitWidth-dateInfo.implicitWidth-6*metadataRow.spacing-3*unit))
             HoverHandler {id:tagHover}
-            Controls.ToolTip.visible:tagHover.hovered&&tagInfo.truncated
-            Controls.ToolTip.text:tagInfo.text
+            RhineToolTip {visible:tagHover.hovered&&tagInfo.truncated;text:tagInfo.text}
         }
         Rectangle {width:unit;height:13*unit;y:9*unit;color:page.muted;opacity:.4}
         Label {id:trackCountInfo;objectName:"showcaseTrackCount";height:32*unit;verticalAlignment:Text.AlignVCenter;text:(info.total||0)+" 首歌曲";font.pixelSize:13*unit}
         Rectangle {width:unit;height:13*unit;y:9*unit;color:page.muted;opacity:.4}
         Label {id:dateInfo;objectName:"showcaseDate";height:32*unit;verticalAlignment:Text.AlignVCenter;text:info.createdDate||info.date||"日期暂无";font.pixelSize:13*unit;color:page.muted
             HoverHandler {id:dateHover}
-            Controls.ToolTip.visible:dateHover.hovered
-            Controls.ToolTip.text:info.kind==="album"?"发行日期":"创建日期"
+            RhineToolTip {visible:dateHover.hovered;text:info.kind==="album"?"发行日期":"创建日期"}
         }
     }
     Row {x:26*unit;y:332*unit;spacing:9*unit
         Button {objectName:"showcasePlay";text:"播放全部";artwork:"qrc:/icons/archive-play.png";primary:true;width:Math.min(144*unit,(page.textWidth-69*unit)*.36);enabled:!controller.busy;onClicked:controller.operate("play")}
         Button {objectName:"showcaseShuffle";text:"随机播放";artwork:"qrc:/icons/archive-shuffle.png";width:Math.min(132*unit,(page.textWidth-69*unit)*.33);enabled:!controller.busy;onClicked:controller.operate("shuffle")}
         Button {objectName:"showcaseCollect";text:info.editable?"我的歌单":info.subscribed?"已收藏":"收藏";heart:true;width:Math.min(116*unit,(page.textWidth-69*unit)*.31);enabled:info.canSubscribe&&!controller.busy;onClicked:page.collect()}
-        Button {objectName:"showcaseMore";artwork:"qrc:/icons/archive-more.png";width:42*unit;onClicked:more.popup();Controls.ToolTip.visible:hovered;Controls.ToolTip.text:"更多"}
+        Button {objectName:"showcaseMore";artwork:"qrc:/icons/archive-more.png";width:42*unit;onClicked:more.popup();RhineToolTip {visible:parent.hovered;text:"更多"}}
     }
     Label {x:26*unit;y:382*unit;width:page.textWidth;text:controller.status||"";color:page.muted;font.pixelSize:10*unit}
     RecordStack {id:recordStack;objectName:"showcaseRecordStack";x:page.width-width-24*unit;y:66*unit;width:page.coverWidth;height:232*unit;unit:page.unit;controller:page.controller;background:page.background;reduced:rhine.state.reduced;editorial:true;groupTransitions:true}
@@ -160,15 +158,14 @@ Item {
     }
     Label {objectName:"showcaseTabHint";anchors.right:parent.right;anchors.rightMargin:26*unit;y:412*unit;text:"TAB  简介 / 歌曲";font.pixelSize:10.5*unit;color:page.muted}
 
-    Controls.Menu {id:more;font.family:rhineFontFamily;palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink;palette.highlight:rhine.state.dark?"#48573b":"#dfe6d5";palette.highlightedText:page.ink
-        Controls.MenuItem {objectName:"showcaseDetails";text:info.kind==="album"?"专辑详情":"歌单详情";onTriggered:controller.operate("details")}
-        Controls.MenuItem {objectName:"showcaseAppend";text:"添加到播放列表";enabled:!controller.busy;onTriggered:controller.operate("append")}
-        Controls.MenuItem {objectName:"showcaseCopy";text:info.kind==="album"?"复制专辑链接":"复制歌单链接";onTriggered:controller.operate("copy")}
-        Controls.MenuItem {objectName:"showcaseRetry";text:"重新读取资料";enabled:!controller.busy;onTriggered:controller.refresh()}
+    RhineMenu {id:more;font.family:rhineFontFamily;font.variableAxes:({"wght":400});palette.window:rhine.state.dark?"#30382a":"#f3f1e8";palette.text:page.ink;palette.highlight:rhine.state.dark?"#48573b":"#dfe6d5";palette.highlightedText:page.ink
+        RhineMenuItem {objectName:"showcaseDetails";text:info.kind==="album"?"专辑详情":"歌单详情";onTriggered:controller.operate("details")}
+        RhineMenuItem {objectName:"showcaseAppend";text:"添加到播放列表";enabled:!controller.busy;onTriggered:controller.operate("append")}
+        RhineMenuItem {objectName:"showcaseCopy";text:info.kind==="album"?"复制专辑链接":"复制歌单链接";onTriggered:controller.operate("copy")}
+        RhineMenuItem {objectName:"showcaseRetry";text:"重新读取资料";enabled:!controller.busy;onTriggered:controller.refresh()}
     }
-    Controls.Dialog {id:cancelCollect;parent:Controls.Overlay.overlay;modal:true;title:"取消收藏";width:Math.min(parent.width-32,360*page.unit);standardButtons:Controls.Dialog.Ok|Controls.Dialog.Cancel;x:(parent.width-width)/2;y:(parent.height-height)/2
-        Label {text:info.kind==="album"?"确定取消收藏这张专辑吗？":"确定取消收藏这张歌单吗？";font.pixelSize:16*page.unit}
-        background:Rectangle {radius:14*page.unit;color:rhine.state.dark?"#30382a":"#f3f1e8";border.color:"#80ffffff"}
+    RhineDialog {id:cancelCollect;unit:page.unit;title:"取消收藏";confirmText:"取消收藏";destructive:true
+        message:info.kind==="album"?"确定取消收藏这张专辑吗？":"确定取消收藏这张歌单吗？"
         onAccepted:controller.confirmUnsubscribe()
     }
 }

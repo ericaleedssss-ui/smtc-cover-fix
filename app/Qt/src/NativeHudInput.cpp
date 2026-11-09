@@ -146,12 +146,6 @@ void NativeHud::wheel(double x, double y, double delta, std::optional<int> steps
         }
         return;
     }
-    if (frame["viewer"].toBool()) {
-        if (delta != 0) {
-            m_scene.pointer("wheel", x, y, -delta * 8);
-        }
-        return;
-    }
     if (!modal.isEmpty()) {
         if (modal == "playlist-picker") {
             listOffset = std::clamp(listOffset + step, 0, std::max(0, int(music.lists[2].size()) - 7));
@@ -226,9 +220,7 @@ void NativeHud::wheel(double x, double y, double delta, std::optional<int> steps
         if (tab == "history") {
             trackOffset = std::clamp(trackOffset + step, 0, std::max(0, int(music.tracks.size()) - detailRows));
             music.loadTrackPage(trackOffset);
-        } else {
-            const auto count = m_glyphs->wrap(body(), width * 0.44 - 59, 16).size();
-            bodyOffset = std::clamp(bodyOffset + step, 0, std::max(0, int(count) - 3));
+
         }
         return;
     }
@@ -236,7 +228,5 @@ void NativeHud::wheel(double x, double y, double delta, std::optional<int> steps
         if (step != 0) {
             music.next(step);
         }
-    } else if (delta != 0) {
-        m_scene.pointer("wheel", x, y, -delta * 8);
     }
 }

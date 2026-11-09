@@ -113,8 +113,13 @@ const routes = Object.freeze({
     '/scrobble': 'scrobble',
     '/dj/hot': 'dj_hot',
     '/user/follows': 'user_follows',
+    '/user/followeds': 'user_followeds',
+    '/dj/sublist': 'dj_sublist',
     '/personal/fm/mode': 'personal_fm_mode',
     '/user/detail': 'user_detail',
+    '/user/update': 'user_update',
+    '/user/level': 'user_level',
+    '/vip/info/v2': 'vip_info_v2',
     '/user/record': 'user_record',
     '/user/event': 'user_event',
     '/user/audio': 'user_audio',
@@ -128,6 +133,7 @@ const routes = Object.freeze({
     '/simi/song': 'simi_song',
     '/simi/playlist': 'simi_playlist',
     '/comment/music': 'comment_music',
+    '/comment/like': 'comment_like',
     '/comment/album': 'comment_album',
     '/comment/hot': 'comment_hot',
     '/login/qr/key': 'login_qr_key',
@@ -248,17 +254,24 @@ const api = Object.fromEntries(
 // 原样执行上游前端的认证和用户函数；加载时仅适配 ES 模块的
 // 导入导出语法，使其能使用私有传输层。
 const vm = require('node:vm');
+const clientScripts = new Map();
 /**
  * 载入锁定的上游认证或用户模块。
  * 仅适配导入导出和请求入口，禁止改写协议实现。
  */
 function loadClient(name, request) {
-    const source = fs.readFileSync(path.join(__dirname, 'upstream', name + '.js'), 'utf8');
-    const names = [...source.matchAll(/export function (\w+)/g)].map((m) => m[1]);
-    const executable = source
-        .replace(/^import request from '@\/utils\/request';\s*/m, '')
-        .replace(/export function /g, 'function ');
-    return vm.runInNewContext(executable + '\n({' + names.join(',') + '})', {
+    let script = clientScripts.get(name);
+    if (!script) {
+        const source = fs.readFileSync(path.join(__dirname, 'upstream', name + '.js'), 'utf8');
+        const names = [...source.matchAll(/export function (\w+)/g)].map((m) => m[1]);
+        const executable = source
+            .replace(/^import request from '@\/utils\/request';\s*/m, '')
+            .replace(/export function /g, 'function ');
+        script = new vm.Script(executable + '\n({' + names.join(',') + '})');
+        clientScripts.set(name, script);
+    }
+    // Compiled source is immutable; each request keeps its own transport/cookies.
+    return script.runInNewContext({
         request,
         Date,
     });
@@ -364,16 +377,14 @@ async function dispatchRequest(message) {
         responseCookies.push(...(result.cookie || []));
         return result.body;
     };
-    const auth = loadClient('auth', request);
-    const user = loadClient('user', request);
     const p = message.params || {};
     const calls = {
-        '/login/qr/key': () => auth.loginQrCodeKey(),
-        '/login/qr/check': () => auth.loginQrCodeCheck(p.key),
-        '/user/account': () => user.userAccount(),
-        '/user/playlist': () => user.userPlaylist(p),
-        '/likelist': () => user.userLikedSongsIDs(p.uid),
-        '/album/sublist': () => user.likedAlbums(p),
+        '/login/qr/key': () => loadClient('auth', request).loginQrCodeKey(),
+        '/login/qr/check': () => loadClient('auth', request).loginQrCodeCheck(p.key),
+        '/user/account': () => loadClient('user', request).userAccount(),
+        '/user/playlist': () => loadClient('user', request).userPlaylist(p),
+        '/likelist': () => loadClient('user', request).userLikedSongsIDs(p.uid),
+        '/album/sublist': () => loadClient('user', request).likedAlbums(p),
     };
     const body = await (calls[message.route]
         ? calls[message.route]()

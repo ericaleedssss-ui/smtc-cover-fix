@@ -1,20 +1,35 @@
 bool runTaskbarChecks();
 #include "Engine.h"
+#include "AppStorage.h"
 #include "FrameProfiler.h"
 #include "MusicData.h"
 #include "MusicDiscover.h"
+#include "ArtworkNetwork.h"
+#include "ProcessMetrics.h"
+#include "TaskbarIntegration.h"
+#include <QFontDatabase>
+#include <QFontInfo>
+#include <QNetworkReply>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QImage>
+#include <QPainter>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QDir>
 #include <QFile>
+#include <QDataStream>
 #include <QJsonDocument>
 #include <QQuickItem>
 #include <QPointer>
 #include <QThread>
 #include <QQuickWindow>
 #include <QQuickItemGrabResult>
+#include <QQmlComponent>
+#include <QQmlContext>
 #include <QDebug>
 #include <QWheelEvent>
 #include <QMouseEvent>
@@ -31,6 +46,7 @@ bool runTaskbarChecks();
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <psapi.h>
 #include <cstdio>
 #endif
 
@@ -41,7 +57,6 @@ bool runTaskbarChecks();
  * 场景增强和窗口 Chrome 测试已移至可选的手动验证流程。
  */
 
-bool runSceneEnhancementChecks(Engine &backend, QQuickWindow *window, const QString &output);
 
 namespace {
 #ifdef Q_OS_WIN
@@ -274,18 +289,9 @@ int runUiChecks(Engine &backend, QQuickWindow *window, const QString &output, Fr
     settle();
     const auto frameData = backend.frame();
     check(!frameData.isEmpty(), "frame data available");
-    check(frameData.contains("stats"), "frame stats present");
+    check(!frameData.contains("draws"), "2D navigation has no geometry draws");
 
     // === 测试 10: 场景增强开关 ===
-    const bool initialEnhancement = hud.sceneEnhancement;
-    hud.sceneEnhancement = !initialEnhancement;
-    backend.step(50);
-    settle();
-    check(hud.sceneEnhancement != initialEnhancement, "scene enhancement toggle");
-
-    hud.sceneEnhancement = initialEnhancement;
-    backend.step(50);
-
     // === 测试 11: 音乐数据加载 ===
     if (!music.tracks.isEmpty()) {
         check(music.tracks.first().toObject().contains("id"), "music track data structure");
@@ -303,12 +309,13 @@ int runUiChecks(Engine &backend, QQuickWindow *window, const QString &output, Fr
     settle();
     check(window->visibility() == initialVisibility, "fullscreen restore");
 
-    // 场景增强使用同一真实窗口继续验收，不重复创建应用实例。
-    ok &= runSceneEnhancementChecks(backend, window, output.isEmpty() ? QString() : output + "/enhancement");
 
     qInfo() << "UI core functionality tests:" << testCount << (ok ? "passed" : "FAILED");
     return ok ? 0 : 1;
 }
+
+#include "UiAuditChecks.inc"
+#include "PerformanceChecks.inc"
 
 // 使用真正的 QML 场景验收毛玻璃；离线数据不会接触用户账号。
 int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &output) {
@@ -339,6 +346,7 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
         qCritical() << "Frosted UI: scene not ready";
         return 1;
     }
+    if(qEnvironmentVariableIntValue("RHINE_QA_PERFORMANCE")==1) return runPerformanceChecks(backend,window,output);
     auto &hud = backend.app->hud;
     auto &music = backend.app->music;
     const auto track = MusicData::item("song", "22693408", "宇宙船はどこへいった?", "Serani Poji");
@@ -353,7 +361,6 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     hud.themeMode = "light";
     hud.dark = false;
     backend.scene.theme(false);
-    hud.sceneEnhancement = true;
     window->resize(1280, 720);
     QDir().mkpath(output);
     const auto refresh = [&] {
@@ -370,6 +377,1172 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
             ok = false;
         }
     };
+
+    #include "AvatarDecodeChecks.inc"
+    if(qEnvironmentVariableIntValue("RHINE_QA_UI_AUDIT")==1) return runUiAudit(backend,window,output);
+    if(qEnvironmentVariableIntValue("RHINE_QA_PROFILE_ONLY")==1||qEnvironmentVariableIntValue("RHINE_QA_CLOUDY_ONLY")==1) {
+        const std::function<QQuickItem*(QQuickItem*,QString)> findVisual=[&](QQuickItem *item,QString name)->QQuickItem*{
+            if(item->objectName()==name)return item;for(auto *child:item->childItems())if(auto *found=findVisual(child,name))return found;return nullptr;
+        };
+        const auto click=[&](QQuickItem *item){
+            if(!item||!item->isVisible())return false;
+            const auto p=item->mapToScene(QPointF(item->width()/2,item->height()/2));
+            QMouseEvent down(QEvent::MouseButtonPress,p,window->mapToGlobal(p.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+            QMouseEvent up(QEvent::MouseButtonRelease,p,window->mapToGlobal(p.toPoint()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+            QCoreApplication::sendEvent(window,&down);QCoreApplication::sendEvent(window,&up);settle(400);return true;
+        };
+        QStringList images;
+        for(int i=0;i<12;++i){
+            QImage image(360,360,QImage::Format_RGB32);QPainter p(&image);
+            QLinearGradient g(0,0,360,360);g.setColorAt(0,QColor::fromHsv((i*37+20)%360,105,180));g.setColorAt(1,QColor::fromHsv((i*37+95)%360,100,70));
+            p.fillRect(image.rect(),g);p.setPen(QPen(QColor("#b7dab8"),3));
+            for(int n=0;n<7;++n)p.drawEllipse(QPointF(160+i*4,165),30+n*25,30+n*25);
+            p.end();const auto path=output+QString("/cover-%1.png").arg(i);image.save(path);images.append(QUrl::fromLocalFile(path).toString());
+        }
+        const auto webp=output+"/avatar.webp";
+        check(QImage(QUrl(images[0]).toLocalFile()).save(webp,"WEBP"),"the packaged image plugin supports WebP avatars");
+        {
+            QTcpServer server;int hits=0;
+            check(server.listen(QHostAddress::LocalHost,0),"artwork cache fixture binds only to loopback");
+            QObject::connect(&server,&QTcpServer::newConnection,&server,[&]{
+                while(auto *socket=server.nextPendingConnection()) {
+                    QObject::connect(socket,&QTcpSocket::disconnected,socket,&QObject::deleteLater);
+                    QObject::connect(socket,&QTcpSocket::readyRead,socket,[&,socket]{
+                        const auto request=socket->property("request").toByteArray()+socket->readAll();socket->setProperty("request",request);
+                        if(!request.contains("\r\n\r\n")||socket->property("answered").toBool())return;
+                        socket->setProperty("answered",true);++hits;
+                        QFile file(QUrl(images[0]).toLocalFile());file.open(QIODevice::ReadOnly);const auto bytes=file.readAll();
+                        socket->write("HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nCache-Control: public, max-age=3600\r\nContent-Length: "+QByteArray::number(bytes.size())+"\r\nConnection: close\r\n\r\n"+bytes);socket->disconnectFromHost();
+                    });
+                }
+            });
+            const QUrl address(QString("http://127.0.0.1:%1/avatar.png").arg(server.serverPort()));
+            for(int attempt=0;attempt<2;++attempt){
+                ArtworkNetwork network(nullptr);
+                static_cast<QNetworkDiskCache*>(network.cache())->setCacheDirectory(output+"/cache-reopen");
+                QNetworkRequest request(address);request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,QNetworkRequest::PreferCache);
+                auto *reply=network.get(request);QElapsedTimer elapsed;elapsed.start();
+                while(!reply->isFinished()&&elapsed.elapsed()<5000)settle(20);
+                check(reply->isFinished()&&reply->error()==QNetworkReply::NoError&&!QImage::fromData(reply->readAll()).isNull(),"artwork downloads and decodes through the shared network cache");
+                if(attempt==1)check(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool()&&hits==1,"reopening the image manager reuses disk cache without another download");
+            }
+        }
+        const auto wait=[&]{settle(1600);refresh();};
+        if(qEnvironmentVariableIntValue("RHINE_QA_CLOUDY_ONLY")!=1){
+        music.uid="42";music.nickname="Erica_P";hud.reduced=false;
+        int albumFailures=0,writes=0,rankType=-1;bool signatureFails=false;QJsonObject savedFields;
+        backend.host.fixture=[&](QString route,QJsonObject args){
+            QJsonObject b{{"code",200}};
+            if(route=="/user/detail"){
+                b["profile"]=QJsonObject{{"nickname",args["uid"].toString()=="42"?"Erica_P":"另一位听众"},{"avatarUrl",images[3]},{"signature",QStringLiteral("Good luck to you.\n在音乐里，收藏每一个值得停留的瞬间。").repeated(5)},{"follows",31},{"followeds",8},{"artistId",123}};
+                auto profile=b["profile"].toObject();
+                profile["gender"]=1;profile["birthday"]=-1;profile["province"]=110000;profile["city"]=110101;b["profile"]=profile;
+            }else if(route=="/user/playlist"){
+                QJsonArray rows;const int offset=args["offset"].toInt();
+                for(int i=offset;i<std::min(offset+12,24);++i)rows.append(QJsonObject{{"id",700+i},{"name",QString("声音与记忆 %1").arg(i+1)},{"coverImgUrl",images[i%12]},{"trackCount",20+i},{"privacy",i==14?10:0},{"creator",QJsonObject{{"userId",i<15?"42":"99"},{"nickname","Erica_Su"}}}});
+                b["playlist"]=rows;b["more"]=offset==0;
+            }else if(route=="/album/sublist"||route=="/artist/sublist"){
+                if(route=="/album/sublist"&&albumFailures++==0)b["code"]=500;
+                else{
+                    QJsonArray rows;
+                    for(int i=0;i<11;++i)rows.append(QJsonObject{{"id",1000+i},{"name",QString(route=="/album/sublist"?"The Upside Down %1":"Artist %1").arg(i+1)},{"picUrl",images[(i+4)%12]},{"artists",QJsonArray{QJsonObject{{"id",123},{"name","完美倒立"}}}}});
+                    b["data"]=rows;b["count"]=11;b["hasMore"]=false;
+                }
+            }else if(route=="/dj/sublist")b["djRadios"]=QJsonArray{QJsonObject{{"id",901},{"name","城市与声音"},{"picUrl",images[5]},{"programCount",12},{"dj",QJsonObject{{"userId",99},{"nickname","Radio Host"}}}}};
+            else if(route=="/user/follows"||route=="/user/followeds"){
+                QJsonArray users;
+                for(int i=0;i<8;++i)users.append(QJsonObject{{"userId",99+i},{"nickname",QString("Another Listener %1").arg(i)},{"avatarUrl",images[i%12]},{"signature",QStringLiteral("第一行简介\n第二行简介与很长的内容 ").repeated(20)}});
+                b[route=="/user/follows"?"follow":"followeds"]=users;
+            }
+            else if(route=="/user/update"){++writes;savedFields=args;b["code"]=signatureFails?500:200;}
+            else if(route=="/dj/program")b["programs"]=QJsonArray{QJsonObject{{"name","第一期"},{"coverUrl",images[5]},{"mainSong",QJsonObject{{"id",1901},{"name","第一期"}}}}};
+            else if(route=="/artist/detail")b["data"]=QJsonObject{{"user",QJsonObject{{"userId",99}}}};
+            else if(route=="/native/netease/detail"){
+                auto item=args["args"].toArray().first().toObject();item["cover"]=images[4];item["description"]="独立音乐与生活之间。";item["trackCount"]=36;
+                QJsonArray songs,ids;for(int i=0;i<36;++i){auto song=MusicData::item("song",QString::number(8000+i),QString("沿途的声音 %1").arg(i+1),"完美倒立");song["duration"]=180000;song["cover"]=images[i%12];songs.append(song);ids.append(song["id"]);}
+                b["value"]=QJsonArray{item,songs,ids};
+            }else if(route=="/native/netease/artistAlbums"){
+                QJsonArray rows;for(int i=0;i<11;++i){auto album=MusicData::item("album",QString::number(1000+i),QString("The Upside Down %1").arg(i+1),"完美倒立");album["cover"]=images[i%12];rows.append(album);}b["value"]=QJsonObject{{"items",rows},{"rawCount",11},{"more",false}};
+            }else if(route=="/native/netease/likedIDs")b["value"]=QJsonArray{};
+            else if(route.startsWith("/record/recent/")){
+                QJsonArray rows;for(int i=0;i<4;++i)rows.append(QJsonObject{{"data",QJsonObject{{"id",1800+i},{"name",QString("Recent %1").arg(i)},{"picUrl",images[i]}}},{"playTime",1700000000000.0}});
+                b["data"]=QJsonObject{{"list",rows}};
+            }else if(route=="/user/record"){
+                rankType=args["type"].toInt();QJsonArray rows;
+                for(int i=0;i<4;++i)rows.append(QJsonObject{{"song",QJsonObject{{"id",1800+i},{"name",QString("Ranking %1").arg(i)},{"al",QJsonObject{{"picUrl",images[i]}}}}},{"playCount",100-i}});
+                b[rankType==1?"weekData":"allData"]=rows;
+            }
+            if(route.endsWith("/sub")||route=="/like"||route=="/follow")++writes;
+            return QJsonObject{{"body",b}};
+        };
+        backend.action("profile:open:42");wait();
+        auto *page=findVisual(window->contentItem(),"userProfilePage");
+        check(page&&hud.profileFilter=="all"&&hud.profileCollections["playlists"].toObject()["rows"].toArray().size()==12,"overview loads profile and independent collection snapshots");
+        check(!hud.profileCollections["artists"].toObject()["rows"].toArray().isEmpty(),"followed artists are present in the overview");
+        check(!hud.profileCollections["albums"].toObject()["error"].toString().isEmpty(),"one failed collection does not erase the other groups");
+        backend.action("profile:collection-retry:albums");wait();
+        check(hud.profileCollections["albums"].toObject()["rows"].toArray().size()==11,"failed collection retries independently");
+        auto *surface=findVisual(window->contentItem(),"profileWindowBackground");
+        check(surface&&surface->isVisible()&&surface->width()==window->width()&&surface->height()==window->height()&&
+              surface->property("color").value<QColor>()==QColor(Qt::white)&&page&&page->x()==0&&page->width()==window->width(),
+              "profile fills the entire window with pure white behind navigation and player");
+        {const auto image=window->grabWindow();bool whiteEdges=true;
+         for(const auto point:{QPoint(2,2),QPoint(image.width()-3,2),QPoint(2,image.height()/2),QPoint(image.width()-3,image.height()/2),QPoint(2,image.height()-3),QPoint(image.width()-3,image.height()-3)})
+             whiteEdges&=image.pixelColor(point)==QColor(Qt::white);
+         check(whiteEdges,"profile window edges expose no room background");}
+        window->grabWindow().save(output+"/profile-light.png");
+        auto *card=findVisual(page,"profileCard_playlists_0");const auto before=music.player.current;
+        if(card){const auto p=card->mapToScene(QPointF(card->width()/2,card->height()/2));QMouseEvent move(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);settle(350);}
+        auto *play=card?findVisual(card,"profileCardPlay"):nullptr;
+        check(play&&play->opacity()>.9&&music.player.current==before,"cover hover reveals a separate play control without starting music");
+        check(click(findVisual(page,"profileSignature")),"signature is clickable");
+        auto *bio=page?page->findChild<QObject*>("profileSignatureEditor"):nullptr;
+        check(bio&&bio->property("visible").toBool(),"own signature opens the editable signature form");
+        QMetaObject::invokeMethod(page,"dismissTopOverlay");settle(250);
+        auto *expand=findVisual(page,"profileExpand_created");check(click(expand),"created playlists expose an expand control");
+        check(page&&page->property("unfolded").toMap()["created"].toBool(),"expand animation keeps the group expanded");
+        auto *search=findVisual(page,"profileSearch");if(search)search->setProperty("text","声音与记忆 24");wait();
+        click(search);check(search&&search->hasActiveFocus(),"clicking search gives the input keyboard focus");
+        click(findVisual(page,"profileNickname"));check(search&&!search->hasActiveFocus(),"clicking outside search releases the focus ring");
+        check(hud.profileCollections["playlists"].toObject()["rows"].toArray().size()==24,"search loads remaining pages rather than silently searching the first page");
+        check(findVisual(page,"profileCard_playlists_23"),"search returns a playlist from the final page with its original identity");
+        if(search)search->setProperty("text","");settle(400);
+        auto *reading=findVisual(page,"profileReading");if(reading)reading->setProperty("contentY",400);
+        settle(200);auto *bar=findVisual(page,"profileScrollBar");check(bar&&bar->opacity()>.8,"profile scrolling reveals the overlay scrollbar");
+        {const QPointF p(5,5);QMouseEvent move(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);}settle(1500);
+        check(bar&&bar->opacity()<.05,"idle profile scrollbar fades naturally");
+        window->grabWindow().save(output+"/profile-collections.png");
+        if(reading)reading->setProperty("contentY",0);
+        backend.action("profile:collection-item:playlists:0");wait();
+        qInfo()<<"Profile playlist state"<<music.directoryInfo<<music.current["kind"]<<MusicPlayer::identity(before)<<MusicPlayer::identity(music.player.current);
+        check(music.directoryInfo&&music.current["kind"]=="playlist"&&MusicPlayer::identity(music.player.current)==MusicPlayer::identity(before),"collection card opens real playlist details without changing playback");
+        auto *fade=findVisual(window->contentItem(),"magazineEdgeFade");
+        check(fade&&fade->property("bottomFadePx").toDouble()==0&&fade->property("fadePx").toDouble()>0,"playlist disables only the bottom fade");
+        check(findVisual(window->contentItem(),"playerMagazineTile"),"player glass captures the actual scrolling magazine");
+        auto *list=findVisual(window->contentItem(),"magazineTrackList");if(list)list->setProperty("contentY",330);
+        settle(350);const auto withRows=window->grabWindow();
+        if(list)list->setOpacity(0);settle(250);const auto withoutRows=window->grabWindow();if(list)list->setOpacity(1);settle(250);
+        qint64 diff=0;
+        const auto region=QRect(qRound(withRows.width()*.15),qRound(withRows.height()*1005/1080.),qRound(withRows.width()*.65),qRound(withRows.height()*40/1080.));
+        for(int y=region.top();y<region.bottom();++y)for(int x=region.left();x<region.right();++x){const auto a=withRows.pixelColor(x,y),b=withoutRows.pixelColor(x,y);diff+=qAbs(a.red()-b.red())+qAbs(a.green()-b.green())+qAbs(a.blue()-b.blue());}
+        qInfo()<<"Player glass pixel difference"<<diff;check(diff>1000,"scrolling rows visibly affect the player glass interior");withRows.save(output+"/playlist-player-glass.png");withoutRows.save(output+"/playlist-player-without-rows.png");
+        backend.action("back");wait();page=findVisual(window->contentItem(),"userProfilePage");
+        qInfo()<<"Profile return state"<<hud.modal<<(page?page->property("unfolded"):QVariant())<<window->property("profileViewMemory");
+        check(page&&hud.modal=="profile"&&page->property("unfolded").toMap()["created"].toBool(),"returning from playlist restores the profile expansion state");
+        click(findVisual(page,"profileFollows"));wait();check(hud.profileRows.size()==8&&hud.profileRows.first().toObject()["kind"]=="user","following count opens real user rows");
+        page=findVisual(window->contentItem(),"userProfilePage");
+        auto *firstUser=findVisual(page,"profileCard_legacy_0"),*secondUser=findVisual(page,"profileCard_legacy_1");
+        auto *credit=firstUser?findVisual(firstUser,"profileCardCredit"):nullptr;
+        check(firstUser&&secondUser&&firstUser->property("columnCount").toInt()>=2&&
+              qAbs(firstUser->mapToScene(QPointF()).y()-secondUser->mapToScene(QPointF()).y())<1&&
+              secondUser->mapToScene(QPointF()).x()>=firstUser->mapToScene(QPointF(firstUser->width(),0)).x(),"social entries form aligned horizontal rows in a responsive multi-column grid");
+        check(credit&&!credit->property("text").toString().contains('\n')&&credit->y()+credit->height()<=firstUser->height(),"multiline long user signatures stay inside their own row");
+        auto *artwork=firstUser?findVisual(firstUser,"profileCardArtwork"):nullptr;
+        check(artwork&&artwork->property("status").toInt()==1,"visible user artwork has decoded successfully");
+        if(artwork){
+            const auto missing=output+"/retry-avatar.png";QFile::remove(missing);
+            artwork->setProperty("url",QUrl::fromLocalFile(missing).toString());settle(300);
+            check(artwork->property("status").toInt()==3,"a missing avatar enters the retryable error state");
+            QFile::copy(QUrl(images[0]).toLocalFile(),missing);settle(2300);
+            check(artwork->property("status").toInt()==1,"a temporarily unavailable avatar recovers automatically");
+            artwork->setProperty("requested",false);settle(100);
+            check(artwork->property("source").toUrl().isEmpty(),"retry preserves the offscreen image source binding");
+            artwork->setProperty("url",images[1]);artwork->setProperty("requested",true);settle(400);
+            check(artwork->property("status").toInt()==1&&artwork->property("source").toUrl()==QUrl(images[1]),"a reused avatar follows its new identity after retry");
+            artwork->setProperty("url",QUrl::fromLocalFile(webp).toString());settle(400);
+            check(artwork->property("status").toInt()==1,"WebP avatars render through the actual QML artwork component");
+            const auto publicFile=qEnvironmentVariable("RHINE_QA_PUBLIC_AVATARS");
+            if(!publicFile.isEmpty()){
+                QFile file(publicFile);file.open(QIODevice::ReadOnly);const auto urls=QJsonDocument::fromJson(file.readAll()).array();
+                check(!urls.isEmpty(),"the public avatar probe contains anonymous test samples");
+                for(const auto &url:urls){
+                    QElapsedTimer elapsed;elapsed.start();artwork->setProperty("url",url.toString());settle(50);
+                    while(artwork->property("status").toInt()!=1&&elapsed.elapsed()<16000)settle(50);
+                    qInfo()<<"Public avatar QML decode ms"<<elapsed.elapsed();
+                    check(artwork->property("status").toInt()==1,"a public CDN avatar loads and decodes in the packaged QML component");
+                }
+            }
+            artwork->setProperty("url",images[1]);settle(300);
+        }
+        window->grabWindow().save(output+"/profile-social-long-signatures.png");
+        auto *messageButton=firstUser?findVisual(firstUser,"profileMessageButton"):nullptr;
+        check(messageButton&&click(messageButton),"social card exposes a usable private-message action");settle(400);
+        auto *messages=qobject_cast<MessageCenter*>(backend.messages());
+        check(messages&&messages->state()["open"].toBool()&&messages->state()["peer"].toString()=="99"&&hud.profileSection=="follows","social message opens the actual conversation without leaving the profile");
+        if(messages)messages->setOpen(false);settle(400);
+        for(const auto size:{QSize(900,720),QSize(1600,900),QSize(1920,1080)}){
+            window->resize(size);settle(450);firstUser=findVisual(page,"profileCard_legacy_0");secondUser=findVisual(page,"profileCard_legacy_1");
+            const int columns=firstUser?firstUser->property("columnCount").toInt():0;
+            const int expected=size.width()==900?1:size.width()==1600?3:3;
+            check(firstUser&&secondUser&&columns==expected,"social grid reduces columns for narrow windows and uses three on wide windows");
+            auto *rowCredit=firstUser?findVisual(firstUser,"profileCardCredit"):nullptr;
+            auto *rowMessage=firstUser?findVisual(firstUser,"profileMessageButton"):nullptr;
+            check(rowCredit&&rowMessage&&rowCredit->x()+rowCredit->width()<rowMessage->x()&&rowMessage->x()+rowMessage->width()<=firstUser->width(),"social description and private-message control retain separate aligned bounds");
+            window->grabWindow().save(output+QString("/profile-social-grid-%1.png").arg(size.width()));
+        }
+        window->resize(1280,720);settle(400);
+        backend.action("profile:section:followers");wait();page=findVisual(window->contentItem(),"userProfilePage");
+        firstUser=findVisual(page,"profileCard_legacy_0");
+        check(firstUser&&firstUser->property("columnCount").toInt()>=2,"followers use the same responsive grid as follows");
+        backend.action("profile:section:follows");wait();page=findVisual(window->contentItem(),"userProfilePage");
+        backend.action("back");wait();check(hud.modal=="profile"&&hud.profileID=="42"&&hud.profileFilter=="all","back from a social section returns to the same profile overview");
+        backend.action("profile:section:follows");wait();page=findVisual(window->contentItem(),"userProfilePage");
+        click(findVisual(page,"profileCard_legacy_0"));wait();
+        check(hud.profileID=="99","following card opens the actual other profile");
+        backend.action("back");wait();
+        check(hud.profileID=="42"&&hud.profileSection=="follows","back restores the preceding user and social section");
+        backend.action("profile:filter:recent");wait();page=findVisual(window->contentItem(),"userProfilePage");
+        auto *heading=findVisual(page,"profileHeading_legacy");
+        check(heading&&heading->property("text").toString()==QStringLiteral("最近歌单"),"recent playlists use their own section heading");
+        auto *recentFirst=findVisual(page,"profileCard_legacy_0"),*recentSecond=findVisual(page,"profileCard_legacy_1");
+        check(recentFirst&&recentSecond&&recentFirst->x()==recentSecond->x()&&recentSecond->y()>recentFirst->y(),"listening history uses a single vertical column");
+        backend.action("profile:recent-kind:ranking");wait();page=findVisual(window->contentItem(),"userProfilePage");
+        auto *period=findVisual(page,"profileRankPeriod");heading=findVisual(page,"profileHeading_legacy");
+        check(rankType==0&&period&&period->isVisible()&&heading&&period->mapToScene(QPointF()).y()>heading->mapToScene(QPointF()).y(),"all-time ranking selector sits below the ranking heading");
+        click(period?findVisual(period,"profileSegment_week"):nullptr);wait();
+        check(rankType==1&&hud.profileRankPeriod=="week","week selector requests the matching upstream ranking");
+        window->grabWindow().save(output+"/profile-ranking-week.png");
+        backend.action("back");wait();check(hud.modal=="profile"&&hud.profileFilter=="all","back from history returns to the profile overview");
+        backend.action("profile:filter:all");wait();
+        backend.action("profile:artist");wait();
+        check(findVisual(window->contentItem(),"artistProfilePage")&&music.current["kind"]=="artist","artist entrance opens the matching profile design");
+        window->grabWindow().save(output+"/artist-songs.png");
+        backend.action("music:artist-tab:albums");wait();
+        check(findVisual(window->contentItem(),"profileCard_artistAlbums_0"),"artist albums retain their real navigation identities");
+        window->grabWindow().save(output+"/artist-albums.png");
+        backend.action("back");wait();
+        backend.action("profile:open:99");wait();
+        check(hud.profileCollections.keys()==QStringList{"playlists"},"other profiles do not request the account's private subscriptions");
+        const auto publicRows=hud.profileCollections["playlists"].toObject()["rows"].toArray();
+        bool publicOnly=true;for(const auto &row:publicRows)publicOnly&=row.toObject()["owned"].toBool();
+        check(publicOnly,"other profiles only show their public creations");
+        window->grabWindow().save(output+"/other-profile.png");
+        backend.action("profile:open:42");wait();
+        for(bool dark:{false,true})for(auto size:{QSize(1280,720),QSize(1600,900)}){
+            window->resize(size);hud.dark=dark;hud.themeMode=dark?"dark":"light";backend.scene.theme(dark);refresh();
+            page=findVisual(window->contentItem(),"userProfilePage");
+            check(page&&page->width()>0&&findVisual(page,"profileNickname"),"profile renders across both themes and window sizes");
+            window->grabWindow().save(output+QString("/profile-%1-%2.png").arg(dark?"dark":"light").arg(size.width()));
+        }
+        check(writes==0,"browsing profiles and opening albums issues no account writes");
+        backend.saveProfileSignature(QString(301,'x'));wait();
+        check(writes==0&&!hud.profileSignatureError.isEmpty(),"oversized signatures never issue an account write");
+        signatureFails=true;const auto previousSignature=hud.profile["signature"];
+        backend.saveProfileSignature("Must not be committed");wait();
+        check(writes==1&&hud.profile["signature"]==previousSignature&&!hud.profileSignatureSaving&&!hud.profileSignatureError.isEmpty(),"failed signature saves preserve the original and allow retry");
+        signatureFails=false;
+        backend.saveProfileSignature("Updated signature");wait();
+        check(writes==2&&hud.profile["signature"].toString()=="Updated signature"&&!hud.profileSignatureSaving,"explicit signature save updates the account after upstream success");
+        check(savedFields["nickname"]=="Erica_P"&&savedFields["birthday"]==-1&&savedFields["city"]==110101,"signature updates preserve the other profile fields");
+        const auto defaultFont=backend.uiFont();
+        const auto choices=backend.uiFonts();
+        check(choices.contains("LXGW WenKai"),"Cloudy's bundled WenKai font is available with its native text metrics");
+        auto alternative=QString("Microsoft YaHei UI");if(!choices.contains(alternative))alternative=choices.value(0);
+        backend.setUiFont(alternative);settle(500);
+        check(backend.uiFont()==alternative&&backend.glyphs()->family()==alternative,"font selection updates QML and native text together");
+        backend.action("interface:fonts");settle(600);
+        check(findVisual(window->contentItem(),"interfaceFontList"),"font chooser is available from the application settings");
+        window->grabWindow().save(output+"/interface-font-settings.png");
+        window->resize(1280,720);settle(600);window->grabWindow().save(output+"/interface-font-settings-small.png");
+        backend.importUiFont(QUrl::fromLocalFile(backend.host.root+"/RhineMiSans-regular.otf"));settle(400);
+        check(backend.fontError().isEmpty()&&backend.uiFonts().contains(backend.uiFont()),"local font import validates and selects the imported font");
+        backend.importUiFont(QUrl::fromLocalFile(output+"/missing.ttf"));settle(100);
+        check(!backend.fontError().isEmpty(),"unreadable local fonts produce an explicit error");
+        backend.resetUiFont();backend.action("back");wait();
+        check(backend.uiFont()==defaultFont&&backend.glyphs()->family()==defaultFont,"reset restores the same reference font for QML and native glyph metrics");
+        }
+        music.uid="42";music.nickname="Erica_P";
+        if(qEnvironmentVariableIntValue("RHINE_QA_DETAIL_ONLY")!=1){
+        backend.action("settings");wait();
+        auto *settingsPage=findVisual(window->contentItem(),"settingsPage");
+        check(settingsPage,"categorized settings loads without replacing the playback session");
+        window->grabWindow().save(output+"/settings-account.png");
+        auto *settingsRoot=settingsPage?settingsPage->parentItem():nullptr;
+        check(click(findVisual(window->contentItem(),"settingsCategory_podcast")),"real pointer switches to podcast settings");settle(300);
+        check(findVisual(window->contentItem(),"settingsPodcastSpeed"),"podcast settings provide a real speed selector");
+        backend.setPlayerPreference("podcast-speed","1.5");settle(100);
+        check(music.player.podcastSpeed==1.5&&backend.host.mediaState()["rate"].toDouble()==1,"podcast speed persists without speeding up ordinary music");
+        auto episode=MusicData::item("song","11223","Podcast episode");episode["programID"]="987";const auto previousTrack=music.player.current;music.player.current=episode;
+        backend.setPlayerPreference("podcast-speed","1.75");settle(100);
+        check(backend.host.mediaState()["rate"].toDouble()==1.75,"podcast speed applies immediately to an episode");
+        music.player.current=previousTrack;backend.setPlayerPreference("podcast-speed","1");
+        check(click(findVisual(window->contentItem(),"settingsCategory_playback")),"real pointer switches to playback settings");settle(300);
+        check(findVisual(window->contentItem(),"settingsOutput")&&findVisual(window->contentItem(),"settingsSleep"),"playback settings expose output selection and sleep timing");
+        backend.setSleep(15);check(backend.sleepMinutes()==15,"sleep timer accepts the source time choices");backend.setSleep(-1);check(backend.sleepMinutes()==-1,"sleep timer supports stopping after the current song");
+        const auto sleepQueue=music.player.queue;music.player.onEnd();
+        check(backend.sleepMinutes()==0&&music.player.queue==sleepQueue&&!backend.host.mediaState()["requested"].toBool(),"sleep-after-song consumes the timer and pauses without advancing the queue");backend.setSleep(0);
+        click(findVisual(window->contentItem(),"settingsCategory_appearance"));settle(400);
+        window->grabWindow().save(output+"/settings-appearance.png");
+        click(findVisual(window->contentItem(),"settingsCategory_effects"));settle(400);
+        const auto effectsBefore=backend.visualPreferences();
+        check(click(findVisual(window->contentItem(),"effect_powerSaver"))&&backend.visualPreferences()["powerSaver"].toBool()&&!backend.visualPreferences()["liquidGlass"].toBool()&&!backend.visualPreferences()["npLight"].toBool(),"power saver switches off the real costly effects");
+        check(click(findVisual(window->contentItem(),"effect_powerSaver"))&&backend.visualPreferences()==effectsBefore,"leaving power saver restores the exact previous effects");
+        backend.setVisualPreference("glassBend",.71);settle(100);
+        check(std::abs(backend.visualPreferences()["glassBend"].toDouble()-.71)<.001,"refraction slider state accepts a numeric visual preference");
+        backend.setVisualPreference("glassBend",.3);window->grabWindow().save(output+"/settings-effects.png");
+        auto *settingsSearch=findVisual(window->contentItem(),"settingsSearch");
+        if(settingsSearch)settingsSearch->setProperty("text",QStringLiteral("玻璃"));settle(200);
+        check(findVisual(window->contentItem(),"effect_liquidGlass")&&findVisual(window->contentItem(),"effect_glassPanels"),"settings search includes visual effects across categories");
+        if(settingsSearch)settingsSearch->setProperty("text",QString());
+        click(findVisual(window->contentItem(),"settingsCategory_appearance"));
+        backend.action("interface:fonts");settle(200);backend.action("back");settle(300);
+        auto *returnedSettings=findVisual(window->contentItem(),"settingsPage");
+        check(returnedSettings&&returnedSettings->parentItem()->property("category").toString()=="appearance","returning from font selection preserves the settings category");
+        backend.action("back");wait();
+        }
+        backend.resetUiFont();
+        auto detail=MusicData::item("song","667788","歌曲详情 / Song Detail","Rhine Artist");detail["cover"]=images[2];detail["album"]="Live Session";detail["albumID"]="6677";detail["wiki"]=QStringLiteral("这是一段真实数据结构的歌曲百科。\n").repeated(18);detail["artists"]=QJsonArray{QJsonObject{{"id","123"},{"name","Rhine Artist"}}};
+        const auto playingBeforeDetail=music.player.current;
+        backend.action("music:context-comments:"+QString::fromUtf8(QUrl::toPercentEncoding(QString::fromUtf8(QJsonDocument(detail).toJson(QJsonDocument::Compact)))));wait();
+        auto *detailPage=findVisual(window->contentItem(),"songDetailPage");
+        if(!detailPage||music.player.current!=playingBeforeDetail)qInfo()<<"Detail entry diagnostics"<<bool(detailPage)<<playingBeforeDetail<<music.player.current;
+        check(detailPage&&music.player.current==playingBeforeDetail,"the full detail replacement opens without starting the browsed song");
+        if(detailPage)detailPage->setProperty("tab","lyrics");settle(400);
+        window->grabWindow().save(output+"/song-detail-lyrics.png");
+        if(detailPage)detailPage->setProperty("tab","stage");settle(400);
+        window->grabWindow().save(output+"/song-detail-stage.png");
+        auto *menuController=qobject_cast<PlaylistMagazine*>(backend.magazine());
+        menuController->showSongMenu("detail",0,MusicPlayer::identity(detail),400,150);settle(400);
+        window->grabWindow().save(output+"/song-detail-menu.png");
+        menuController->songAction("copy-title-artist");settle(100);
+        check(QGuiApplication::clipboard()->text()=="歌曲详情 / Song Detail - Rhine Artist","menu copies the captured song title and artist");
+        QJsonArray lyricRows;for(int i=0;i<24;++i){QJsonArray words;const QStringList parts{QStringLiteral("周"),QStringLiteral("末"),QStringLiteral("还"),QStringLiteral("有"),QStringLiteral("几"),QStringLiteral("天")};for(int n=0;n<parts.size();++n)words.append(QJsonObject{{"text",parts[n]},{"startMs",i*4000+n*450},{"endMs",i*4000+(n+1)*450}});lyricRows.append(QJsonObject{{"startMs",i*4000},{"endMs",i*4000+3000},{"text",parts.join("")},{"translation",QString("A translated line %1").arg(i+1)},{"words",words}});}
+        const QJsonObject document{{"version",1},{"timing","word"},{"offsetMs",0},{"plainText","Timed stage fixture"},{"lines",lyricRows}};
+        backend.host.fixture=[&](QString route,QJsonObject){return QJsonObject{{"body",QJsonObject{{"code",200},{"value",route=="/native/netease/lyrics"?QJsonValue(document):QJsonValue("")}}}};};
+        music.player.current=detail;music.player.queue={detail};music.player.index=0;music.player.loading=false;music.player.failed=false;music.player.changed();music.player.lyrics.load(detail,true);settle(700);music.player.lyrics.sync(1600);music.player.changed();refresh();
+        check(backend.nowPlaying()->property("lines").toList().size()==24,"full player receives actual timed lyric rows from the lyric controller");
+        detailPage=findVisual(window->contentItem(),"songDetailPage");
+        if(detailPage)detailPage->setProperty("tab","lyrics");settle(150);
+        music.player.mode="all";music.player.shuffleEnabled=false;refresh();
+        check(click(findVisual(detailPage,"detailShuffle"))&&music.player.shuffled()&&music.player.mode=="all","shuffle toggles independently without changing the repeat setting");
+        check(click(findVisual(detailPage,"detailRepeat"))&&music.player.shuffled()&&music.player.mode=="one","repeat cycles independently while preserving shuffle");
+        click(findVisual(detailPage,"detailShuffle"));
+        check(!music.player.shuffled()&&music.player.mode=="one","turning shuffle off preserves single-song repeat");
+        music.player.mode="all";refresh();
+        if(detailPage)detailPage->setProperty("tab","lyrics");settle(500);window->grabWindow().save(output+"/song-detail-timed-lyrics.png");
+        if(qEnvironmentVariableIntValue("RHINE_QA_DETAIL_SOURCE")==1){
+            check(hud.lyricRows.isEmpty()&&!hud.lyricBounds&&!hud.readerBounds,"retired song detail and lyric reader no longer render underneath the replacement");
+            auto *words=findVisual(detailPage,"detailLyricWords_0");
+            const auto before=words?words->property("text").toString():QString();
+            music.player.lyrics.sync(2400);music.player.changed();refresh();settle(80);
+            check(words&&before.contains("span")&&words->property("text").toString()!=before,"standard lyric words brighten with actual playback timing");
+            const double oldScale=hud.lyricScale;
+            check(click(findVisual(detailPage,"detailLyricLarger"))&&hud.lyricScale>oldScale,"source size capsule changes the actual lyric scale");
+            click(findVisual(detailPage,"detailLyricScale"));
+            check(click(findVisual(detailPage,"detailLyricEarlier"))&&music.player.lyrics.offsetMs==100,"source time capsule shifts lyrics by 100 milliseconds");
+            click(findVisual(detailPage,"detailLyricOffset"));check(music.player.lyrics.offsetMs==0,"source offset capsule resets lyric timing");
+            auto *reading=findVisual(detailPage,"detailLyrics");
+            const auto lyricYBefore=reading?reading->property("contentY").toDouble():0.;
+            if(reading){const auto p=reading->mapToScene(reading->boundingRect().center());QWheelEvent wheel(p,window->mapToGlobal(p.toPoint()),QPoint(),QPoint(0,-360),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);QCoreApplication::sendEvent(window,&wheel);}settle(200);
+            check(detailPage&&!detailPage->property("following").toBool(),"real lyric wheel input temporarily suspends following");
+            check(reading&&reading->property("contentY").toDouble()>lyricYBefore+40,"real mouse wheel actually moves the lyric list down");
+            settle(4500);check(detailPage&&detailPage->property("following").toBool()&&reading&&reading->property("currentIndex")==music.player.lyrics.index,"lyric wheel idle resumes the current sung line automatically");
+            int commentPages=0,commentWrites=0;bool failComment=false;
+            backend.host.fixture=[&](QString route,QJsonObject args){QJsonValue value;
+                if(route=="/native/netease/lyrics")value=document;
+                else if(route=="/comment/like"){
+                    ++commentWrites;
+                    return QJsonObject{{"body",QJsonObject{{"code",failComment?500:200},{"message",failComment?"Fixture write rejected":"ok"}}}};
+                }else if(route.startsWith("/comment/")){
+                    if(route=="/comment/music"){
+                        ++commentPages;QJsonArray rows;for(int i=0;i<20;++i)rows.append(QJsonObject{{"commentId",1000+args["offset"].toInt()+i},{"content",QString("Comment %1: source detail comments load and remain readable.").arg(i)},{"time",1700000000000.},{"likedCount",3},{"user",QJsonObject{{"userId",42},{"nickname","Rhine listener"},{"avatarUrl",images[0]}}}});
+                        value=QJsonObject{{"code",200},{"comments",rows},{"total",40},{"more",commentPages<2}};
+                    }else value=QJsonObject{{"code",200},{"hotComments",QJsonArray{}}};
+                    return QJsonObject{{"body",value}};
+                }
+                return QJsonObject{{"body",QJsonObject{{"code",200},{"value",value}}}};
+            };
+            hud.lyricsMode=true;QMetaObject::invokeMethod(detailPage,"choose",Q_ARG(QVariant,QVariant("comments")));refresh();backend.action("comments:retry");settle(700);refresh();
+            check(hud.commentsOpen&&!hud.commentsRows.isEmpty()&&findVisual(detailPage,"songComments"),"comments remain connected when opened from lyric mode");
+            auto *commentLike=findVisual(detailPage,"detailCommentLike_1000");
+            check(click(commentLike),"a real pointer click reaches the comment like control");settle(500);refresh();
+            check(commentWrites==1&&hud.commentsRows[0].toObject()["liked"].toBool()&&hud.commentsRows[0].toObject()["likes"].toInt()==4&&hud.commentsPending.isEmpty(),"comment like submits once and preserves the confirmed count");
+            failComment=true;commentLike=findVisual(detailPage,"detailCommentLike_1000");click(commentLike);settle(500);refresh();
+            check(commentWrites==2&&hud.commentsRows[0].toObject()["liked"].toBool()&&hud.commentsRows[0].toObject()["likes"].toInt()==4&&!hud.commentsActionError.isEmpty(),"rejected unlike rolls back and exposes the error in the page");
+            window->grabWindow().save(output+"/source-detail-comment-like-failure.png");failComment=false;
+            auto *comments=findVisual(detailPage,"detailCommentsReading");if(comments)comments->setProperty("contentY",comments->property("contentHeight").toDouble()-comments->height());settle(600);
+            check(commentPages>=2&&hud.commentsRows.size()==40,"source comment scrolling requests and appends the next page");
+            window->grabWindow().save(output+"/source-detail-comments.png");
+            const auto savedWordFixture=backend.host.fixture;
+            QJsonArray lineRows{QJsonObject{{"startMs",0},{"endMs",QJsonValue::Null},{"text",QStringLiteral("普通歌词不会只闪现一下")},{"words",QJsonArray{}}},QJsonObject{{"startMs",12000},{"endMs",QJsonValue::Null},{"text",QStringLiteral("下一句仍正常出现")},{"words",QJsonArray{}}}};
+            const QJsonObject lineDocument{{"version",1},{"timing","line"},{"offsetMs",0},{"plainText",""},{"lines",lineRows}};
+            backend.host.fixture=[lineDocument](QString,QJsonObject){return QJsonObject{{"body",QJsonObject{{"code",200},{"value",lineDocument}}}};};
+            music.player.lyrics.load(detail,true);settle(500);music.player.lyrics.sync(2000);music.player.changed();refresh();
+            const auto normalized=backend.nowPlaying()->property("lines").toList();
+            check(!normalized.isEmpty()&&normalized.first().toMap()["endMs"].toDouble()==6000&&normalized.first().toMap()["words"].toList().size()>1,"plain LRC gets the upstream finite line interval and estimated word timing");
+            if(detailPage)detailPage->setProperty("tab","stage");settle(200);
+            auto *plainStage=findVisual(detailPage,"lyricStage");
+            check(plainStage&&!plainStage->property("interlude").toBool(),"ordinary LRC remains on the sung line instead of flashing into interlude dots");
+            window->grabWindow().save(output+"/source-detail-plain-lrc-stage.png");
+            music.player.lyrics.sync(5000);music.player.changed();refresh();settle(100);
+            check(plainStage&&!plainStage->property("interlude").toBool(),"ordinary LRC stays visible through its finite singing interval");
+            music.player.lyrics.sync(8000);music.player.changed();refresh();settle(100);
+            check(plainStage&&plainStage->property("interlude").toBool(),"ordinary LRC enters dots only during the actual lyric gap");
+            music.player.lyrics.sync(12500);music.player.changed();refresh();settle(100);
+            check(plainStage&&!plainStage->property("interlude").toBool()&&music.player.lyrics.index==1,"ordinary LRC leaves interlude when the next sung line starts");
+            backend.host.fixture=savedWordFixture;music.player.lyrics.load(detail,true);settle(500);
+            QMetaObject::invokeMethod(detailPage,"choose",Q_ARG(QVariant,QVariant("lyrics")));refresh();settle(200);
+            music.player.lyrics.sync(1600);music.player.changed();refresh();
+        }
+        if(qEnvironmentVariableIntValue("RHINE_QA_DETAIL_POLISH")==1){
+            for(const auto size:{QSize(1280,720),QSize(1920,1080)}){
+                window->resize(size);settle(350);
+                auto *left=findVisual(detailPage,"detailLeftColumn");auto *volume=findVisual(detailPage,"detailVolumeRow");auto *tools=findVisual(detailPage,"detailLyricTools");
+                check(left&&volume&&tools&&volume->mapToScene(QPointF(0,volume->height())).y()<=tools->mapToScene(QPointF()).y()&&tools->mapToScene(QPointF(0,tools->height())).y()<window->height(),"left playback rows remain ordered and fit inside the window");
+                auto *line=findVisual(detailPage,"detailLyric_1");
+                if(line){const auto p=line->mapToScene(line->boundingRect().center());QMouseEvent move(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);}settle(450);
+                auto *surface=findVisual(line,"detailLyricSurface");
+                check(line&&line->opacity()==1&&surface&&surface->property("radius")==14&&line->property("hovered").toBool(),"lyric hover keeps its rounded surface independent from faded text");
+                auto *time=findVisual(line,"detailLyricTime");auto *seek=findVisual(line,"detailLyricSeek_1");
+                check(time&&time->property("text")=="00:04"&&seek&&seek->opacity()>.9,"lyric hover reveals a frameless play-and-time seek target");
+                window->grabWindow().save(output+QString("/detail-polish-%1.png").arg(size.width()));
+            }
+            window->resize(1280,720);settle(200);
+            auto *back=findVisual(detailPage,"songDetailBack");auto *surface=findVisual(back,"detailToolSurface");
+            check(back&&surface&&qAbs(surface->property("radius").toDouble()-back->height()/2)<.01,"detail down-chevron uses a circular interaction surface");
+            auto *like=findVisual(detailPage,"detailLike");check(like&&like->property("glyph")=="cloudyHeart"&&like->property("iconSize")==22,"detail like uses the upstream heart asset and dimensions");
+            // Round artist artwork must not acquire a rectangular whole-card hover.
+            auto profileState=detailPage->property("hud").toMap();
+            profileState.insert("profileOwn",true);profileState.insert("profileID","polish-fixture");
+            profileState.insert("profileSection","music");profileState.insert("profileFilter","artists");
+            profileState.insert("profile",QVariantMap{{"nickname","Artist hover"}});
+            profileState.insert("keyboardNavigation",true);profileState.insert("focusAction","profile:collection-item:artists:0");
+            profileState.insert("profileCollections",QVariantMap{{"artists",QVariantMap{{"rows",QVariantList{QVariantMap{{"kind","artist"},{"id","123"},{"title","Rhine Artist"},{"cover",images[0]}}}}}}});
+            QQmlComponent profileComponent(qmlEngine(detailPage),QUrl("qrc:/qt/qml/RhineMusic/UserProfile.qml"));
+            auto *profileProbe=qobject_cast<QQuickItem *>(profileComponent.createWithInitialProperties({{"hudState",profileState},{"width",1280},{"height",720}},qmlContext(detailPage)));
+            check(profileProbe,"isolated artist hover fixture loads");
+            if(profileProbe){
+                profileProbe->setParentItem(window->contentItem());profileProbe->setZ(10000);settle(450);
+                auto *card=findVisual(profileProbe,"profileCard_artists_0");auto *rectangle=findVisual(card,"profileCardHover");auto *circle=findVisual(card,"profileRoundHover");
+                check(card&&card->property("focused").toBool()&&rectangle&&rectangle->opacity()<.01&&circle&&circle->opacity()>.99&&qAbs(circle->property("radius").toDouble()-circle->width()/2)<.01,"round artist focus uses a circular halo without a rectangular hover");
+                window->grabWindow().save(output+"/detail-polish-artist.png");delete profileProbe;
+            }
+        }
+        if(detailPage)detailPage->setProperty("tab","stage");settle(500);window->grabWindow().save(output+"/song-detail-timed-stage.png");
+        for(const auto style:{"flow","steps","tilt"}){
+            backend.setPlayerPreference("stage-style",QString(style));refresh();
+            auto *stage=findVisual(window->contentItem(),"lyricStage");
+            check(stage&&stage->property("style").toString()==QString(style),"stage selector applies the requested production style");
+            settle(600);window->grabWindow().save(output+QString("/song-stage-%1.png").arg(style));
+        }
+        if(auto *stage=findVisual(window->contentItem(),"lyricStage")){
+            const auto savedLines=stage->property("lines"),savedIndex=stage->property("currentIndex"),savedTime=stage->property("positionMs");
+            const auto text=QStringLiteral("君がさ、夜の街を歩く。长夜的灯火，陪我们慢慢走过。After hours, we find our way home.");
+            QJsonArray words;for(int i=0;i<text.size();++i)words.append(QJsonObject{{"text",QString(text[i])},{"startMs",1000+i*100},{"endMs",1100+i*100}});
+            stage->setProperty("lines",QVariantList{QVariantMap{{"text",text},{"startMs",1000},{"endMs",1000+text.size()*100},{"words",words.toVariantList()}}});stage->setProperty("currentIndex",0);stage->setProperty("positionMs",4800);stage->setProperty("playing",false);
+            for(const auto size:{QSize(960,540),QSize(1280,720),QSize(1920,1080)})for(const auto style:{"flow","steps","tilt"}){
+                window->resize(size);backend.setPlayerPreference("stage-style",QString(style));refresh();settle(150);
+                check(stage->property("style").toString()==QString(style),"long lyric screenshot uses the requested production style");
+                check(window->grabWindow().save(output+QString("/stage-long-%1-%2.png").arg(style).arg(size.width())),"multilingual long lyric renders in the actual responsive stage");
+            }
+            stage->setProperty("lines",savedLines);stage->setProperty("currentIndex",savedIndex);stage->setProperty("positionMs",savedTime);window->resize(1280,720);refresh();
+        }
+        int hydrationCalls=0,hydrationMaximum=0;
+        backend.host.fixture=[&](QString route,QJsonObject args){
+            QJsonValue value;
+            if(route=="/native/netease/lyrics")value=document;
+            else if(route=="/native/netease/songs"){
+                const auto ids=args["args"].toArray().first().toArray();++hydrationCalls;hydrationMaximum=std::max(hydrationMaximum,int(ids.size()));
+                QJsonArray loaded;for(const auto &id:ids){auto row=MusicData::item("song",id.toString(),"Loaded wall track "+id.toString(),"Rhine Artist");row["cover"]=images[id.toString().toInt()%images.size()];loaded.append(row);}value=loaded;
+            }
+            return QJsonObject{{"body",QJsonObject{{"code",200},{"value",value}}}};
+        };
+        QJsonArray wallQueue{detail};for(int i=0;i<240;++i){auto row=MusicData::item("song",QString::number(900000+i),QString("Wall track %1").arg(i),"Rhine Artist");row["cover"]=images[i%images.size()];if(i>6&&i<80){row["deferred"]=true;row["cover"]="";row["queueSource"]=QJsonObject{{"kind","playlist"},{"id","wall-origin"}};}wallQueue.append(row);}
+        music.player.queue=wallQueue;music.player.changed();refresh();
+        if(detailPage)detailPage->setProperty("tab","wall");settle(500);window->grabWindow().save(output+"/song-detail-wall.png");
+        auto *wallField=findVisual(window->contentItem(),"songWallField");
+        auto *currentTile=findVisual(window->contentItem(),"wallTile_0");
+        check(wallField&&currentTile&&currentTile->mapToScene(currentTile->boundingRect().center()).y()>112,"song wall centers the current track inside its visible field");
+        check(hydrationCalls>0&&hydrationMaximum<=48&&!music.player.queue[8].toObject()["deferred"].toBool()&&music.player.queue[8].toObject()["queueSource"].toObject()["id"]=="wall-origin","visible deferred queue songs hydrate in bounded batches without losing their origin");
+        check(music.player.current==detail&&music.player.index==0,"queue metadata hydration does not switch or restart playback");
+        QSet<QQuickItem*> originalWallItems;for(int i=0;i<wallQueue.size();++i)if(auto *item=findVisual(window->contentItem(),QString("wallTile_%1").arg(i)))originalWallItems.insert(item);
+        if(wallField){wallField->setProperty("contentX",wallField->property("contentWidth").toDouble()-wallField->width());wallField->setProperty("contentY",wallField->property("contentHeight").toDouble()-wallField->height());}settle(200);
+        check(!findVisual(window->contentItem(),"wallTile_0")&&findVisual(window->contentItem(),"wallTile_240"),"song wall releases offscreen cells and renders the distant queue end");
+        bool reusedWallItems=true;for(int i=0;i<wallQueue.size();++i)if(auto *item=findVisual(window->contentItem(),QString("wallTile_%1").arg(i)))reusedWallItems&=originalWallItems.contains(item);
+        check(reusedWallItems,"panning the wall reuses the fixed cover pool rather than rebuilding every cell");
+        check(music.player.current["id"]==detail["id"],"panning the cover wall never changes the playback selection");
+        window->grabWindow().save(output+"/song-detail-wall-panned.png");
+        if(wallField){wallField->setProperty("contentX",0);wallField->setProperty("contentY",0);}settle(200);
+        auto *hoverTile=findVisual(window->contentItem(),"wallTile_1");
+        const auto hoverPoint=hoverTile?hoverTile->mapToScene(hoverTile->boundingRect().center()):QPointF();
+        const auto sendPointer=[&](QEvent::Type type,QPointF p,Qt::MouseButton button,Qt::MouseButtons buttons){QMouseEvent event(type,p,window->mapToGlobal(p.toPoint()),button,buttons,Qt::NoModifier);QCoreApplication::sendEvent(window,&event);};
+        sendPointer(QEvent::MouseMove,hoverPoint,Qt::NoButton,Qt::NoButton);settle(450);
+        check(hoverTile&&hoverTile->property("over").toBool()&&qAbs(hoverTile->scale()-1.04)<.01&&music.player.current==detail,"wall hover lifts only the pointed cover without changing playback");
+        window->grabWindow().save(output+"/song-wall-hover.png");
+        sendPointer(QEvent::MouseButtonPress,hoverPoint,Qt::LeftButton,Qt::LeftButton);settle(150);
+        for(int i=1;i<=8;++i){sendPointer(QEvent::MouseMove,hoverPoint-QPointF(i*20,0),Qt::NoButton,Qt::LeftButton);settle(16);}
+        sendPointer(QEvent::MouseButtonRelease,hoverPoint-QPointF(160,0),Qt::LeftButton,Qt::NoButton);settle(1000);
+        check(music.player.current==detail,"a real drag starting on a cover never triggers song playback");
+        if(wallField){QMetaObject::invokeMethod(wallField,"cancelFlick");wallField->setProperty("contentX",0);wallField->setProperty("contentY",0);}settle(200);
+        hoverTile=findVisual(window->contentItem(),"wallTile_1");
+        check(click(hoverTile)&&music.player.index==1&&music.player.current["id"]=="900000","a real cover click plays the captured queue identity");
+        music.player.current=detail;music.current=detail;music.player.index=0;music.player.loading=false;music.player.failed=false;music.player.changed();music.player.lyrics.load(detail,true);settle(500);refresh();
+        {
+            QFile wav(output+"/transport-silent.wav");check(wav.open(QIODevice::WriteOnly),"bottom transport audio fixture opens");
+            const quint32 bytes=60*8000*2;QDataStream data(&wav);data.setByteOrder(QDataStream::LittleEndian);wav.write("RIFF",4);data<<quint32(36+bytes);wav.write("WAVEfmt ",8);data<<quint32(16)<<quint16(1)<<quint16(1)<<quint32(8000)<<quint32(16000)<<quint16(2)<<quint16(16);wav.write("data",4);data<<bytes;wav.write(QByteArray(bytes,'\0'));wav.close();
+            backend.host.mediaControl("volume",0);check(backend.host.mediaLoad(QUrl::fromLocalFile(wav.fileName()).toString()),"bottom transport loads actual local audio");settle(650);music.player.tick(10000,true);music.player.changed();refresh();
+            const auto prior=backend.host.mediaState()["playing"].toBool();
+            check(click(findVisual(detailPage,"detailImmersivePlay")),"real bottom glass play control receives pointer input");settle(200);
+            check(backend.host.mediaState()["playing"].toBool()!=prior,"bottom glass play control changes real playback state");
+            music.player.tick(10001,true);music.player.changed();refresh();
+            check(click(findVisual(detailPage,"detailImmersiveSeek")),"real bottom glass seek slider receives pointer input");settle(250);
+            check(backend.host.mediaState()["position"].toDouble()>20000,"bottom glass seek changes real local audio position");
+            backend.host.mediaControl("pause");music.player.tick(10002,true);music.player.changed();refresh();
+        }
+        if(qEnvironmentVariableIntValue("RHINE_QA_WALL_PERF")==1){
+            QFile wav(output+"/wall-silent.wav");check(wav.open(QIODevice::WriteOnly),"wall performance local audio fixture opens");
+            const quint32 bytes=90*8000*2;QDataStream data(&wav);data.setByteOrder(QDataStream::LittleEndian);wav.write("RIFF",4);data<<quint32(36+bytes);wav.write("WAVEfmt ",8);data<<quint32(16)<<quint16(1)<<quint16(1)<<quint32(8000)<<quint32(16000)<<quint16(2)<<quint16(16);wav.write("data",4);data<<bytes;wav.write(QByteArray(bytes,'\0'));wav.close();
+            backend.host.mediaControl("volume",0);check(backend.host.mediaLoad(QUrl::fromLocalFile(wav.fileName()).toString()),"wall performance uses real local playback");
+            settle(800);hud.reduced=false;
+            const auto endHandler=music.player.onEnd;music.player.onEnd=[]{};music.player.tick(10000,true);music.player.onEnd=endHandler;music.player.changed();refresh();
+            backend.setPlayerPreference("stage-sparks","on");
+            check(hud.stageSparks,"stage spark preference enables its source effect");
+            QJsonArray runs;
+            for(const auto mode:{"wall-playing","wall-pan","stage-playing","stage-steps","stage-tilt","wall-pan-large","stage-large"}){
+                detailPage=findVisual(window->contentItem(),"songDetailPage");
+                const auto desiredTab=QString(mode).startsWith("stage")?"stage":"wall";
+                window->resize(QString(mode).contains("large")?QSize(1920,1080):QSize(1280,720));
+                if(detailPage)detailPage->setProperty("tab",desiredTab);settle(1200);
+                check(detailPage&&detailPage->property("tab")==desiredTab&&findVisual(detailPage,desiredTab=="stage"?"lyricStage":"songWall"),"performance sample measures the requested live view");
+                auto *stage=findVisual(detailPage,"lyricStage");if(stage)stage->setProperty("style",QString(mode)=="stage-steps"?"steps":QString(mode)=="stage-tilt"?"tilt":"flow");settle(200);
+                if(stage)check(stage->property("lines").toList().size()==24&&stage->property("playing").toBool()&&stage->property("sparks").toBool(),"stage performance includes timed words, active playback and enabled sparks");
+                const double stageBefore=stage?stage->property("renderPositionMs").toDouble():0;
+                auto *field=findVisual(window->contentItem(),"songWallField");
+                QMutex frameMutex;QList<double> gaps;QElapsedTimer perfClock;perfClock.start();qint64 previous=0;
+                QObject observer;const auto connection=QObject::connect(window,&QQuickWindow::frameSwapped,&observer,[&]{const auto now=perfClock.nsecsElapsed();QMutexLocker lock(&frameMutex);if(previous)gaps.append((now-previous)/1000000.);previous=now;},Qt::DirectConnection);
+                QTimer motion;motion.setInterval(16);motion.setTimerType(Qt::PreciseTimer);
+                if(QString(mode).startsWith("wall-pan"))QObject::connect(&motion,&QTimer::timeout,&observer,[&]{if(field){const double t=std::clamp(perfClock.elapsed()/4000.,0.,1.);field->setProperty("contentY",std::max(0.,field->property("contentHeight").toDouble()-field->height())*t);field->setProperty("contentX",std::max(0.,field->property("contentWidth").toDouble()-field->width())*t);}});
+                motion.start();settle(4000);motion.stop();QObject::disconnect(connection);
+                QList<double> samples;{QMutexLocker lock(&frameMutex);samples=gaps;}std::sort(samples.begin(),samples.end());
+                const auto percentile=[&](double p){return samples.isEmpty()?0.:samples[qMin(samples.size()-1,qsizetype((samples.size()-1)*p))];};int over50=0;for(auto v:samples)if(v>50)++over50;
+                runs.append(QJsonObject{{"mode",mode},{"frames",samples.size()},{"fps",samples.size()/4.},{"p50_ms",percentile(.5)},{"p95_ms",percentile(.95)},{"p99_ms",percentile(.99)},{"over50",over50},{"width",window->width()},{"height",window->height()},{"refreshHz",window->screen()->refreshRate()}});
+                window->grabWindow().save(output+QString("/%1.png").arg(mode));
+                check(samples.size()>100,"playing wall and stage present continuous frames");
+                check(detailPage&&detailPage->property("tab")==desiredTab,"playback refresh preserves the selected full-player tab");
+                if(stage)check(stage->property("renderPositionMs").toDouble()>stageBefore+1000,"stage words advance on the live render clock during playback");
+            }
+            backend.host.mediaControl("pause");QFile report(output+"/wall-performance.json");check(report.open(QIODevice::WriteOnly),"wall performance report opens");report.write(QJsonDocument(QJsonObject{{"runs",runs},{"fixture","241 queue entries, real silent WAV, local covers; Type-C display"}}).toJson());qInfo()<<"Wall performance"<<QJsonDocument(runs).toJson(QJsonDocument::Compact);
+            window->resize(1280,720);if(detailPage)detailPage->setProperty("tab","wall");settle(500);
+        }
+        if(detailPage)detailPage->setProperty("tab","queue");settle(500);window->grabWindow().save(output+"/song-detail-queue.png");
+        if(qEnvironmentVariableIntValue("RHINE_QA_DETAIL_ONLY")!=1){
+        backend.action("desktop:settings");settle(500);
+        check(findVisual(window->contentItem(),"desktopLyricsSettingsPage"),"desktop lyric preferences opens over the full player");
+        window->grabWindow().save(output+"/desktop-lyrics-preferences.png");
+        QQuickWindow *desktopFixture=nullptr;for(auto *candidate:QGuiApplication::allWindows())if(candidate->objectName()=="desktopLyricsWindow")desktopFixture=qobject_cast<QQuickWindow*>(candidate);
+        check(desktopFixture,"desktop word-color verification has an actual lyric window");
+        if(desktopFixture){
+            QVariant colorBefore,colorMiddle,colorAfter;const QVariant word=QVariantMap{{"startMs",0},{"endMs",1000}};
+            music.player.lyrics.sync(0);music.player.lyrics.changed();QMetaObject::invokeMethod(desktopFixture,"wordColor",Q_RETURN_ARG(QVariant,colorBefore),Q_ARG(QVariant,word));
+            music.player.lyrics.sync(500);music.player.lyrics.changed();QMetaObject::invokeMethod(desktopFixture,"wordColor",Q_RETURN_ARG(QVariant,colorMiddle),Q_ARG(QVariant,word));
+            music.player.lyrics.sync(1000);music.player.lyrics.changed();QMetaObject::invokeMethod(desktopFixture,"wordColor",Q_RETURN_ARG(QVariant,colorAfter),Q_ARG(QVariant,word));
+            check(colorBefore.value<QColor>()!=colorMiddle.value<QColor>()&&colorMiddle.value<QColor>()!=colorAfter.value<QColor>(),"desktop lyric words interpolate continuously through their sung duration");
+        }
+        backend.action("desktop:back");settle(300);
+        }
+        hud.reduced=false;if(qEnvironmentVariableIntValue("RHINE_QA_DETAIL_ONLY")!=1)backend.action("back");wait();
+        auto *chevron=findVisual(window->contentItem(),"songDetailBack");
+        if(chevron){const auto p=chevron->mapToScene(chevron->boundingRect().center());QMouseEvent down(QEvent::MouseButtonPress,p,window->mapToGlobal(p.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QMouseEvent up(QEvent::MouseButtonRelease,p,window->mapToGlobal(p.toPoint()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&down);QCoreApplication::sendEvent(window,&up);}
+        backend.step(90);settle(180);
+        check(chevron&&!window->property("songDetailVisible").toBool(),"detail chevron receives a real mouse click through the window chrome");
+        auto *transition=findVisual(window->contentItem(),"songDetailTransition");
+        check(transition&&transition->property("progress").toDouble()>0&&transition->property("progress").toDouble()<1&&findVisual(window->contentItem(),"songDetailPage"),"closing song detail retains its view while folding into the player bar");
+        window->grabWindow().save(output+"/song-detail-closing.png");settle(550);
+        check(transition&&!transition->property("retained").toBool()&&!findVisual(window->contentItem(),"songDetailPage"),"completed detail close releases the view");
+        backend.action("music:context-comments:"+QString::fromUtf8(QUrl::toPercentEncoding(QString::fromUtf8(QJsonDocument(detail).toJson(QJsonDocument::Compact)))));backend.step(90);settle(180);
+        check(transition&&transition->property("progress").toDouble()>0&&transition->property("progress").toDouble()<1,"opening song detail reveals from the player bar without an instant full-screen jump");
+        detailPage=findVisual(window->contentItem(),"songDetailPage");
+        auto *flyingCover=findVisual(window->contentItem(),"detailFlyingCover");
+        check(detailPage&&detailPage->property("flying").toBool()&&flyingCover&&flyingCover->isVisible()&&transition->property("barElementsOpacity").toDouble()<.01,"detail opening hands the playing cover and controls to shared-element flights without duplicates");
+        if(detailPage){const double k=detailPage->property("revealProgress").toDouble();const double t=std::clamp((k-.45)/.5,0.,1.);check(qAbs(detailPage->property("contentReveal").toDouble()-t*t*(3-2*t))<.001,"detail body reveal follows the upstream smoothstep handover");}
+        window->grabWindow().save(output+"/song-detail-opening.png");settle(600);
+        // A frame can be arbitrarily close to the endpoint before the final handover.
+        QElapsedTimer landingWait;landingWait.start();
+        while(transition&&transition->property("progress").toDouble()<1&&landingWait.elapsed()<1000)settle(16);
+        check(transition&&transition->property("progress").toDouble()>.999,"detail opening reaches its full-size resting layout");
+        check(detailPage&&!detailPage->property("flying").toBool()&&detailPage->property("landed").toDouble()==1,"shared elements hand back to the detail originals after landing");
+        backend.action("player:detail-close");backend.step(90);settle(120);
+        const double interrupted=transition?transition->property("progress").toDouble():0;
+        backend.action("music:context-comments:"+QString::fromUtf8(QUrl::toPercentEncoding(QString::fromUtf8(QJsonDocument(detail).toJson(QJsonDocument::Compact)))));backend.step(90);settle(100);
+        check(transition&&transition->property("retained").toBool()&&transition->property("progress").toDouble()>=interrupted,"reopening during detail close reverses the retained reveal without a jump to zero");
+        window->resize(1440,900);settle(650);
+        check(transition&&std::abs(transition->width()-window->width())<1&&std::abs(transition->height()-window->height())<1,"resizing during detail reveal finishes at the actual window bounds");
+        const auto tintForCurrent=backend.nowPlaying()->property("info").toMap()["coverTint"];
+        auto different=detail;different["id"]="998877";different["key"]="netease:song:998877";different["cover"]=images[7];
+        music.player.current=different;music.player.changed();settle(700);
+        const auto differentTint=backend.nowPlaying()->property("info").toMap()["coverTint"];
+        music.player.current=detail;music.player.changed();settle(300);
+        check(tintForCurrent!=differentTint&&backend.nowPlaying()->property("info").toMap()["coverTint"]==tintForCurrent,"returning to cached artwork restores its own dominant cover color");
+        different["id"]="998878";different["key"]="netease:song:998878";different["cover"]="";
+        music.player.current=different;music.player.coverImage.clear();music.player.changed();settle(100);
+        check(backend.nowPlaying()->property("info").toMap()["coverTint"].toString()=="#787882","a track without artwork does not retain the previous cover color");
+        if(qEnvironmentVariableIntValue("RHINE_QA_DETAIL_SOURCE")==1){
+            backend.host.fixture=[document](QString route,QJsonObject args){
+                QJsonValue value=QJsonObject{};
+                if(route=="/native/netease/lyrics")value=document;
+                else if(route=="/native/netease/detail")value=QJsonArray{args["args"].toArray().first(),QJsonArray{},QJsonArray{}};
+                return QJsonObject{{"body",QJsonObject{{"code",200},{"value",value}}}};
+            };
+            music.player.current=detail;music.player.changed();refresh();settle(200);
+            detailPage=findVisual(window->contentItem(),"songDetailPage");
+            auto *credits=findVisual(detailPage,"detailCredits");
+            check(credits&&credits->property("text").toString().contains("artist:123")&&credits->property("text").toString().contains("href=\"album\""),"detail metadata exposes real artist and album links");
+            hud.lyricsMode=true;
+            const bool artistInvoked=credits&&QMetaObject::invokeMethod(credits,"linkActivated",Q_ARG(QString,QString("artist:123")));
+            refresh();settle(650);
+            check(artistInvoked&&!hud.lyricsMode&&music.directoryInfo&&music.current["kind"]=="artist"&&music.current["id"]=="123"&&!window->property("songDetailVisible").toBool(),"artist credit exits lyric mode into the actual artist page");
+            backend.action("music:context-comments:"+QString::fromUtf8(QUrl::toPercentEncoding(QString::fromUtf8(QJsonDocument(detail).toJson(QJsonDocument::Compact)))));refresh();settle(650);
+            detailPage=findVisual(window->contentItem(),"songDetailPage");credits=findVisual(detailPage,"detailCredits");hud.lyricsMode=true;
+            const bool albumInvoked=credits&&QMetaObject::invokeMethod(credits,"linkActivated",Q_ARG(QString,QString("album")));
+            refresh();settle(650);
+            check(albumInvoked&&!hud.lyricsMode&&music.directoryInfo&&music.current["kind"]=="album"&&music.current["id"]=="6677"&&!window->property("songDetailVisible").toBool(),"album credit exits lyric mode into the actual album page");
+        }
+        qInfo()<<"Profile focused checks"<<(ok?"passed":"FAILED");return ok?0:1;
+    }
+
+
+    if(qEnvironmentVariableIntValue("RHINE_QA_GENRES_ONLY")==1){
+        auto *controller=qobject_cast<NowPlaying*>(backend.nowPlaying());
+        const std::function<QQuickItem*(QQuickItem*,QString)> findVisual=[&](QQuickItem *item,QString name)->QQuickItem*{
+            if(item->objectName()==name)return item;for(auto *child:item->childItems())if(auto *found=findVisual(child,name))return found;return nullptr;
+        };
+        auto find=[&](QString name){return findVisual(window->contentItem(),name);};
+        QHash<QString,int> requests;bool retryHealthy=false,staleAccepted=false;int wikiRequests=0;
+        const auto body=[](QString genre){
+            const auto resource=[](QString title){return QJsonObject{{"uiElement",QJsonObject{{"mainTitle",QJsonObject{{"title",title}}}}}};};
+            const QJsonObject tags{{"creativeType","songTag"},{"resources",QJsonArray{resource(genre),resource(genre)}}};
+            const QJsonObject mood{{"creativeType","songBizTag"},{"resources",QJsonArray{resource(QStringLiteral("欢快"))}}};
+            const QJsonObject block{{"code","SONG_PLAY_ABOUT_SONG_BASIC"},{"creatives",QJsonArray{tags,mood}}};
+            QJsonObject data;data["blocks"]=QJsonArray{block};
+            QJsonObject result;result["code"]=200;result["data"]=data;return result;
+        };
+        backend.host.fixture=[&](QString route,QJsonObject args){
+            if(route=="/native/netease/wiki"){++wikiRequests;return QJsonObject{{"body",QJsonObject{{"code",200},{"value",""}}}};}
+            if(route=="/song/wiki/summary"){
+                const auto id=args["id"].toString();const auto attempt=++requests[id];
+                if(id=="6677004")return QJsonObject{{"body",body(QString())}};
+                if((id=="6677005"&&attempt==1)||(id=="6677006"&&!retryHealthy))return QJsonObject{{"body",QJsonObject{{"code",503}}}};
+                if(id=="6677009")return QJsonObject{{"body",QJsonObject{{"code",200}}}};
+                return QJsonObject{{"body",body(id=="6677007"?"STALE GENRE":QStringLiteral("流行-日本流行"))}};
+            }
+            return QJsonObject{{"body",QJsonObject{{"code",200},{"value",""}}}};
+        };
+        QObject observer;QObject::connect(controller,&NowPlaying::changed,&observer,[&]{if(controller->info()["tags"].toList().contains("STALE GENRE"))staleAccepted=true;});
+        auto select=[&](QString id,QJsonArray tags=QJsonArray{},QString wiki=QString()){
+            auto song=MusicData::item("song",id,"Genre fixture","Rhine");song["tags"]=tags;song["wiki"]=wiki;
+            music.player.current=song;music.player.queue={song};music.player.index=0;music.player.changed();
+        };
+        auto wait=[&](std::function<bool()> condition,int timeout=4000){QElapsedTimer clock;clock.start();while(!condition()&&clock.elapsed()<timeout)settle(10);return condition();};
+        select("6677001",QJsonArray{"Ambient"});hud.reduced=true;backend.action("player:now-playing");refresh();
+        check(controller->info()["tags"].toList()==QVariantList{"Ambient"}&&requests["6677001"]==0,"known track genres render immediately without a new request");
+        select("6677002",{},QStringLiteral("曲风：City Pop / Jazz\n推荐标签：欢快"));
+        check(controller->info()["tags"].toList()==QVariantList{"City Pop","Jazz"},"existing wiki genres render immediately without confusing mood tags");settle(30);
+        check(requests["6677002"]==0,"existing wiki genres skip the network request");
+        select("6677003");
+        check(wait([&]{return !controller->info()["tags"].toList().isEmpty();}),"structured genre response reaches the current track");
+        check(controller->info()["tags"].toList()==QVariantList{QStringLiteral("流行-日本流行")},"songTag is read once and songBizTag mood labels are excluded");
+        check(find("nowGenres")&&find("nowGenres")->property("text").toString()==QStringLiteral("流行-日本流行"),"the visible genre label receives the parsed result");
+        const int knownRequests=requests["6677003"];select("6677001",QJsonArray{"Ambient"});select("6677003");
+        check(controller->info()["tags"].toList()==QVariantList{QStringLiteral("流行-日本流行")},"returning to a track restores cached genres synchronously");settle(30);
+        check(requests["6677003"]==knownRequests,"returning to a cached track does not request again");
+        select("6677004");check(wait([&]{return requests["6677004"]==1&&!controller->info()["tagsLoading"].toBool();}),"a successful empty genre response finishes loading");
+        check(controller->info()["tags"].toList().isEmpty()&&!controller->info()["tagsFailed"].toBool()&&find("nowGenres")->property("text").toString()==QStringLiteral("曲风暂无"),"a missing genre is distinct from a request failure");
+        select("6677005");check(wait([&]{return !controller->info()["tags"].toList().isEmpty();})&&requests["6677005"]==2,"a transient error automatically retries once and recovers");
+        select("6677006");check(wait([&]{return controller->info()["tagsFailed"].toBool();})&&requests["6677006"]==2,"repeated failures stop retrying and leave a retryable state");
+        check(find("nowGenres")->property("text").toString()==QStringLiteral("曲风读取失败，点击重试"),"failed genres show an explicit retry action");
+        retryHealthy=true;auto *label=find("nowGenres");const auto p=label->mapToScene(QPointF(label->width()/2,label->height()/2));
+        for(auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){QMouseEvent e(type,p,window->mapToGlobal(p.toPoint()),Qt::LeftButton,type==QEvent::MouseButtonPress?Qt::LeftButton:Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&e);}
+        check(wait([&]{return !controller->info()["tags"].toList().isEmpty();}),"clicking the visible genre failure retries successfully");
+        select("6677007");select("6677008");check(wait([&]{return !controller->info()["tags"].toList().isEmpty();})&&!staleAccepted,"late genre responses cannot replace a newer song's genres");
+        select("6677009");check(wait([&]{return controller->info()["tagsFailed"].toBool();})&&requests["6677009"]==2,"malformed success responses are retryable failures rather than cached emptiness");
+        check(wikiRequests==0,"now-playing genres avoid the full formatted wiki adapter");
+        select("6677003");refresh();check(window->grabWindow().save(output+"/genres-loaded.png"),"loaded genre screenshot");
+        qInfo()<<"Genre focused checks"<<(ok?"passed":"FAILED");return ok?0:1;
+    }
+    if(qEnvironmentVariableIntValue("RHINE_QA_NOW_PLAYING_ONLY")==1){
+        const std::function<QQuickItem *(QQuickItem *,const QString &)> findVisual=[&](QQuickItem *item,const QString &name)->QQuickItem*{
+            if(item->objectName()==name)return item;
+            for(auto *child:item->childItems())if(auto *found=findVisual(child,name))return found;
+            return nullptr;
+        };
+        auto find=[&](const QString &name){return findVisual(window->contentItem(),name);};
+        auto click=[&](QQuickItem *item,double fraction=.5){
+            if(!item)return false;
+            const auto p=item->mapToScene(QPointF(item->width()*fraction,item->height()/2));
+            for(auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){
+                QMouseEvent e(type,p,window->mapToGlobal(p.toPoint()),Qt::LeftButton,type==QEvent::MouseButtonPress?Qt::LeftButton:Qt::NoButton,Qt::NoModifier);
+                QCoreApplication::sendEvent(window,&e);
+            }
+            settle(80);return true;
+        };
+        auto hover=[&](QQuickItem *item){
+            if(!item)return false;
+            const auto p=item->mapToScene(QPointF(item->width()/2,item->height()/2));
+            QMouseEvent e(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);
+            QCoreApplication::sendEvent(window,&e);settle(200);return true;
+        };
+        const QString quote=QStringLiteral("愿每一次重逢，都像这首歌一样温柔。 ").repeated(14);
+        int hotRequests=0,writes=0;
+        bool staleQuoteAccepted=false;QObject quoteObserver;
+        QObject::connect(qobject_cast<NowPlaying*>(backend.nowPlaying()),&NowPlaying::hotCommentChanged,&quoteObserver,[&]{if(backend.nowPlaying()->property("hotComment").toString().contains("STALE RESPONSE"))staleQuoteAccepted=true;});
+        QJsonArray lines;for(int i=0;i<60;++i)lines.append(QJsonObject{{"startMs",i*2500},{"text",QString("A quiet moment, lyric %1").arg(i+1)},{"translation",QStringLiteral("把这一刻留在歌声里 · ")+QString::number(i+1)}});
+        const QJsonObject document{{"version",1},{"timing","line"},{"offsetMs",0},{"plainText","Timed lyric fixture"},{"lines",lines}};
+        backend.host.fixture=[&](QString route,QJsonObject args){
+            QJsonObject b{{"code",200}};
+            if(route=="/native/netease/lyrics")b["value"]=document;
+            else if(route=="/native/netease/wiki")b["value"]="";
+            else if(route=="/comment/hot"){
+                ++hotRequests;
+                if(args["id"]=="5511002")b["hotComments"]=QJsonArray{};
+                else if(args["id"]=="5511003")b["code"]=503;
+                else if(args["id"]=="5511004")b["hotComments"]=QJsonArray{QJsonObject{{"content","STALE RESPONSE"}}};
+                else if(args["id"]=="5511006")b["hotComments"]=QJsonArray{QJsonObject{{"content",QStringLiteral("把这一刻留在歌声里")}}};
+                else b["hotComments"]=QJsonArray{QJsonObject{{"commentId","1"},{"content",quote},{"user",QJsonObject{{"nickname","MUST NOT DISPLAY"}}}},QJsonObject{{"content","SECOND COMMENT MUST NOT DISPLAY"}}};
+            }else if(route=="/comment/music")b={{"code",200},{"total",2},{"comments",QJsonArray{}},{"more",false}};
+            else if(route=="/vip/info/v2")b["data"]=QJsonObject{{"now",1000},{"redplus",QJsonObject{{"expireTime",1811087999000.}}}};
+            else if(route=="/like"||route.startsWith("/comment/like")||route=="/comment")++writes;
+            return QJsonObject{{"body",b}};
+        };
+        // Use real local audio so the progress control exercises seek -> media -> lyrics.
+        QFile wav(output+"/silent-seek-fixture.wav");check(wav.open(QIODevice::WriteOnly),"local silent audio fixture opens");
+        const quint32 pcmBytes=160*8000*2;QDataStream data(&wav);data.setByteOrder(QDataStream::LittleEndian);
+        wav.write("RIFF",4);data<<quint32(36+pcmBytes);wav.write("WAVEfmt ",8);data<<quint32(16)<<quint16(1)<<quint16(1)<<quint32(8000)<<quint32(16000)<<quint16(2)<<quint16(16);wav.write("data",4);data<<pcmBytes;wav.write(QByteArray(pcmBytes,'\0'));wav.close();
+        backend.host.mediaControl("volume",0);
+        check(backend.host.mediaLoad(QUrl::fromLocalFile(wav.fileName()).toString()),"real offline audio loads");
+        QElapsedTimer audioWait;audioWait.start();while(!backend.host.mediaState()["seekable"].toBool()&&audioWait.elapsed()<8000)settle(20);
+        backend.host.mediaControl("pause");
+        music.uid="42";music.nickname="Rhine Listener";music.likedIDs=QJsonArray{};
+        QImage print(512,512,QImage::Format_RGB32);print.fill(QColor("#9caf91"));{QPainter p(&print);p.setPen(QPen(QColor("#55674d"),8));for(int i=0;i<9;++i)p.drawEllipse(QPointF(256,256),30+i*25,30+i*25);}print.save(output+"/record-cover.png");
+        auto song=MusicData::item("song","5511001","A quiet moment","Rhine");song["cover"]=QUrl::fromLocalFile(output+"/record-cover.png").toString();song["tags"]=QJsonArray{"Ambient"};
+        music.player.current=song;music.player.queue={song};music.player.index=0;music.player.loading=false;music.player.failed=false;music.player.tick(10000,true);music.player.changed();music.player.lyrics.load(song,true);
+        hud.reduced=true;backend.action("player:now-playing");refresh();
+        QElapsedTimer contentWait;contentWait.start();while((backend.nowPlaying()->property("lines").toList().size()!=60||backend.nowPlaying()->property("hotComment").toString().isEmpty())&&contentWait.elapsed()<6000)settle(20);
+        auto *page=find("nowPlayingPanel");auto *lyrics=find("nowPlayingLyrics");auto *hot=find("nowHotComment");auto *hotText=find("nowHotCommentText");
+        check(page&&lyrics&&hot&&hotText,"shared now-playing lyric and quote controls exist");
+        if(!page||!lyrics||!hot||!hotText)return 1;
+        check(backend.nowPlaying()->property("lines").toList().size()==60&&music.player.state["seekable"].toBool(),"timed lyrics and real seekable media are ready");
+        check(hot->isVisible()&&hotText->property("text").toString()==quote.simplified(),"bottom quote uses only the first hot comment content");
+        check(hotText->property("truncated").toBool(),"long hot comment is elided on one line");
+        check(hot->y()+hot->height()<=page->height()+1,"quote fits inside the reading panel");
+        QElapsedTimer printWait;printWait.start();while((!find("nowRecord")->property("artworkReady").toBool()||page->property("recordTransitioning").toBool())&&printWait.elapsed()<4000)settle(20);
+        check(window->grabWindow().save(output+"/now-playing-quote.png"),"now-playing quote screenshot");
+        const int requests=hotRequests;for(int i=0;i<12;++i){music.player.changed();settle(5);}
+        check(hotRequests==requests,"playback updates do not repeatedly request the hot comment");
+        auto wheelLyrics=[&]{const auto p=lyrics->mapToScene(QPointF(lyrics->width()/2,lyrics->height()/2));QWheelEvent e(p,window->mapToGlobal(p.toPoint()),QPoint(),QPoint(0,-120),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);QCoreApplication::sendEvent(window,&e);settle(100);};
+        wheelLyrics();auto *returnButton=find("nowLyricsFollow");
+        check(!page->property("following").toBool()&&returnButton&&returnButton->isVisible()&&returnButton->property("text").toString().isEmpty()&&returnButton->y()<lyrics->y(),"manual browsing reveals an icon above the lyrics instead of bottom text");
+        check(click(returnButton)&&page->property("following").toBool(),"locate icon restores lyric following");
+        hud.reduced=false;refresh();
+        wheelLyrics();
+        auto *seek=find("playbackSeekArea");
+        check(click(seek,.83),"actual progress control accepts a distant forward seek");
+        settle(250);music.player.tick(10001,true);settle(450);
+        const int distantIndex=music.player.lyrics.index;
+        auto *currentLine=find(QString("nowLyric_%1").arg(distantIndex));
+        const double top=currentLine?currentLine->mapToItem(lyrics,QPointF()).y():-10000;
+        check(page->property("following").toBool()&&distantIndex>40&&currentLine&&top>=-.5&&top+currentLine->height()<=lyrics->height()+.5,"seeking resumes follow and materializes a far-away lyric fully in view");
+        wheelLyrics();check(click(seek,.02),"actual progress control accepts a backward seek");settle(250);music.player.tick(10002,true);settle(450);
+        check(page->property("following").toBool()&&music.player.lyrics.index<3&&lyrics->property("contentY").toDouble()<lyrics->height(),"backward seek returns lyrics near the beginning");
+        const auto hoverIndex=music.player.lyrics.index;
+        auto *first=find(QString("nowLyric_%1").arg(hoverIndex));check(hover(first),"actual pointer enters a lyric line");
+        auto *lyricGlass=find(QString("nowLyricGlass_%1").arg(hoverIndex));check(lyricGlass&&lyricGlass->property("active").toBool()&&lyricGlass->property("item").value<QObject*>(),"hovered lyric creates a liquid glass surface");
+        auto *backdrop=find("nowLyricBackdrop");auto *disc=find("nowDiscField");
+        auto *hoverMaterial=find("playlistRefractiveSurface");
+        check(backdrop&&disc&&disc->parentItem()==backdrop&&hoverMaterial&&hoverMaterial->property("background").value<QQuickItem*>()==backdrop&&qAbs(hoverMaterial->property("refraction").toDouble()-.52)<.001,"lyric uses the playlist hover material over the composed record backdrop");
+        const auto withRecord=window->grabWindow();
+        disc->setVisible(false);settle(150);const auto withoutRecord=window->grabWindow();disc->setVisible(true);settle(150);
+        const auto sceneProbe=first->mapToScene(QPointF(first->width()*.85,first->height()*.55));
+        const auto probe=QPointF(sceneProbe.x()*withRecord.width()/window->width(),sceneProbe.y()*withRecord.height()/window->height());
+        int recordDifference=0;
+        for(int dy=-2;dy<=2;++dy)for(int dx=-2;dx<=2;++dx){const auto a=withRecord.pixelColor(qRound(probe.x())+dx,qRound(probe.y())+dy),b=withoutRecord.pixelColor(qRound(probe.x())+dx,qRound(probe.y())+dy);recordDifference+=qAbs(a.red()-b.red())+qAbs(a.green()-b.green())+qAbs(a.blue()-b.blue());}
+        check(recordDifference>250,"record pixels remain visible through the hovered lyric glass");
+        check(window->grabWindow().save(output+"/lyric-hover-glass.png"),"lyric hover screenshot");
+        auto *lyricTime=find("nowLyricTime");auto *timeText=find("nowLyricTimeText");
+        auto timestamp=[](int ms){const int seconds=ms/1000;return QString("%1:%2").arg(seconds/60,2,10,QChar('0')).arg(seconds%60,2,10,QChar('0'));};
+        check(lyricTime&&timeText&&lyricTime->isVisible()&&timeText->property("text").toString()==timestamp(hoverIndex*2500)&&find("nowLyricTimeIcon")->property("name")=="play","lyric hover shows a padded timestamp with a play icon");
+        const QPointF timePosition=lyricTime?lyricTime->position():QPointF();
+        auto *nextLine=find(QString("nowLyric_%1").arg(hoverIndex+1));
+        check(hover(nextLine)&&lyricTime->isVisible()&&lyricTime->x()==timePosition.x()&&qAbs(lyricTime->y()-timePosition.y()-(nextLine->y()-first->y()))<1&&timeText->property("text").toString()==timestamp((hoverIndex+1)*2500),"time pill follows the hovered row vertically while keeping its right alignment");
+        check(hover(lyricTime)&&lyricTime->isVisible()&&timeText->property("text").toString()==timestamp((hoverIndex+1)*2500),"moving from a lyric to the time pill preserves its seek target");
+        check(click(lyricTime),"fixed timestamp accepts an actual click");settle(250);music.player.tick(10003,true);settle(450);
+        check(music.player.lyrics.index==hoverIndex+1&&page->property("following").toBool()&&qAbs(backend.host.mediaState()["position"].toDouble()-(hoverIndex+1)*2500)<250,"timestamp seeks real media to its lyric and resumes following");
+        hover(find("nowPlayingTitle"));check(lyricGlass&&!lyricGlass->property("active").toBool(),"leaving lyric releases its glass surface");
+        check(page->property("lyricGlassUsers").toInt()==0&&!find("nowLyricBaseCapture")->property("sourceItem").value<QQuickItem*>(),"leaving lyrics releases the additional backdrop capture");
+        check(!lyricTime->isVisible(),"leaving the lyric region hides its timestamp");
+        first->forceActiveFocus(Qt::TabFocusReason);settle(80);check(lyricGlass->property("active").toBool(),"keyboard lyric focus uses the same glass surface");
+        check(lyricTime->isVisible()&&timeText->property("text").toString()==timestamp(hoverIndex*2500),"keyboard lyric focus previews the corresponding timestamp");
+        first->setFocus(false);window->contentItem()->forceActiveFocus();settle(50);
+        check(!lyricTime->isVisible(),"clearing keyboard focus hides the timestamp");
+        check(click(hot),"hot comment accepts an actual click");refresh();
+        check(window->grabWindow().save(output+"/quote-comments-destination.png"),"quote comment destination screenshot");
+        check(hud.commentsOpen&&hud.tab=="comments"&&hud.frame["mode"]=="detail"&&hud.commentsSong["id"]==song["id"]&&MusicPlayer::identity(music.player.current)==MusicPlayer::identity(song),"quote opens this song's comments without replacing playback");
+        backend.action("player:now-playing");refresh();
+        page=find("nowPlayingPanel");
+        if(!page){check(false,"now-playing panel reopens after comments");return 1;}
+        hover(find(QString("nowLyric_%1").arg(music.player.lyrics.index)));
+        for(auto id:{"5511002","5511003","5511004","5511005"}){
+            auto next=song;next["id"]=id;next["key"]="netease:song:"+QString(id);
+            music.player.current=next;music.player.changed();
+            check(backend.nowPlaying()->property("hotComment").toString().isEmpty(),"track switch immediately clears the previous quote");
+            check(!find("nowLyricTime")->isVisible(),"track switch clears the previous lyric seek preview");
+            if(QString(id)=="5511004")continue; // Leave its queued request behind, then switch again.
+            settle(850);
+            if(QString(id)=="5511002"||QString(id)=="5511003")check(!find("nowHotComment")->isVisible(),"empty or failed hot comments leave no stale quote");
+        }
+        check(!staleQuoteAccepted&&backend.nowPlaying()->property("info").toMap()["id"]=="5511005"&&backend.nowPlaying()->property("hotComment").toString()==quote.simplified(),"only the current song accepts a late comment response");
+        auto *longText=find("nowHotCommentText");auto *longClose=find("nowHotCommentClose");
+        check(longText&&longClose&&longText->property("truncated").toBool()&&qAbs(longClose->x()-longText->x()-longText->width()-2*page->property("unit").toDouble())<1,"long quote keeps its closing mark immediately after the elided text");
+        auto shortSong=song;shortSong["id"]="5511006";shortSong["key"]="netease:song:5511006";music.player.current=shortSong;music.player.changed();music.player.lyrics.load(shortSong,true);settle(1000);
+        auto *shortText=find("nowHotCommentText");auto *shortClose=find("nowHotCommentClose");
+        check(shortText&&shortClose&&!shortText->property("truncated").toBool()&&qAbs(shortText->width()-shortText->implicitWidth())<1&&qAbs(shortClose->x()-shortText->x()-shortText->width()-2*page->property("unit").toDouble())<1,"short quote shrinks to its content and the closing mark follows");
+        check(window->grabWindow().save(output+"/short-quote.png"),"short quote screenshot");
+        auto *tools=find("globalAccountBar")->parentItem();hover(find("globalProfile"));
+        auto *account=find("globalAccountGlass");auto *accountSurface=account?account->property("item").value<QObject*>():nullptr;
+        check(accountSurface&&accountSurface->property("shadowStrength").toDouble()==0,"account and VIP capsule has no projected shadow");
+        QMetaObject::invokeMethod(tools,"pinAccount");settle(450);
+        auto *popup=find("popupRefractiveSurface");check(popup&&popup->property("shadowStrength").toDouble()==1,"focused account popup retains its shadow");
+        check(window->grabWindow().save(output+"/account-shadowless-popup-shadow.png"),"account and popup shadow screenshot");QMetaObject::invokeMethod(tools,"dismiss");
+        backend.action("player:now-playing");refresh();
+        for(const QSize size:{QSize(960,540),QSize(1440,900)})for(bool dark:{false,true}){
+            window->resize(size);hud.dark=dark;backend.scene.theme(dark);refresh();
+            auto *text=find("nowHotCommentText");check(text&&text->width()>0,"quote fits small and large layouts in both themes");
+            hover(find(QString("nowLyric_%1").arg(music.player.lyrics.index)));
+            auto *time=find("nowLyricTime");auto *lyricViewport=find("nowPlayingLyrics");auto *hoveredLine=find(QString("nowLyric_%1").arg(music.player.lyrics.index));
+            const auto rowTop=hoveredLine->mapToItem(page,QPointF()).y();
+            check(time&&time->isVisible()&&time->x()>=0&&time->x()+time->width()<=lyricViewport->x()+lyricViewport->width()&&qAbs(time->y()-rowTop-4*page->property("unit").toDouble())<1&&time->y()+time->height()<=lyricViewport->y()+lyricViewport->height(),"time pill fits at the right of the hovered row in each size and theme");
+            auto *capture=find("nowLyricBaseCapture");auto *captureSource=capture?capture->property("sourceItem").value<QQuickItem*>():nullptr;
+            const auto actualOrigin=captureSource?page->mapToItem(captureSource,QPointF()):QPointF(-10000,-10000);
+            const auto capturedRect=capture?capture->property("sourceRect").toRectF():QRectF();
+            check(captureSource&&QLineF(actualOrigin,capturedRect.topLeft()).length()<1,"lyric backdrop stays aligned after resizing in both themes");
+            check(window->grabWindow().save(output+QString("/now-playing-%1-%2.png").arg(size.width()).arg(dark?"dark":"light")),"now-playing size and theme screenshot");
+        }
+        #include "UiPerformanceRegressionChecks.inc"
+        check(writes==0,"lyric navigation and hot comment preview issue no API writes");
+        qInfo()<<"Now playing focused checks"<<(ok?"passed":"FAILED");return ok?0:1;
+    }
+    if (qEnvironmentVariableIntValue("RHINE_QA_PERSONAL_HUB_ONLY") == 1) {
+        const bool originalReduced=hud.reduced;
+        hud.reduced=false;
+        const std::function<QQuickItem *(QQuickItem *, const QString &)> findVisual =
+            [&](QQuickItem *item,const QString &name)->QQuickItem*{
+                if(item->objectName()==name)return item;
+                for(auto *c:item->childItems())if(auto *r=findVisual(c,name))return r;
+                return nullptr;
+            };
+        QImage cover(320,320,QImage::Format_RGB32);cover.fill(QColor("#849775"));
+        {QPainter p(&cover);QLinearGradient g(0,0,320,320);g.setColorAt(0,QColor("#437a98"));g.setColorAt(.55,QColor("#b384a9"));g.setColorAt(1,QColor("#e0bf94"));p.fillRect(cover.rect(),g);p.setPen(QPen(QColor("#ccece8"),7));for(int i=0;i<7;++i)p.drawEllipse(QPointF(165,170),22+i*22,22+i*22);}
+        cover.save(output+"/cover.png");const auto image=QUrl::fromLocalFile(output+"/cover.png").toString();
+        QStringList stressCovers;
+        if(qEnvironmentVariableIntValue("RHINE_QA_FOLDER_PERF_ONLY")==1){
+            QImage largeCover=cover.scaled(1600,1600);
+            for(int i=0;i<64;++i){
+                {QPainter painter(&largeCover);painter.fillRect(0,0,1600,80,QColor::fromHsv((i*29)%360,100,190));}
+                const auto path=output+QString("/stress-cover-%1.jpg").arg(i);
+                largeCover.save(path,"JPG",90);stressCovers.append(QUrl::fromLocalFile(path).toString());
+            }
+        }
+        music.uid="42";music.nickname="Rhine Listener";music.accountDetails={{"avatar",image},{"vipType",11}};music.changed();
+        int writes=0;
+        backend.host.fixture=[&](QString route,QJsonObject args){
+            QJsonObject b{{"code",200}};
+            if(route=="/user/detail")b["profile"]=QJsonObject{{"nickname","Rhine Listener"},{"avatarUrl",image},{"backgroundUrl",image},{"signature","A small collection of sounds and memories."},{"follows",31},{"followeds",8},{"eventCount",5}};
+            else if(route=="/user/level"){b["full"]=true;b["data"]=QJsonObject{{"level",10},{"progress",1}};}
+            else if(route=="/vip/info/v2")b["data"]=QJsonObject{{"now",1000},{"redVipLevel",7},{"redplus",QJsonObject{{"expireTime",1811087999000.}}}};
+            else if(route=="/pl/count")b={{"code",200},{"msg",3},{"comment",2},{"forward",0},{"notice",1}};
+            else if(route=="/playlist/detail"){
+                QJsonArray songs;for(int i=0;i<4;++i)songs.append(QJsonObject{{"id",QString::number(900+i)},{"name",QString("Song preview %1").arg(i+1)},{"al",QJsonObject{{"picUrl",stressCovers.isEmpty()?image:stressCovers[(args["id"].toString().toInt()*4+i)%stressCovers.size()]},{"name","A quiet record"}}},{"ar",QJsonArray{QJsonObject{{"name","Rhine"}}}}});
+                b["playlist"]=QJsonObject{{"tracks",songs}};
+            }
+            else if(route=="/user/playlist"||route=="/album/sublist"||route.startsWith("/record/recent/")){
+                QJsonArray rows;
+                for(int i=0;i<(stressCovers.isEmpty()?9:60);++i){
+                    const auto rowCover=stressCovers.isEmpty()?image:stressCovers[i%stressCovers.size()];
+                    QJsonObject item{{"id",QString::number(100+i)},{"name",QString("Quiet collection %1").arg(i+1)},{"coverImgUrl",rowCover},{"picUrl",rowCover},{"trackCount",28+i},{"creator",QJsonObject{{"userId",i%2?"7":"42"},{"nickname","Rhine"}}}};
+                    rows.append(route.startsWith("/record/recent/")?QJsonObject{{"data",item},{"playTime",1793775127000.}}:item);
+                }
+                if(route.startsWith("/record/recent/"))b["data"]=QJsonObject{{"list",rows}};
+                else b[route=="/album/sublist"?"data":"playlist"]=rows;
+                b["more"]=false;
+            } else ++writes;
+            return QJsonObject{{"body",b}};
+        };
+        refresh();
+        auto *tools=findVisual(window->contentItem(),"globalAccountBar")->parentItem();
+        check(tools!=nullptr,"personal tools load");
+        auto *personalHub=qobject_cast<PersonalHub *>(backend.personal());
+        const QUrl previewCover=personalHub->previewCover("http://p1.music.126.net/album.jpg?param=2000y2000&token=sample#cover");
+        check(previewCover.scheme()=="https"&&QUrlQuery(previewCover).queryItemValue("param")=="320y320"&&QUrlQuery(previewCover).queryItemValue("token")=="sample"&&previewCover.fragment()=="cover","song preview requests a bounded CDN thumbnail and preserves other URL fields");
+        check(personalHub->previewCover(image)==image,"local preview image URLs are unchanged");
+        if(qEnvironmentVariableIntValue("RHINE_QA_FOLDER_PERF_ONLY")==1){
+            QJsonArray runs;
+            for(int pass=0;pass<2;++pass){
+                QMutex frameMutex;QList<double> gaps;
+                QElapsedTimer clock;clock.start();qint64 previousFrame=0,previousTick=0;
+                double maxGuiGap=0;int songCreated=0,songDestroyed=0;
+                QSet<QQuickItem *> watched;
+                QObject observer;
+                const auto frameConnection=QObject::connect(window,&QQuickWindow::frameSwapped,&observer,[&]{
+                    const auto now=clock.nsecsElapsed();QMutexLocker lock(&frameMutex);
+                    if(previousFrame)gaps.append((now-previousFrame)/1000000.);
+                    previousFrame=now;
+                },Qt::DirectConnection);
+                QTimer probe;probe.setTimerType(Qt::PreciseTimer);probe.setInterval(8);
+                QObject::connect(&probe,&QTimer::timeout,&observer,[&]{
+                    const auto now=clock.nsecsElapsed();
+                    if(previousTick)maxGuiGap=qMax(maxGuiGap,(now-previousTick)/1000000.);
+                    previousTick=now;
+                    auto *folder=findVisual(window->contentItem(),"musicFolder_0");
+                    if(!folder)return;
+                    for(int i=0;i<4;++i){
+                        auto *sheet=findVisual(folder,QString("musicFolderSheet_%1").arg(i));
+                        if(!sheet||watched.contains(sheet))continue;
+                        watched.insert(sheet);++songCreated;
+                        QObject::connect(sheet,&QObject::destroyed,&observer,[&,sheet]{watched.remove(sheet);++songDestroyed;});
+                    }
+                });
+                probe.start();QMetaObject::invokeMethod(tools,"openLibrary",Q_ARG(QVariant,QVariant("created")));settle(4200);
+                probe.stop();QObject::disconnect(frameConnection);
+                QList<double> measured;{QMutexLocker lock(&frameMutex);measured=gaps;}
+                int folderInstances=0;
+                const auto rowCount=backend.personal()->property("state").toMap()["created"].toMap()["rows"].toList().size();
+                for(int i=0;i<rowCount;++i)if(findVisual(window->contentItem(),QString("musicFolder_%1").arg(i)))++folderInstances;
+                std::sort(measured.begin(),measured.end());
+                const auto percentile=[&](double p){return measured.isEmpty()?0.:measured[qMin(measured.size()-1,qsizetype((measured.size()-1)*p))];};
+                int over33=0,over50=0;for(double gap:measured){if(gap>33.34)++over33;if(gap>50)++over50;}
+                runs.append(QJsonObject{{"cached",pass==1},{"frames",measured.size()},{"p50_ms",percentile(.5)},{"p95_ms",percentile(.95)},
+                    {"p99_ms",percentile(.99)},{"max_ms",measured.isEmpty()?0.:measured.last()},{"over_33_ms",over33},{"over_50_ms",over50},
+                    {"max_gui_timer_gap_ms",maxGuiGap},{"folder_instances",folderInstances},{"playlist_rows",rowCount},
+                    {"first_folder_song_delegates_created",songCreated},{"first_folder_song_delegates_destroyed",songDestroyed}});
+                check(folderInstances>0&&folderInstances<rowCount,"large library creates folder components only for visited rows");
+                auto *plainCover=findVisual(window->contentItem(),"libraryPlainCover");
+                check(plainCover&&plainCover->property("source").toUrl().isEmpty(),"folder rows do not load an invisible plain cover");
+                if(pass==1){
+                    auto *scroll=findVisual(window->contentItem(),"personalLibraryScroll");
+                    if(scroll)scroll->setProperty("contentY",scroll->property("contentHeight").toDouble()-scroll->height());
+                    settle(2000);
+                    auto *last=findVisual(window->contentItem(),QString("musicFolder_%1").arg(rowCount-1));
+                    check(last&&last->property("files").toList().size()==4,"scrolling to unvisited folders loads their actual song previews");
+                    check(window->grabWindow().save(output+"/scrolled-folders.png"),"lazy folder scrolling screenshot");
+                }
+                QMetaObject::invokeMethod(tools,"dismiss");settle(250);
+            }
+            QFile report(output+"/folder-performance.json");
+            check(report.open(QIODevice::WriteOnly),"folder performance report opens");
+            report.write(QJsonDocument(QJsonObject{{"runs",runs},{"fixture","offline 30 folders, 4 songs per visible folder; distinct local 1600px covers; 1280x720"}}).toJson());
+            qInfo()<<"Folder performance"<<QJsonDocument(runs).toJson(QJsonDocument::Compact);
+            return ok?0:1;
+        }
+        auto hover=[&](QString name){auto *item=findVisual(window->contentItem(),name);if(!item){check(false,"hover target exists");return;}auto p=item->mapToScene(QPointF(item->width()/2,item->height()/2));QMouseEvent e(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&e);settle(650);};
+        auto idle=[&]{QMetaObject::invokeMethod(tools,"dismiss");window->contentItem()->forceActiveFocus();const QPointF p(90,180);QMouseEvent e(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&e);settle(450);};
+        idle();
+        auto *profile=findVisual(window->contentItem(),"globalProfile");
+        auto *accountGlass=findVisual(window->contentItem(),"globalAccountGlass");
+        auto *vipGlass=findVisual(window->contentItem(),"globalVipGlass");
+        auto *accountArrow=findVisual(window->contentItem(),"globalAccountArrow");
+        check(profile&&accountGlass&&accountArrow&&!vipGlass,"account focus surface exists without a nested VIP glass");
+        if(profile&&accountGlass&&accountArrow){
+            check(!accountGlass->property("active").toBool()&&!accountArrow->isVisible(),"idle account releases glass and hides arrow");
+            check(window->grabWindow().save(output+"/topbar-idle.png"),"idle account screenshot");
+            hover("globalProfile");
+            check(accountGlass->property("active").toBool()&&accountArrow->opacity()>.99,"pointer focus reveals account glass and arrow");
+            check(window->grabWindow().save(output+"/account-hover.png"),"account hover screenshot");
+            idle();
+            check(!accountGlass->property("active").toBool()&&!accountArrow->isVisible(),"leaving account clears glass and arrow");
+            profile->forceActiveFocus(Qt::TabFocusReason);settle(350);
+            check(accountGlass->property("active").toBool()&&accountArrow->opacity()>.99,"keyboard focus reveals account glass and arrow");
+            idle();
+        }
+        hover("globalInbox");
+        check(tools->property("previewKey").toString()=="messages","actual hover opens message preview");
+        check(accountArrow&&accountArrow->opacity()<.01&&!accountGlass->property("active").toBool(),"other toolbar focus hides account glass and arrow");
+        check(!backend.messages()->property("state").toMap()["open"].toBool(),"message preview does not open or mark conversations");
+        check(window->grabWindow().save(output+"/messages.png"),"message preview screenshot");
+        QMetaObject::invokeMethod(tools,"dismiss");
+        QMetaObject::invokeMethod(tools,"pinAccount");settle(700);
+        check(tools->property("person").toMap()["follows"].toInt()==31,"identity uses account data");
+        check(tools->property("level").toMap()["level"].toInt()==10,"level loads separately from VIP");
+        check(tools->property("vip").toMap()["label"].toString()=="SVIP","VIP data loaded");
+        check(window->grabWindow().save(output+"/account.png"),"account screenshot");
+        QMetaObject::invokeMethod(tools,"dismiss");
+        {auto *vip=findVisual(window->contentItem(),"globalVipBadge");auto point=vip->mapToScene(QPointF(vip->width()/2,vip->height()/2));
+        QMouseEvent press(QEvent::MouseButtonPress,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&press);
+        QMouseEvent release(QEvent::MouseButtonRelease,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&release);settle(300);}
+        check(tools->property("membershipVisible").toBool(),"VIP opens independent membership panel");
+        check(window->grabWindow().save(output+"/membership.png"),"membership screenshot");
+        QMetaObject::invokeMethod(tools,"dismiss");
+        const auto original=music.current;
+        for(auto section:{"created","collected","albums","songs"}){
+            QMetaObject::invokeMethod(tools,"openLibrary",Q_ARG(QVariant,QVariant(section)));
+            if(QString(section)=="created"){
+                settle(180);
+                auto *first=findVisual(window->contentItem(),"musicFolder_0");
+                auto *second=findVisual(window->contentItem(),"musicFolder_1");
+                auto *front=first?findVisual(first,"musicFolderFront"):nullptr;
+                check(first&&second&&front,"folder entrance layers exist");
+                if(first&&second&&front){
+                    check(first->property("entered").toBool()&&!first->property("assembled").toBool(),"opening collection starts folder entrance");
+                    check(first->property("entranceTime").toDouble()>second->property("entranceTime").toDouble(),"neighboring folders enter at different times");
+                    check(front->opacity()<.5,"front cover follows the back panel");
+                    check(window->grabWindow().save(output+"/entrance-early.png"),"early entrance screenshot");
+                    QElapsedTimer previewWait;previewWait.start();
+                    while(first->property("files").toList().size()!=4&&previewWait.elapsed()<5000)settle(10);
+                    check(first->property("files").toList().size()==4&&!first->property("opened").toBool(),"cold collection loads four songs without hover or click");
+                    auto *sheets=findVisual(first,"musicFolderSheets");
+                    check(sheets&&sheets->property("count").toInt()==4,"first entrance renders four real song layers");
+                    QPointer<QQuickItem> firstSong=findVisual(first,"musicFolderSheet_0");
+                    settle(440);
+                    auto *backSong=findVisual(first,"musicFolderSheet_0");
+                    auto *frontSong=findVisual(first,"musicFolderSheet_3");
+                    check(backSong&&frontSong&&backSong->property("arrival").toDouble()<frontSong->property("arrival").toDouble(),"real song layers drop at different times on first opening");
+                    check(window->grabWindow().save(output+"/entrance-middle.png"),"middle entrance screenshot");
+                    settle(1500);
+                    check(firstSong&&findVisual(first,"musicFolderSheet_0")==firstSong,"other preview responses preserve existing song delegates");
+                    check(first->property("assembled").toBool()&&second->property("assembled").toBool()&&front->opacity()>.99,"folder entrance finishes with readable controls");
+                    QMetaObject::invokeMethod(tools,"dismiss");settle(200);
+                    check(!first->property("entered").toBool(),"closing collection resets entrance");
+                    QMetaObject::invokeMethod(tools,"openLibrary",Q_ARG(QVariant,QVariant(section)));settle(220);
+                    check(first->property("entered").toBool()&&!first->property("assembled").toBool(),"reopening collection replays entrance");
+                    settle(2000);
+                }
+            } else settle(650);
+            const auto page=backend.personal()->property("state").toMap()[section].toMap();
+            check(!page["rows"].toList().isEmpty(),"library tab has actual fixture data");
+            check(music.current==original,"browsing library keeps current music page");
+            check(window->grabWindow().save(output+"/"+section+".png"),"library screenshot");
+            if(QString(section)=="created"){
+                auto *folder=findVisual(window->contentItem(),"musicFolder_0");
+                check(folder!=nullptr,"native folder exists");
+                if(folder){
+                    hover("musicFolder_0");
+                    check(window->grabWindow().save(output+"/folder-hover.png"),"folder hover screenshot");
+                    auto point=folder->mapToScene(QPointF(folder->width()*.3,folder->height()*.83));
+                    QMouseEvent press(QEvent::MouseButtonPress,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&press);
+                    QMouseEvent release(QEvent::MouseButtonRelease,point,window->mapToGlobal(point.toPoint()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&release);settle(1000);
+                    check(folder->property("opened").toBool(),"actual folder click opens fan without navigation");
+                    check(folder->property("files").toList().size()==4,"folder fan uses real song snapshots");
+                    check(music.current==original,"opening folder preserves current music page");
+                    check(window->grabWindow().save(output+"/folder-open.png"),"folder open screenshot");
+                    QMetaObject::invokeMethod(folder,"openOptions");settle(250);
+                    check(window->grabWindow().save(output+"/folder-options.png"),"folder options screenshot");
+                    QMetaObject::invokeMethod(tools,"dismiss");
+                }
+            }
+        }
+        QMetaObject::invokeMethod(tools,"dismiss");
+        // Exercise late responses independently of the offline transport's fast fixture.
+        // The production component must keep its song clock idle until actual data arrives.
+        QQmlComponent loadingComponent(qmlEngine(tools));
+        loadingComponent.setData("import QtQuick\nimport RhineMusic 1.0\nMusicFolder {}",QUrl("qrc:/qt/qml/RhineMusic/FolderLoadingCheck.qml"));
+        auto *loadingProbe=qobject_cast<QQuickItem *>(loadingComponent.createWithInitialProperties({
+            {"entry",QVariantMap{{"title","Delayed collection"},{"cover",image},{"trackCount",4}}},
+            {"entranceActive",false},{"materialActive",false},{"width",220},{"reduced",false}
+        },qmlContext(tools)));
+        check(loadingProbe!=nullptr,"delayed preview test component loads");
+        if(!loadingProbe)qWarning()<<loadingComponent.errors();
+        if(loadingProbe){
+            loadingProbe->setParent(window->contentItem());
+            loadingProbe->setParentItem(window->contentItem());
+            loadingProbe->setVisible(false);
+            loadingProbe->setProperty("entranceActive",true);settle(1700);
+            auto *sheets=findVisual(loadingProbe,"musicFolderSheets");
+            check(sheets&&sheets->property("count").toInt()==0&&!loadingProbe->property("cardsEntered").toBool(),"slow preview does not drop a placeholder cover or consume song animation");
+            QVariantList songs;for(int i=0;i<4;++i)songs.append(QVariantMap{{"title",QString("Late song %1").arg(i+1)},{"cover",image}});
+            loadingProbe->setProperty("files",songs);settle(440);
+            auto *backSong=findVisual(loadingProbe,"musicFolderSheet_0");
+            auto *frontSong=findVisual(loadingProbe,"musicFolderSheet_3");
+            check(sheets&&sheets->property("count").toInt()==4&&backSong&&frontSong&&backSong->property("arrival").toDouble()<frontSong->property("arrival").toDouble()&&!loadingProbe->property("assembled").toBool(),"late songs still receive their complete staggered entrance");
+            settle(1100);
+            check(loadingProbe->property("assembled").toBool(),"late song entrance completes");
+            loadingProbe->setProperty("entranceActive",false);
+            loadingProbe->setProperty("files",QVariantList{});
+            loadingProbe->setProperty("entranceActive",true);settle(50);
+            loadingProbe->setProperty("entranceActive",false);
+            loadingProbe->setProperty("files",songs);settle(100);
+            check(!loadingProbe->property("cardsEntered").toBool()&&loadingProbe->property("cardsTime").toDouble()==0,"response after closing does not restart hidden animation");
+            loadingProbe->setProperty("entranceActive",true);settle(100);
+            check(loadingProbe->property("cardsEntered").toBool()&&!loadingProbe->property("assembled").toBool(),"reopening after a late response animates cached songs");
+            loadingProbe->setProperty("entranceActive",false);
+            loadingProbe->setProperty("files",QVariantList{});
+            loadingProbe->setProperty("loaded",true);
+            loadingProbe->setProperty("reduced",true);
+            loadingProbe->setProperty("entranceActive",true);settle(20);
+            check(loadingProbe->property("assembled").toBool()&&sheets->property("count").toInt()==1,"empty playlist finishes with one cover in reduced motion");
+            loadingProbe->setProperty("entranceActive",false);
+            loadingProbe->setProperty("loaded",false);
+            loadingProbe->setProperty("error",QString("Preview unavailable"));
+            loadingProbe->setProperty("entranceActive",true);settle(20);
+            check(loadingProbe->property("assembled").toBool()&&sheets->property("count").toInt()==1,"failed preview keeps the folder usable with one cover");
+            delete loadingProbe;
+        }
+        window->resize(2440,1400);settle(250);
+        QMetaObject::invokeMethod(tools,"openLibrary",Q_ARG(QVariant,QVariant("created")));settle(2300);
+        check(window->grabWindow().save(output+"/large-folders.png"),"large-window folder layout screenshot");
+        QMetaObject::invokeMethod(tools,"dismiss");
+        backend.action("theme");settle(400);
+        QMetaObject::invokeMethod(tools,"openLibrary",Q_ARG(QVariant,QVariant("created")));settle(2300);
+        check(window->grabWindow().save(output+"/dark-folders.png"),"dark folder screenshot");
+        idle();
+        check(window->grabWindow().save(output+"/dark-topbar-idle.png"),"dark idle account screenshot");
+        hover("globalFavorites");
+        check(window->grabWindow().save(output+"/dark-hover.png"),"dark focused text screenshot");
+        QMetaObject::invokeMethod(tools,"dismiss");backend.action("theme");settle(100);
+        hud.reduced=true;refresh();
+        QMetaObject::invokeMethod(tools,"openLibrary",Q_ARG(QVariant,QVariant("created")));settle(150);
+        if(auto *folder=findVisual(window->contentItem(),"musicFolder_0")){
+            check(folder->property("assembled").toBool(),"reduced motion shows complete folders immediately");
+            check(window->grabWindow().save(output+"/reduced-folders.png"),"reduced motion screenshot");
+        } else check(false,"reduced motion folder exists");
+        QMetaObject::invokeMethod(tools,"dismiss");hud.reduced=originalReduced;refresh();
+        window->resize(960,540);settle(250);hover("globalFavorites");
+        check(window->grabWindow().save(output+"/small-hover.png"),"small-window hover screenshot");
+        check(writes==0,"preview and library requests are read-only");
+        music.uid="";music.changed();settle(200);
+        check(!backend.personal()->property("state").toMap().contains("identity"),"logout discards account snapshots");
+        qInfo()<<"Personal hub focused checks"<<(ok?"passed":"FAILED");
+        return ok?0:1;
+    }
+    if (qEnvironmentVariableIntValue("RHINE_QA_RESUME_CHROME_ONLY") == 1) {
+        const std::function<QQuickItem *(QQuickItem *, const QString &)> findVisual =
+            [&](QQuickItem *item, const QString &name) -> QQuickItem * {
+                if (item->objectName()==name) return item;
+                for (auto *child:item->childItems()) if(auto *found=findVisual(child,name)) return found;
+                return nullptr;
+            };
+        refresh();
+        const auto largeSize = (qaScreen ? qaScreen : window->screen())->availableGeometry().size()-QSize(120,120);
+        for (const auto size : {QSize(960,540), largeSize}) {
+            window->resize(size); settle(250);
+            auto *bar = findVisual(window->contentItem(), "globalAccountBar");
+            auto *close = findVisual(window->contentItem(), "windowButton_close");
+            auto *minimize = findVisual(window->contentItem(), "windowButton_minimize");
+            check(bar && close && minimize, "account bar and window buttons exist");
+            if (bar && close && minimize) {
+                const auto barCenter = bar->mapToScene(QPointF(0,bar->height()/2));
+                const auto closeCenter = close->mapToScene(QPointF(0,close->height()/2));
+                check(qAbs(barCenter.y()-closeCenter.y()) < 1, "account and window controls share one vertical center");
+                check(bar->mapToScene(QPointF(bar->width(),0)).x() < minimize->mapToScene(QPointF()).x(), "account bar leaves space for window buttons");
+                check(qAbs(close->height()-40) < .01, "window control height is scaled only once");
+            }
+            check(window->grabWindow().save(output+QString("/chrome-%1.png").arg(size.width())), "chrome screenshot saved");
+        }
+        bool invalidated = false;
+        const auto connection = QObject::connect(window, &QQuickWindow::sceneGraphInvalidated, window,
+            [&]{invalidated=true;}, Qt::DirectConnection);
+        window->showMinimized(); settle(2500);
+        check(window->isPersistentSceneGraph() && window->isPersistentGraphics() && !invalidated,
+              "background retains scene and graphics beyond the old two-second release");
+        window->showNormal(); settle(250);
+        check(!window->grabWindow().isNull() && !invalidated, "restored window renders without rebuilding scene graph");
+        QObject::disconnect(connection);
+        for (int i=0;i<3;++i) {
+            backend.action("player:open"); refresh();
+            check(hud.queueOpen, "queue opens in focused regression");
+            backend.action("queue-close"); refresh();
+            check(!hud.queueOpen, "queue closes in focused regression");
+        }
+        qInfo() << "Resume/chrome focused checks" << (ok ? "passed" : "FAILED");
+        return ok ? 0 : 1;
+    }
     auto *loader = window->findChild<QQuickItem *>("textFrostedLoader");
     check(loader != nullptr, "loader exists");
     if (!loader) {
@@ -391,6 +1564,12 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     check(window->findChild<QObject *>("textFrostedEffect") != nullptr, "real blur effect exists");
     auto *glassMaterial = window->findChild<QObject *>("liquidGlassMaterial");
     check(glassMaterial && glassMaterial->property("status").toInt() != 2, "liquid glass shader loads without errors");
+    const bool opticalTrial=qEnvironmentVariableIntValue("RHINE_GLASS_ORIGINAL")!=1;
+    auto *playerGlass=window->findChild<QQuickItem *>("glassPlayerBar");
+    if(playerGlass){
+        auto *surface=playerGlass->property("item").value<QObject *>();
+        check(surface&&surface->property("refractive").toBool()==opticalTrial,"player uses the selected native glass material");
+    }
     const auto on = window->grabWindow();
     check(!on.isNull() && on.save(output + "/frosted-on.png"), "on screenshot");
     on.scaled(800, 450, Qt::KeepAspectRatio, Qt::SmoothTransformation)
@@ -415,7 +1594,6 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     check(backend.state().value("readingPanel").toMap().value("y").toInt() == 205,
           "song list expands reading area");
     hud.trackListMode = false;
-    hud.sceneEnhancement = false;
     refresh();
     check(loader->property("active").toBool(), "works without scene enhancement");
     hud.dark = true;
@@ -518,7 +1696,6 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     music.current = song;
     hud.themeMode = "light";
     hud.dark = false;
-    hud.sceneEnhancement = true;
     backend.scene.theme(false);
     backend.scene.review("detail");
     backend.action("tab:comments");
@@ -669,7 +1846,8 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     hud.trackOffset = 3;
     refresh();
     window->grabWindow().save(output + "/artist-albums-on.png");
-    scrollText();
+    check(findVisual(window->contentItem(),"artistProfilePage")&&findVisual(window->contentItem(),"profileSignature"),
+          "artist detail uses the shared profile and full biography entrance");
     const auto playbackBefore = music.player.current;
     parent->albumsLoading = true;
     backend.action("music:artist-album:3");
@@ -827,6 +2005,141 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
         const auto originalPlay=music.player.current;
         const auto originalQueue=music.player.queue;
         const auto originalIndex=music.player.index;
+        // Production list: playback identity survives pause, filters and virtualization.
+        if(model&&magazinePage){
+            const bool originalReduced=hud.reduced;
+            hud.reduced=false;refresh();
+            const auto savedState=music.player.state;
+            const bool savedLoading=music.player.loading,savedFailed=music.player.failed;
+            const auto savedQuery=model->query(),savedFilter=model->filter();
+            auto *list=findVisual(window->contentItem(),"magazineTrackList");
+            const double savedY=list?list->property("contentY").toDouble():0;
+            music.player.current=originalDirectory->songs.last().toObject();
+            music.player.loading=false;music.player.failed=false;music.player.state["playing"]=true;music.player.changed();settle(80);
+            check(model->playingRow()==9&&model->playbackActive()&&model->playingKey()==MusicPlayer::identity(music.player.current),
+                "playlist playing row uses real provider and song identity");
+            int playbackSignals=0;
+            const auto playbackConnection=QObject::connect(model,&PlaylistMagazine::playbackChanged,[&]{++playbackSignals;});
+            music.player.state["position"]=1234;music.player.changed();
+            check(playbackSignals==0,"playlist playback clock does not invalidate row state");
+            music.player.state["playing"]=false;music.player.changed();settle(30);
+            check(model->playingRow()==9&&!model->playbackActive()&&playbackSignals==1,"paused current song keeps its identity and stops its wave");
+            QObject::disconnect(playbackConnection);
+            model->search("no-match-playing-row");settle(30);
+            check(model->playingRow()==-1,"filtered-out playing song has no false locate target");
+            model->search(savedQuery);model->setFilter(savedFilter);settle(70);
+            if(list)list->setProperty("contentY",list->property("originY"));settle(60);
+            auto *locate=findVisual(window->contentItem(),"magazineLocateCurrent");
+            check(locate&&locate->property("available").toBool(),"offscreen current song exposes the fixed locate button");
+            QMetaObject::invokeMethod(magazinePage,"locateCurrentSong");settle(650);
+            check(magazinePage->property("playingInView").toBool()&&model->playingRow()==9&&music.player.current==originalDirectory->songs.last().toObject(),
+                "locate smoothly reveals the actual row without changing playback");
+            window->grabWindow().save(output+"/preview-playlist-paused.png");
+            auto *bar=findVisual(window->contentItem(),"magazineScrollBar");
+            check(bar&&bar->property("opacity").toDouble()>.8,"scrolling reveals the overlay scrollbar");
+            // Hover real row content (including nested cover/title hit areas).
+            auto *row=findVisual(window->contentItem(),"magazineRow_9");
+            if(row){
+                const auto point=row->mapToScene(QPointF(row->width()*.3,row->height()/2));
+                QMouseEvent move(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);settle(450);
+            }
+            auto *glass=findVisual(window->contentItem(),"magazineHoverGlass");
+            check(row&&glass&&glass->property("engaged").toBool()&&qAbs(glass->y()-row->y()-4*magazinePage->property("unit").toDouble())<1,
+                "one liquid hover surface follows nested song content without moving the row");
+            window->grabWindow().save(output+"/preview-playlist-hover.png");
+            if(opticalTrial&&glass){
+                auto *optical=findVisual(glass,"playlistRefractiveSurface");
+                check(optical&&optical->property("refractive").toBool()&&optical->property("silhouette").value<QObject *>(),
+                    "shared hover refraction uses the animated silhouette without per-row surfaces");
+                auto *shader=optical?optical->findChild<QObject *>("liquidGlassMaterial"):nullptr;
+                check(shader&&shader->property("status").toInt()!=2,"shared hover GPU shader loads");
+                const auto expected=glass->mapToScene(QPointF(0,0));
+                check(optical&&qAbs(optical->property("sampleX").toDouble()-expected.x())<1&&qAbs(optical->property("sampleY").toDouble()-expected.y())<1,
+                    "hover background sampling follows scroll coordinates");
+                const bool priorTheme=hud.dark;
+                const double priorListY=list->property("contentY").toDouble();
+                for(const QSize size:{QSize(960,540),QSize(1280,720),QSize(1600,900)}){
+                    window->resize(size);refresh();
+                    for(bool dark:{false,true}){
+                        hud.dark=dark;backend.scene.theme(dark);refresh();
+                        // Locate again after resizing; physical scroll offsets do not
+                        // describe the same visible rows at a different UI scale.
+                        QMetaObject::invokeMethod(magazinePage,"locateCurrentSong");settle(450);
+                        auto *candidate=findVisual(window->contentItem(),"magazineRow_8");
+                        check(candidate&&candidate->mapToScene(QPointF(0,0)).y()<window->height()*.86,"responsive hover target remains inside list viewport");
+                        if(candidate){
+                            const auto point=candidate->mapToScene(QPointF(candidate->width()*.3,candidate->height()/2));
+                            QMouseEvent e(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&e);settle(350);
+                        }
+                        const auto frame=window->grabWindow();
+                        check(!frame.isNull()&&frame.save(output+QString("/glass-hover-%1-%2.png").arg(size.width()).arg(dark?"dark":"light")),"responsive glass theme screenshot");
+                    }
+                }
+                hud.dark=priorTheme;backend.scene.theme(priorTheme);window->resize(1280,720);refresh();
+                list->setProperty("contentY",priorListY);settle(80);
+                row=findVisual(window->contentItem(),"magazineRow_9");
+                if(row){const auto point=row->mapToScene(QPointF(row->width()*.3,row->height()/2));QMouseEvent e(QEvent::MouseMove,point,window->mapToGlobal(point.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&e);settle(350);}
+            }
+            if(row&&glass){
+                auto *previous=findVisual(window->contentItem(),"magazineRow_8");
+                const double rowY=row->y(),rowHeight=row->height();
+                const auto moveTo=[&](QQuickItem *item){if(!item)return;const auto p=item->mapToScene(QPointF(item->width()*.25,item->height()/2));QMouseEvent e(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&e);};
+                moveTo(previous);settle(75);
+                auto *hoverPlay=findVisual(window->contentItem(),"magazineHoverPlay_8");
+                auto *hoverIndex=findVisual(window->contentItem(),"magazineIndex_8");
+                check(hoverPlay&&hoverPlay->isVisible()&&hoverIndex&&!hoverIndex->isVisible(),
+                    "hovered ordinary song replaces its index with a play triangle");
+                check(glass->property("engaged").toBool()&&qAbs(glass->property("velocity").toDouble())>1,"rapid row crossing retains a moving shared glass spring");
+                moveTo(row);settle(600);
+                check(qAbs(glass->property("tension").toDouble())<.01&&qAbs(glass->property("velocity").toDouble())<1&&row->y()==rowY&&row->height()==rowHeight,
+                    "liquid contour recovers after rapid retargeting without row reflow");
+                const bool savedReduced=hud.reduced;
+                hud.reduced=true;refresh();moveTo(previous);settle(30);
+                check(glass->property("reduced").toBool()&&qAbs(glass->property("velocity").toDouble())<.01&&qAbs(glass->property("tension").toDouble())<.01,
+                    "reduced motion snaps the glass without contour stretching");
+                hud.reduced=savedReduced;refresh();
+            }
+            music.player.state["playing"]=true;music.player.changed();settle(80);
+            check(model->playbackActive()&&findVisual(window->contentItem(),"magazinePlaying_9")&&findVisual(window->contentItem(),"magazinePlaying_9")->isVisible(),
+                "resuming playback restores the current row wave");
+            window->grabWindow().save(output+"/preview-playlist-playing.png");
+            const QPointF outside(5,5);
+            QMouseEvent leave(QEvent::MouseMove,outside,window->mapToGlobal(outside.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&leave);settle(1400);
+            check(bar&&bar->property("opacity").toDouble()<.05,"idle scrollbar hides again after the pointer leaves");
+            check(glass&&!glass->property("engaged").toBool(),"leaving the rows releases the shared glass surface");
+            if(opticalTrial&&glass)check(!findVisual(glass,"playlistRefractiveSurface"),"idle hover releases its background captures");
+            auto *previous=findVisual(window->contentItem(),"magazineRow_8");
+            if(previous){
+                const auto p=previous->mapToScene(QPointF(previous->width()*.25,previous->height()/2));
+                QMouseEvent move(QEvent::MouseMove,p,window->mapToGlobal(p.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&move);settle(120);
+                magazinePage->setProperty("selecting",true);settle(40);
+                auto *play=findVisual(window->contentItem(),"magazineHoverPlay_8");
+                auto *index=findVisual(window->contentItem(),"magazineIndex_8");
+                check(play&&!play->isVisible()&&index&&index->isVisible(),"batch selection keeps its selection control instead of hover play");
+                magazinePage->setProperty("selecting",false);settle(40);
+                // The batch toolbar changes header height. Re-enter the row at
+                // its new scene position before hitting its conditional button.
+                const auto restoredPoint=previous->mapToScene(QPointF(previous->width()*.25,previous->height()/2));
+                QMouseEvent reenter(QEvent::MouseMove,restoredPoint,window->mapToGlobal(restoredPoint.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&reenter);settle(80);
+                if(play){const auto hit=play->mapToScene(QPointF(play->width()/2,play->height()/2));
+                    QMouseEvent moveHit(QEvent::MouseMove,hit,window->mapToGlobal(hit.toPoint()),Qt::NoButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&moveHit);
+                    for(const auto type:{QEvent::MouseButtonPress,QEvent::MouseButtonRelease}){QMouseEvent click(type,hit,window->mapToGlobal(hit.toPoint()),Qt::LeftButton,type==QEvent::MouseButtonPress?Qt::LeftButton:Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&click);}
+                    settle(120);
+                }
+                qInfo()<<"Hover play diagnostics"<<bool(play)<< (play&&play->isVisible()) <<music.player.current["id"]<<originalDirectory->songs.at(8).toObject()["id"];
+                check(music.player.current["id"]==originalDirectory->songs.at(8).toObject()["id"]&&music.directory==originalDirectory,
+                    "hover triangle single click plays the real song and retains its playlist");
+                window->grabWindow().save(output+"/preview-playlist-hover-milk.png");
+            }
+            music.player.queue=originalQueue;music.player.index=originalIndex;
+            music.player.current=originalPlay;music.player.state=savedState;music.player.loading=savedLoading;music.player.failed=savedFailed;music.player.changed();
+            hud.reduced=originalReduced;refresh();
+            if(list)list->setProperty("contentY",savedY);settle(80);
+        }
+        if(qEnvironmentVariableIntValue("RHINE_QA_PLAYLIST_ONLY")==1){
+            qInfo()<<"Playlist targeted UI:"<<(ok?"passed":"FAILED");
+            return ok?0:1;
+        }
         check(findVisual(window->contentItem(),"globalSearch") && findVisual(window->contentItem(),"globalProfile") && findVisual(window->contentItem(),"globalSettings"),
             "G71 shared account bar exposes profile, search and settings");
         if(model && !originalDirectory->songs.isEmpty()){
@@ -918,17 +2231,57 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
                 refresh();
             }
             check(model->songMenu().value("visible").toBool() && music.player.current==originalPlay,"G69 real right-click opens shared song menu without starting playback");
+            auto *contextRow=findVisual(window->contentItem(),"magazineRow_0");
+            check(contextRow&&contextRow->property("isHovered").toBool(),"right-click retains glass emphasis on the captured song row");
+            if(opticalTrial){
+                auto *surface=findVisual(window->contentItem(),"songContextGlass");
+                check(surface&&surface->property("engaged").toBool()&&findVisual(surface,"popupRefractiveSurface"),"song menu uses an active local glass capture");
+                window->grabWindow().save(output+"/popup-song-glass.png");
+            }
             model->songAction("copy");
+            settle(180);
+            check(!model->songMenu().value("visible").toBool()&&contextRow&&!contextRow->property("isHovered").toBool(),"closing the context menu releases its pinned song highlight");
             check(QGuiApplication::clipboard()->text()==music.sourceURL(clicked),"G69 context copy uses the clicked song ID");
             model->showSongMenu("directory",0,MusicPlayer::identity(clicked),20,20);model->songAction("next");
             check(music.player.current==originalPlay && MusicData::indexOfId(music.player.queue,clicked["id"].toString())>=0,"G69 next-play context action queues the captured song");
             check(clickVisual(findVisual(window->contentItem(),"playlistDescriptionOpen"))&&findVisual(window->contentItem(),"playlistDescriptionClose"),"G71 long description opens a bounded readable popup");
+            window->grabWindow().save(output+"/popup-description-glass.png");
             clickVisual(findVisual(window->contentItem(),"playlistDescriptionClose"));
+            if(opticalTrial){
+                auto *menu=window->findChild<QObject *>("playlistMoreMenu");
+                const bool priorDark=hud.dark;
+                for(const QSize size:{QSize(960,540),QSize(1280,720),QSize(1600,900)}){
+                    window->resize(size);refresh();
+                    for(bool dark:{false,true}){
+                        hud.dark=dark;backend.scene.theme(dark);refresh();settle(1600);
+                        check(clickVisual(findVisual(window->contentItem(),"magazineMore")),"playlist more button opens the glass menu");
+                        settle(180);
+                        auto *surface=findVisual(window->contentItem(),"playlistMoreGlass");
+                        auto *optical=surface?findVisual(surface,"popupRefractiveSurface"):nullptr;
+                        auto *shader=optical?optical->findChild<QObject *>("liquidGlassMaterial"):nullptr;
+                        check(menu&&menu->property("visible").toBool()&&surface&&surface->property("engaged").toBool()&&shader&&shader->property("status").toInt()!=2,"popup glass is visible and its shader loads");
+                        const auto bounds=surface?surface->mapRectToScene(surface->boundingRect()):QRectF();
+                        check(bounds.left()>=0&&bounds.top()>=0&&bounds.right()<=window->width()&&bounds.bottom()<=window->height(),"glass menu stays within the resized window");
+                        window->grabWindow().save(output+QString("/popup-more-%1-%2.png").arg(size.width()).arg(dark?"dark":"light"));
+                        inputKey(Qt::Key_Escape);settle(250);
+                        check(menu&&!menu->property("visible").toBool()&&surface&&!findVisual(surface,"popupRefractiveSurface"),"closing the menu releases its scene captures");
+                    }
+                }
+                hud.dark=priorDark;backend.scene.theme(priorDark);window->resize(1280,720);refresh();
+                check(music.player.current==originalPlay,"glass menu previews preserve playback");
+            }
             const auto accountUid=music.uid,accountName=music.nickname;const auto accountDetails=music.accountDetails;
             music.uid="42";music.nickname="Offline account fixture";music.accountDetails={{"avatar",artworkURL},{"vipType",11}};refresh();
             clickVisual(findVisual(window->contentItem(),"globalProfile"));
             check(hud.modal=="profile"&&hud.profileID=="42","G71 avatar opens the actual account profile independently of the arrow");backend.action("back");refresh();
             clickVisual(findVisual(window->contentItem(),"globalAccountArrow"));
+            if(opticalTrial){
+                auto *surface=findVisual(window->contentItem(),"accountMenuGlass");
+                check(surface&&surface->property("engaged").toBool()&&findVisual(surface,"popupRefractiveSurface"),"account menu shares the transparent refractive material");
+                const auto bounds=surface?surface->mapRectToScene(surface->boundingRect()):QRectF();
+                check(bounds.width()>200&&bounds.left()>=0&&bounds.right()<=window->width(),"account glass menu has readable width inside the window");
+                window->grabWindow().save(output+"/popup-account-glass.png");
+            }
             check(clickVisual(findVisual(window->contentItem(),"accountMenuPlaylists"))&&hud.modal=="profile"&&hud.profileFilter=="created","G71 account menu opens the existing created-playlist profile view");backend.action("back");refresh();
             music.uid=accountUid;music.nickname=accountName;music.accountDetails=accountDetails;refresh();
             const auto likedBefore=music.likedIDs;const auto shelfBefore=music.lists[1];const auto totalBefore=music.totals[1];
@@ -1048,6 +2401,23 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
     check(sideNav != nullptr, "side navigation is available in the main window");
     if (sideNav) {
         sideNav->setProperty("expanded", true); settle(300); refresh();
+        auto *scroll=findVisual(sideNav,"navigationScroll");
+        auto *drawer=findVisual(sideNav,"sideNavigation");
+        const auto selection=backend.scene.selection();const auto current=music.current;
+        if(scroll&&drawer){
+            const auto point=drawer->mapToScene(QPointF(drawer->width()/2,drawer->height()/2));
+            for(bool bottom:{false,true}){
+                const double edge=scroll->property("originY").toDouble()+(bottom?std::max(0.,scroll->property("contentHeight").toDouble()-scroll->height()):0.);
+                scroll->setProperty("contentY",edge);
+                for(int tick=0;tick<4;++tick){QWheelEvent wheel(point,window->mapToGlobal(point.toPoint()),QPoint(),QPoint(0,bottom?-120:120),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);QCoreApplication::sendEvent(window,&wheel);settle(40);}
+                check(qAbs(scroll->property("contentY").toDouble()-edge)<1&&backend.scene.selection()==selection&&music.current==current,"navigation consumes wheel at both boundaries without changing the archive");
+            }
+            scroll->setProperty("contentY",scroll->property("originY"));
+        }
+        for(const auto name:{"navigationRailGlass","navigationDrawerGlass"}){
+            auto *surface=findVisual(sideNav,name);
+            check(surface&&surface->property("refractive").toBool()==opticalTrial,"navigation uses the selected glass material");
+        }
         window->grabWindow().scaled(1280, 900, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(output + "/preview-side-navigation.png");
         sideNav->setProperty("expanded", false); settle(250);
     }
@@ -1566,9 +2936,11 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
         };
         const auto waitProfile = [&] { QElapsedTimer wait; wait.start(); while(hud.profileLoading && wait.elapsed()<10000) { settle(20); } refresh(); };
         backend.action("profile:open:42"); waitProfile();
+        check(hud.profileFilter == "all", "own profile defaults to the collection overview");
+        backend.action("profile:filter:recent"); waitProfile();
         check(hud.profileFilter == "recent" && hud.profileRows.size() == 2 &&
               hud.profileRows.first().toObject()["kind"] == "ranking" && hud.profileRows.last().toObject()["kind"] == "playlist",
-              "own profile defaults to listening rank entry and recent playlist cards");
+              "listening history retains the rank entry and recent playlist cards");
         window->grabWindow().save(output + "/preview-profile-recent.png");
         backend.key("ArrowDown", false); refresh();
         check(hud.focusAction == "profile:item:0", "profile grid accepts arrow focus without operating the record shelf");
@@ -2026,6 +3398,15 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
         const auto savedIndex=music.player.index;
         const auto savedMode=music.player.mode;
         auto currentSong=MusicData::withQueueSource(song,playlistChoice);
+        // A detailed, local-only print makes focus/opacity regressions visible.
+        QImage recordArtwork(512,512,QImage::Format_RGB32);
+        for(int y=0;y<512;++y)for(int x=0;x<512;++x){
+            const auto radius=std::hypot(x-256.,y-256.);
+            const bool line=(x+y)%36<3||int(radius)%29<2;
+            recordArtwork.setPixelColor(x,y,line?QColor(156,63,49):QColor(215+x/16,207+y/20,171));
+        }
+        recordArtwork.save(output+"/record-print-fixture.png");
+        currentSong["cover"]=QUrl::fromLocalFile(output+"/record-print-fixture.png").toString();
         music.player.current=currentSong;music.player.queue={currentSong};music.player.index=0;
         music.player.roamActive=false;music.player.changed();
         hud.openModal("settings");refresh();
@@ -2047,12 +3428,34 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
         auto *field=findVisual(window->contentItem(),"nowDiscField");auto *page=findVisual(window->contentItem(),"nowPlayingPanel");auto *disc=findVisual(window->contentItem(),"nowRecord");
         check(field&&field->clip()&&page&&disc&&disc->width()>page->width()*.45,"G88 immersive disc is enlarged inside its bounded fading field");
         if(page&&disc&&field){
+            QElapsedTimer artWait;artWait.start();
+            while(!disc->property("artworkReady").toBool()&&artWait.elapsed()<4000)settle(30);
+            check(disc->property("artworkReady").toBool(),"now-playing regression uses a fully loaded local record print");
             const auto expected=std::min(490*stageUnit,page->width()*.60);
             check(std::abs(disc->width()-expected)<.01&&std::abs(disc->mapToItem(page,QPointF()).x()-(page->width()-expected+38*stageUnit))<.01,"G92 record restores exact G88 size and rightward placement without fitting its rim inward");
             check(std::abs(field->width()-page->width())<.01&&std::abs(field->height()-page->height())<.01,"G92 visual field has unchanged glass bounds");
+            if(opticalTrial){
+                auto *material=loader->property("item").value<QObject *>();
+                check(material&&material->property("readingComfort").toDouble()>.9,"now-playing enables local reading diffusion");
+                auto *print=findVisual(disc,"nowRecordPrint");
+                check(print&&qAbs(print->opacity()-1)<.001,"record print is opaque above the refracted background");
+                const bool priorDark=hud.dark,priorReduced=hud.reduced;
+                hud.reduced=true;refresh();
+                for(const QSize size:{QSize(960,540),QSize(1280,720),QSize(1600,900)}){
+                    window->resize(size);
+                    for(bool dark:{false,true}){
+                        hud.dark=dark;backend.scene.theme(dark);refresh();settle(1600);
+                        const auto image=window->grabWindow();
+                        check(!image.isNull()&&image.save(output+QString("/reading-comfort-%1-%2.png").arg(size.width()).arg(dark?"dark":"light")),"reading comfort and clear record render across size and theme");
+                    }
+                }
+                hud.dark=priorDark;backend.scene.theme(priorDark);hud.reduced=priorReduced;window->resize(1280,720);refresh();
+            }
         }
         // Exercise intermediate arm poses through the actual player adapter,
         // not just the final angle. Ordinary state notifications cannot rewind it.
+        const bool savedRecordReduced=hud.reduced;
+        hud.reduced=false;refresh();
         if(page&&!backend.state().value("reduced").toBool()){
             const auto savedState=music.player.state;
             const bool savedLoading=music.player.loading,savedFailed=music.player.failed;
@@ -2064,7 +3467,7 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
             check(waitMotion([&]{return !page->property("recordTransitioning").toBool();}),"G97 initial record preparation completes");
             auto *arm=findVisual(window->contentItem(),"nowTonearmPlane");
             music.player.loading=false;music.player.failed=false;music.player.state["playing"]=true;music.player.changed();settle(550);
-            check(arm&&arm->property("pose").toDouble()<.01,"G97 playing arm settles inward");
+            check(waitMotion([&]{return arm&&arm->property("pose").toDouble()<.01;}),"G97 playing arm settles inward");
             if(arm){
                 music.player.state["playing"]=false;music.player.changed();settle(140);
                 const double middle=arm->property("pose").toDouble();
@@ -2103,6 +3506,7 @@ int runFrostedChecks(Engine &backend, QQuickWindow *window, const QString &outpu
             music.player.state=savedState;music.player.loading=savedLoading;music.player.failed=savedFailed;
             music.player.current=currentSong;music.player.changed();
         }
+        hud.reduced=savedRecordReduced;refresh();
         hud.openModal("player");refresh();entry=findVisual(window->contentItem(),"globalNowPlaying");
         check(entry&&!entry->isEnabled(),"G88 queue modal blocks the now-playing shortcut with all other background controls");
         backend.action("queue-close");refresh();

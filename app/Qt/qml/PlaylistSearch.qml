@@ -12,7 +12,7 @@ FocusScope {
     readonly property string keyword:field.text
     width:(expanded?244:keyword.length?146:94)*unit;height:38*unit
     objectName:"playlistSearch"
-    Behavior on width {NumberAnimation {duration:rhine.state.reduced?0:190;easing.type:Easing.OutCubic}}
+    Behavior on width {NumberAnimation {duration:rhine.state.reduced||rhine.visualPreferences.motion!=="full"?0:190;easing.type:Easing.OutCubic}}
     function restoreSession(){
         if(boundSession===String(controller.session||""))return;
         syncing=true;boundSession=String(controller.session||"");field.text=controller.query||"";
@@ -24,13 +24,13 @@ FocusScope {
     Connections {target:search.controller;function onChanged(){search.restoreSession();}}
     Rectangle {anchors.fill:parent;radius:height/2;color:search.dark?"#403a4132":"#58ffffff";border.width:1;border.color:field.activeFocus?"#8c9e7b":"#406d7d5d"}
     RhineIcon {x:13*search.unit;anchors.verticalCenter:parent.verticalCenter;width:17*search.unit;height:width;name:"search";color:search.dark?"#c0c9b6":"#7e8775"}
-    Text {objectName:"playlistSearchCaption";x:37*search.unit;anchors.verticalCenter:parent.verticalCenter;width:search.width-(search.keyword.length?76:48)*search.unit;elide:Text.ElideRight;text:search.keyword.length?"搜索 · "+search.keyword:"搜索";visible:!search.expanded;color:search.dark?"#c0c9b6":"#7e8775";font.family:rhineFontFamily;font.pixelSize:13*search.unit}
+    Text {objectName:"playlistSearchCaption";x:37*search.unit;anchors.verticalCenter:parent.verticalCenter;width:search.width-(search.keyword.length?76:48)*search.unit;elide:Text.ElideRight;text:search.keyword.length?"搜索 · "+search.keyword:"搜索";visible:!search.expanded;color:search.dark?"#c0c9b6":"#7e8775";font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:13*search.unit}
     MouseArea {anchors.fill:parent;visible:!search.expanded;cursorShape:Qt.PointingHandCursor;onClicked:search.open()}
     TextInput {
         id:field;objectName:"playlistSearchInput"
         x:37*search.unit;width:parent.width-72*search.unit;height:parent.height
         visible:search.expanded;verticalAlignment:Text.AlignVCenter;clip:true;selectByMouse:true
-        color:search.dark?"#e4e8db":"#30392e";font.family:rhineFontFamily;font.pixelSize:13*search.unit
+        color:search.dark?"#e4e8db":"#30392e";font.family:rhineFontFamily;font.variableAxes:({"wght":400});font.pixelSize:13*search.unit
         HoverHandler {cursorShape:Qt.IBeamCursor}
         // No binding from a delayed backend value to an actively edited buffer.
         // All edits, paste, deletion and clear are sent synchronously; no timer
