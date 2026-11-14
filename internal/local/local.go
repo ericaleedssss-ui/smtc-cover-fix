@@ -4,6 +4,7 @@ package local
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -37,8 +38,16 @@ type Song struct {
 // Scan returns the songs in dir, and those below it, in the order of their
 // paths. Files it cannot read are left out rather than stopping it.
 func Scan(dir string) ([]Song, error) {
+	return ScanContext(context.Background(), dir)
+}
+
+// ScanContext stops between directory entries and before reading each file.
+func ScanContext(ctx context.Context, dir string) ([]Song, error) {
 	var paths []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			if path == dir {
 				return err
@@ -62,6 +71,9 @@ func Scan(dir string) ([]Song, error) {
 	})
 	songs := make([]Song, 0, len(paths))
 	for _, path := range paths {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		s, err := Read(path)
 		if err != nil {
 			continue

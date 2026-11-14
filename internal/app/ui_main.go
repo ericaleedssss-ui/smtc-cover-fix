@@ -101,6 +101,8 @@ func (a *app) view(c *ui.Context) {
 		a.nowPlayingLayer(c, npOpen, npSettled)
 		a.splash(c)
 	})
+	a.messageDrawer(c)
+	a.collectionSocialDrawer(c)
 	a.loginDialog(c)
 	a.stylePickerDialog(c)
 	a.playlistNameDialog(c)
@@ -203,6 +205,8 @@ func (a *app) load(r route) {
 		a.loadPodcastTab()
 	case pageDownloads:
 		a.loadDownloads(false)
+	case pageLocalLibrary:
+		a.loadLocalLibrary()
 	case pageRecent:
 		a.recent.sure = false
 	case pageStyle:
@@ -264,6 +268,8 @@ func (a *app) sidebar(c *ui.Context) {
 				a.navItem(c, iconCharts, "排行榜", route{page: pageCharts})
 				a.navItem(c, iconPodcast, "播客", route{page: pagePodcasts})
 				a.navItem(c, iconDownload, "下载歌曲", route{page: pageDownloads})
+				a.navItem(c, iconFolder, "本地音乐", route{page: pageLocalLibrary})
+				a.messageNav(c)
 				a.navItem(c, iconHistory, "最近播放", route{page: pageRecent})
 				if a.searched.query != "" {
 					a.navItem(c, iconSearch, "搜索结果", a.searched)
@@ -481,6 +487,8 @@ func (a *app) content(c *ui.Context) {
 			a.podcastsPage(c)
 		case pageDownloads:
 			a.downloadsPage(c)
+		case pageLocalLibrary:
+			a.localLibraryPage(c)
 		case pageStyle:
 			a.stylePage(c)
 		case pageRecent:

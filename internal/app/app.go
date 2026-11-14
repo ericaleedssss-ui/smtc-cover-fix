@@ -32,6 +32,7 @@ const (
 	pageDownloads
 	pageRecent
 	pageStyle
+	pageLocalLibrary
 )
 
 type route struct {
@@ -62,6 +63,9 @@ type app struct {
 	history []route
 	forward []route // the pages gone back from, the last first to go to
 
+	messages     messageState
+	collectionSocial collectionSocialState
+	localLibrary localLibraryState
 	homeMemo     homeMemoState
 	style        styleState
 	profile      *netease.Profile

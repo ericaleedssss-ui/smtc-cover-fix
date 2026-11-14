@@ -88,6 +88,9 @@ func (a *app) albumHeader(c *ui.Context, al *netease.AlbumProfile) {
 					}
 					a.pl.PlayQueue(al.Songs, firstPlayable(al.Songs))
 				}
+				if iconButton(c.Key("album-comments"), iconComment, 16, p.muted, "专辑评论").Clicked() {
+					a.openCollectionSocial(fmt.Sprintf("R_AL_3_%d", al.ID), al.Name, 0)
+				}
 				saved := a.albumSaved(al.ID)
 				label, icon, color := "收藏", iconHeart, p.text
 				if saved {

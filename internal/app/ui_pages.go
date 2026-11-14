@@ -329,6 +329,7 @@ func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 							a.startHeartMode()
 						}
 					}
+					a.playlistCommentsButton(c, pl)
 					// One ⋯, with what the listener can do to the playlist and
 					// what there is to know of it, rather than two side by side.
 					details := a.savable(pl) || pl.SpecialType == 5

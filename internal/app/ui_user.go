@@ -23,10 +23,13 @@ var (
 // artists they follow and the podcasts they subscribe to too, which
 // NetEase shows no one else.
 type userData struct {
-	user      *netease.User
-	playlists []netease.Playlist
-	loading   int // how many of the two are on their way
-	err       string
+	user          *netease.User
+	playlists     []netease.Playlist
+	loading       int // how many of the two are on their way
+	err           string
+	tab           int
+	connections   [2]connectionPage
+	followPending bool
 
 	artists       []netease.ArtistProfile
 	podcasts      []netease.Podcast
@@ -120,6 +123,10 @@ func (a *app) userPage(c *ui.Context) {
 	p := a.pal
 	id := a.route.id
 	d := a.users[id]
+	if d == nil {
+		a.centered(c, "用户加载失败", func() { a.loadUser(id) })
+		return
+	}
 	if d.user == nil {
 		if d.loading == 0 {
 			a.centered(c, d.err, func() { a.loadUser(id) })
@@ -146,8 +153,25 @@ func (a *app) userPage(c *ui.Context) {
 				if u.Signature != "" {
 					ui.Text(c, u.Signature).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
 				}
+				if !own && a.profile != nil {
+					ui.Row(c).Gap(8).Children(func() {
+						follow := "关注用户"
+						if u.Followed {
+							follow = "取消关注"
+						}
+						if pillButton(c.Key("follow"), iconPlus, follow, p.accent, p.onAccent).Disabled(d.followPending).Clicked() {
+							a.followProfile(d, id)
+						}
+						if pillButton(c.Key("message"), iconComment, "发私信", p.hover.Over(p.bg), p.text).Clicked() {
+							a.openConversation(id, u.Nickname)
+						}
+					})
+				}
 			})
 		})
+		if a.profileTabs(c, d, id) {
+			return
+		}
 		if own {
 			a.minePage(c, d)
 			return

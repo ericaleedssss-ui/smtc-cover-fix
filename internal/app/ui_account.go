@@ -48,6 +48,8 @@ func (a *app) boot() {
 func (a *app) signedIn(prof *netease.Profile) {
 	a.accountGen++
 	a.style = styleState{}
+	a.messages = messageState{}
+	a.collectionSocial = collectionSocialState{}
 	a.cancelRadioStart()
 	a.profile = prof
 	// Playback picks up where it was left, once the session that lets

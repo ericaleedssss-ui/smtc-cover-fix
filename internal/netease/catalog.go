@@ -125,6 +125,7 @@ type User struct {
 	Signature string `json:"signature"`
 	Followeds int    `json:"followeds"` // their followers
 	Follows   int    `json:"follows"`
+	Followed  bool   `json:"followed"`
 }
 
 // UserDetail returns who a user is.

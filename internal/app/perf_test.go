@@ -227,3 +227,29 @@ func TestPlaylistDetailRestFrames(t *testing.T) {
 		}
 	}
 }
+
+// Each M6 screen asks for zero frames over one second after settling.
+func TestRhineM6RestFrames(t *testing.T) {
+	for _, screen := range []string{"profile", "inbox", "comments", "records", "folders", "folder-tracks"} {
+		t.Run(screen, func(t *testing.T) {
+			fixture := screen
+			if screen == "folder-tracks" {
+				fixture = "folders"
+			}
+			a := rhineM6Fixture(t, fixture)
+			if screen == "folder-tracks" {
+				a.selectLocalRoot(a.localLibrary.roots[0].Path)
+			}
+			tt := ui.NewTester(a.view, 1280, 900)
+			tt.Frame()
+			tt.Advance(3 * time.Second)
+			tt.Frame()
+			for range 10 {
+				tt.Advance(100 * time.Millisecond)
+				if tt.FramePending() {
+					t.Fatal("the settled screen requested another frame")
+				}
+			}
+		})
+	}
+}

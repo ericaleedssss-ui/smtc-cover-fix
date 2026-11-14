@@ -231,7 +231,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 			col := ui.Column(c.Key("np-side")).Width(side).Justify(ui.Center).Gap(0)
 			col.Children(func() {
 				coverTop = ui.Box(c.Key("cover-top")).Height(0).LayoutBounds().Y
-				a.npCover(c, tr, art, coverSize)
+				a.nowRecordStack(c, tr, art, coverSize)
 
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(36, 0, 18, 0).Children(func() {
 					ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(4).Children(func() {

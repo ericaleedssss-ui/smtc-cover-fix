@@ -360,6 +360,7 @@ func (a *app) playlistTop(c *ui.Context, top float32) {
 		if play.Clicked() {
 			a.playList(pl.Tracks, false)
 		}
+		a.playlistCommentsButton(c, pl)
 	})
 }
 
