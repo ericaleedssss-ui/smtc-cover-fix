@@ -104,6 +104,26 @@ func SaveSession() error {
 	return writeSession([]byte(strings.Join(parts, "; ")))
 }
 
+// ImportSession stores a migrated NetEase login in the system credential store.
+func ImportSession(login, csrf string) error {
+	if mygo.IsDev() {
+		return errors.New("importing a login requires a production build")
+	}
+	if existing, _ := readSession(); len(existing) > 0 {
+		return nil
+	}
+	token := &http.Cookie{Name: "MUSIC_U", Value: login}
+	csrfToken := &http.Cookie{Name: "__csrf", Value: csrf}
+	if login == "" || token.Valid() != nil || csrfToken.Valid() != nil {
+		return errors.New("invalid NetEase session")
+	}
+	session := token.String()
+	if csrf != "" {
+		session += "; " + csrfToken.String()
+	}
+	return writeSession([]byte(session))
+}
+
 // ClearSession forgets the session, here and in the keychain.
 func ClearSession() {
 	httpClient.Jar.SetCookies(siteURL, []*http.Cookie{

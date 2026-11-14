@@ -199,7 +199,7 @@ func (a *app) scanDownloadFolder(dir string, indexed []download.Item) ([]downloa
 		if seen[key] {
 			continue
 		}
-		if _, err := os.Stat(it.Path); err == nil && pathWithin(dir, it.Path) {
+		if _, err := os.Stat(it.Path); err == nil && (it.ReadOnly || pathWithin(dir, it.Path)) {
 			out = append(out, it)
 		}
 	}

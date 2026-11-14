@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"log"
+	"os"
 	"runtime"
 	"time"
 
@@ -295,6 +297,7 @@ func (a *app) showMain() {
 
 // Run runs the app until it quits.
 func Run() error {
+	importDir, downloadDir := legacyImportArgs(os.Args[1:])
 	a := &app{
 		playlists:  map[int64]*netease.Playlist{},
 		loadingPl:  map[int64]bool{},
@@ -319,6 +322,13 @@ func Run() error {
 	mygo.App.SetLanguages(appLanguage)
 	a.useUpdater()
 	mygo.App.WhenReady(func() {
+		if importDir != "" {
+			if path, err := settingsPath(); err != nil {
+				log.Print("旧版数据导入：无法打开新版设置目录")
+			} else if err := importLegacyRhine(importDir, downloadDir, path); err != nil {
+				log.Printf("旧版数据导入：%v", err)
+			}
+		}
 		a.settings = loadSettings()
 		a.applyOutput()
 		a.settings.applyAppearance()

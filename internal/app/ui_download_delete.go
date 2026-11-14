@@ -63,6 +63,14 @@ func (a *app) deleteDownload() {
 		d.open = false
 		return
 	}
+	for _, it := range a.downloads {
+		if it.ReadOnly && downloadPathKey(it.Path) == downloadPathKey(d.path) {
+			d.open = false
+			a.toast = "旧版下载文件为只读"
+			a.redraw()
+			return
+		}
+	}
 	removeDownloadFiles(d.path)
 	if err := os.Remove(d.path); err != nil && !os.IsNotExist(err) {
 		a.toast = "无法删除本地文件，请先切歌后再试"
@@ -93,7 +101,7 @@ func (a *app) deleteDownloadItems(items []download.Item) {
 	failed := 0
 	playing := a.pl.Current()
 	for _, it := range items {
-		if playing != nil && playing.LocalPath != "" && downloadPathKey(playing.LocalPath) == downloadPathKey(it.Path) {
+		if it.ReadOnly || (playing != nil && playing.LocalPath != "" && downloadPathKey(playing.LocalPath) == downloadPathKey(it.Path)) {
 			failed++
 			continue
 		}

@@ -29,6 +29,7 @@ type Item struct {
 	// Tagged says its file carries its title, cover, lyrics and NetEase ID,
 	// which Cloudy wrote into it.
 	Tagged bool `json:"tagged,omitempty"`
+	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
 // Store is where the index of the saved songs is kept.

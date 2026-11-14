@@ -102,7 +102,7 @@ func (a *app) fixDownloads() {
 	a.downloadsFixed = true
 	var todo []download.Item
 	for _, it := range a.downloads {
-		if !it.Tagged {
+		if !it.ReadOnly && !it.Tagged {
 			todo = append(todo, it)
 		}
 	}
