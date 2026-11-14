@@ -1,7 +1,10 @@
 package app
 
 import (
+	"runtime"
 	"time"
+
+	"github.com/egoist/mygo"
 
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
@@ -30,19 +33,21 @@ func (a *app) inkOn(onDark bool) paneInk {
 // pane gives e the look of a pane, rounded by radius. Glass lightens what
 // shows through in a light theme: a dark pane there takes more of its tint.
 func (a *app) pane(e ui.Element, radius float32, onDark bool) ui.Element {
-	e.Radius(radius).Shadow(0, 18, 44, -12, ui.RGBA(0, 0, 0, 0.45))
+	// Rhine: use a 20 px corner on large panels.
+	e.Radius(min(radius, 20)).Shadow(0, 18, 44, -12, ui.RGBA(0, 0, 0, 0.45))
 	dark := onDark || a.pal.dark
 	switch {
+	// Rhine: dark and light popup backgrounds share their tint with glass.
 	case !a.settings.GlassPanels && dark:
 		return e.Background(ui.Hex("#232327")).Border(0.5, white.Alpha(0.12))
 	case !a.settings.GlassPanels:
 		return e.Background(ui.Hex("#f6f6f8")).Border(0.5, ui.RGBA(0, 0, 0, 0.12))
 	case a.pal.dark:
-		return e.Material(glass.Glass{Tint: ui.RGBA(14, 14, 18, 0.62)}).Border(0.5, white.Alpha(0.14))
+		return e.Material(glass.Glass{Tint: ui.Hex("#232327").Alpha(0.62)}).Border(0.5, white.Alpha(0.14))
 	case onDark:
-		return e.Material(glass.Glass{Tint: ui.RGBA(14, 14, 18, 0.86)}).Border(0.5, white.Alpha(0.14))
+		return e.Material(glass.Glass{Tint: ui.Hex("#232327").Alpha(0.86)}).Border(0.5, white.Alpha(0.14))
 	}
-	return e.Material(glass.Glass{Tint: ui.RGBA(250, 250, 252, 0.58)}).Border(0.5, ui.RGBA(0, 0, 0, 0.1))
+	return e.Material(glass.Glass{Tint: ui.Hex("#f6f6f8").Alpha(0.58)}).Border(0.5, ui.RGBA(0, 0, 0, 0.1))
 }
 
 // A menuAction is a row of a menu: what it does, or more rows it opens.
@@ -70,12 +75,13 @@ type paneMenu struct {
 	anchor   ui.Handle   // the control it opens under, for a window that changes size
 	anchored bool
 	closedAt time.Time // when a press outside closed it
+	native   *mygo.Window
 }
 
 // menuWidth is how wide a menu is; the heights are what its rows take, to
 // place it before it is built.
 const (
-	menuWidth      = 268
+	menuWidth      = 268 // Rhine: menu rows use a 39 px pitch and 14 px corners.
 	menuRowHeight  = 39
 	menuLineHeight = 9
 	menuHeadHeight = 66
@@ -106,6 +112,9 @@ func (m *paneMenu) height() float32 {
 
 // openMenu opens a menu at x, y, rising from up where there is no room below.
 func (a *app) openMenu(x, y, up float32, onDark bool, groups [][]menuAction, head func(c *ui.Context, ink paneInk)) {
+	if a.menu.native != nil {
+		a.menu.native.Close()
+	}
 	a.menu = paneMenu{open: true, x: x, y: y, up: up, onDark: onDark, groups: groups, head: head}
 	a.redraw()
 }
@@ -138,6 +147,9 @@ func (a *app) contextMenu(el ui.Element, onDark bool, groups func() [][]menuActi
 func (a *app) menuOverlay(c *ui.Context) {
 	m := &a.menu
 	if !m.open {
+		if m.native != nil {
+			m.native.Close()
+		}
 		return
 	}
 	if m.anchored {
@@ -147,9 +159,19 @@ func (a *app) menuOverlay(c *ui.Context) {
 		}
 		if r.W <= 0 || r.H <= 0 {
 			m.open, m.sub = false, nil
+			if m.native != nil {
+				m.native.Close()
+			}
 			return
 		}
 		m.x, m.y, m.up = r.X, r.Y+r.H+8, r.Y-8
+	}
+	// Rhine: Windows menus use the DWM backdrop provided by MyGo flyouts.
+	if runtime.GOOS == "windows" && a.win != nil && a.settings.GlassPanels {
+		if m.native == nil {
+			a.openAcrylicMenu(m)
+		}
+		return
 	}
 	w, h := c.Size()
 	ink := a.inkOn(m.onDark)
@@ -168,24 +190,89 @@ func (a *app) menuOverlay(c *ui.Context) {
 		a.paneMotion(panel)
 		a.pane(panel, 20, m.onDark)
 		panel.Children(func() {
-			if sub := m.sub; sub != nil {
-				if a.menuRow(c.Key("back"), menuAction{label: "返回", title: sub.label, icon: iconBack}, false, ink).Clicked() {
-					m.sub = nil
-				}
-				menuLine(c.Key("back-line"), ink)
-				ui.Scroll(c.Key("menu-list")).MaxHeight(menuListHeight).Gap(1).Children(func() { a.menuGroups(c, sub.sub, ink) })
-				return
-			}
-			if m.head != nil {
-				m.head(c, ink)
-				menuLine(c.Key("head-line"), ink)
-			}
-			a.menuGroups(c, m.groups, ink)
+			a.menuContent(c, m, ink)
 		})
-		if panel.PressedOutside() || panel.OverlayShortcut(0, ui.KeyEscape) {
+		// Rhine: Escape dismisses only the innermost menu level.
+		switch {
+		case panel.PressedOutside():
 			m.open, m.sub, m.closedAt = false, nil, time.Now()
+		case panel.OverlayShortcut(0, ui.KeyEscape):
+			if m.sub != nil {
+				m.sub = nil
+			} else {
+				m.open, m.closedAt = false, time.Now()
+			}
 		}
 	})
+}
+
+func (a *app) openAcrylicMenu(m *paneMenu) {
+	anchor := mygo.Rectangle{X: int(m.x), Y: int(m.up), Height: int(max(0, m.y-m.up))}
+	ink := a.inkOn(m.onDark)
+	win := mygo.NewFlyout(mygo.FlyoutOptions{
+		Parent: a.win, Anchor: anchor, Width: int(menuWidth), Height: int(m.height()) + 1,
+		Focusable: true, Hidden: true, Shadow: true, Vibrancy: mygo.VibrancyAcrylic,
+		Content: ui.View(func(c *ui.Context) {
+			t := *c.Theme()
+			t.Font = a.fontFamily()
+			c.SetTheme(&t)
+			var tint ui.Color
+			if m.onDark || a.pal.dark {
+				tint = ui.Hex("#232327")
+			} else {
+				tint = ui.Hex("#f6f6f8")
+			}
+			if c.Vibrancy() {
+				c.Root().Background(ui.Transparent)
+				tint = tint.Alpha(0.72)
+			}
+			sub := m.sub
+			panel := ui.Column(c).Fill().Padding(6).Gap(1).Background(tint).TextColor(ink.text).
+				Role(ui.RoleMenu).FocusGroup(ui.Vertical).Label("菜单")
+			panel.Children(func() { a.menuContent(c, m, ink) })
+			c.OnShortcut(0, ui.KeyEscape, func() {
+				if m.sub != nil {
+					m.sub = nil
+					m.native.SetSize(int(menuWidth), int(m.height())+1)
+					m.native.Invalidate()
+				} else {
+					m.native.Close()
+				}
+			})
+			if m.native != nil {
+				switch {
+				case !m.open:
+					m.native.Close()
+				case sub != m.sub:
+					m.native.SetSize(int(menuWidth), int(m.height())+1)
+				}
+			}
+		}),
+	})
+	m.native = win
+	win.OnClosed(func() {
+		if m.native == win {
+			m.open, m.sub, m.native, m.closedAt = false, nil, nil, time.Now()
+			a.redraw()
+		}
+	})
+	win.Show()
+}
+
+func (a *app) menuContent(c *ui.Context, m *paneMenu, ink paneInk) {
+	if sub := m.sub; sub != nil {
+		if a.menuRow(c.Key("back"), menuAction{label: "返回", title: sub.label, icon: iconBack}, false, ink).Clicked() {
+			m.sub = nil
+		}
+		menuLine(c.Key("back-line"), ink)
+		ui.Scroll(c.Key("menu-list")).MaxHeight(menuListHeight).Gap(1).Children(func() { a.menuGroups(c, sub.sub, ink) })
+		return
+	}
+	if m.head != nil {
+		m.head(c, ink)
+		menuLine(c.Key("head-line"), ink)
+	}
+	a.menuGroups(c, m.groups, ink)
 }
 
 // menuGroups lists groups in the menu, a line between them.

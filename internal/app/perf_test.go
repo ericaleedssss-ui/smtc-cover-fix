@@ -104,6 +104,27 @@ func TestNowPlayingFrameBudget(t *testing.T) {
 	}
 }
 
+// A paused Now Playing tab transition requests frames only while it runs.
+func TestNowPlayingTabSettles(t *testing.T) {
+	a, tt, _ := playingApp()
+	a.settings.Fog = false
+	a.nowPlaying = true
+	tt.Frame()
+	tt.Advance(time.Second)
+	tt.Frame()
+	a.choosePane(paneQueue)
+	tt.Frame()
+	if a.npPaneAt.IsZero() || !tt.FramePending() {
+		t.Fatal("tab content did not start its transition")
+	}
+	tt.Advance(2 * time.Second)
+	tt.Frame()
+	tt.Advance(100 * time.Millisecond)
+	if tt.FramePending() {
+		t.Fatal("settled tab still requests frames")
+	}
+}
+
 // Another song's backdrop fades in over the last one's, which is then let
 // go, so that the backdrop stops asking for frames.
 func TestBackdropFadeEnds(t *testing.T) {

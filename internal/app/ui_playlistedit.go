@@ -360,7 +360,7 @@ func (a *app) playlistNameDialog(c *ui.Context) {
 		ink := a.inkOn(false)
 		dialogHeader(c, ink, title, "", func() { d.open = false })
 		ui.Column(c).Padding(0, 28).Children(func() {
-			in := ui.TextInput(c.Key("name"), &d.name).Placeholder("歌单名称").Label("歌单名称").FontSize(14).AutoFocus()
+			in := ui.TextInput(c.Key("name"), &d.name).Placeholder("歌单名称").Label("歌单名称").FontSize(14).Radius(10).AutoFocus()
 			if in.Submitted() {
 				a.submitName()
 			}

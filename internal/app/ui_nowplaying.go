@@ -123,7 +123,7 @@ func (a *app) nowPlayingView(c *ui.Context) {
 	}
 	accent := tint.Mix(white, 0.45)
 	a.glowColor = tint.Mix(white, 0.75)
-	a.npScrub.lamp = a.settings.NpLight
+	a.npScrub.solid = true
 
 	root := ui.Box(c.Key("now-playing")).Absolute().Top(0).Left(0).Right(0).Bottom(0).
 		Background(ui.Hex("#0b0b0d")).TextColor(white)
@@ -140,17 +140,31 @@ func (a *app) nowPlayingView(c *ui.Context) {
 		a.backdrop(c, shown, tint)
 		// Over the backdrop, which is positioned too: positioned elements
 		// paint over those in the flow.
-		body := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Children(func() { a.nowPlayingBody(c, tr, art, accent, w, h, pointerIn) })
-		if k < 1 {
-			body.Opacity(easeRange(k, 0.45, 0.95))
+		body := ui.Column(c.Key("np-body")).Absolute().Top(0).Left(0).Right(0).Bottom(0)
+		// Rhine: R10 animate content on tab changes while keeping its layout state.
+		if a.npPaneChanged {
+			a.npPaneAt, a.npPaneChanged = c.Now(), false
 		}
+		opacity := float32(1)
+		if a.motion != motionOff && !a.npPaneAt.IsZero() {
+			progress := clamp01(float32(c.Now().Sub(a.npPaneAt)) / float32(motionPage.Duration))
+			if progress < 1 {
+				opacity = lerp(0.76, 1, easeRange(progress, 0, 1))
+				c.AnimationFrame()
+			}
+		}
+		body.Children(func() { a.nowPlayingBody(c, tr, art, accent, w, h, pointerIn) })
+		if k < 1 {
+			opacity *= easeRange(k, 0.45, 0.95)
+		}
+		body.Opacity(opacity)
 	})
 }
 
 func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, pointerIn bool) {
 	pl := a.pl
 	a.commentsFor(tr)
-	a.npSpot = flightSpot{radius: 14, track: white.Alpha(0.18), fill: white.Alpha(0.9), smoke: accent.Mix(white, 0.35)}
+	a.npSpot = flightSpot{radius: 14, track: white.Alpha(0.18), fill: white.Alpha(0.9), smoke: ui.Color{}}
 	// An episode has what it is about and its captions in place of lyrics;
 	// a song, lyrics in place of those.
 	switch program := tr.ProgramID != 0; {
@@ -188,10 +202,9 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 			tabs := npTabsRow(c, w)
 			reveal(tabs, pointerIn).Children(func() {
 				a.paneTabs(c, tabs)
-				a.stageStyleButton(c)
 			})
 			a.stage(c, tr, accent)
-			a.stageBar(c, tr, art, accent)
+			a.stageBar(c, tr, art)
 			return
 		}
 		if a.npPane == paneWall {
@@ -233,7 +246,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 					a.likeButton(c.Key("like"), tr, 22, white.Alpha(0.7))
 					a.songMenu(c.Key("more"), tr, 22, white.Alpha(0.7)).Margin(0, -8, 0, 0)
 				})
-				scrub := a.scrubber(c.Key("np-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 16, accent.Mix(white, 0.35))
+				scrub := a.scrubber(c.Key("np-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 16, ui.Color{})
 				a.npSpot.scrub = scrub.LayoutBounds()
 				a.flown(scrub)
 				// As tall with the quality's badge as without it: the badge goes
@@ -417,6 +430,9 @@ func (a *app) paneTabs(c *ui.Context, row ui.Element) {
 // choosePane shows pane i in Now Playing, remembering lyrics or the stage,
 // whichever was chosen, for the next song.
 func (a *app) choosePane(i int) {
+	if a.npPane != i {
+		a.npPaneChanged = true
+	}
 	a.npPane = i
 	if (i == paneLyrics || i == paneStage) && a.settings.LyricsStage != (i == paneStage) {
 		a.settings.LyricsStage = i == paneStage
@@ -435,7 +451,7 @@ func (a *app) radioChip(c *ui.Context, name string) {
 		exit = "退出风格漫游"
 	}
 	chip := ui.ButtonBase(c.Key("radio-chip")).Gap(5).Padding(3, 6, 3, 8).Margin(0, 0, 4, -8).Radius(999).
-		AlignItems(ui.Center).AlignSelf(ui.Start).FocusRing(false).Label(exit).Tooltip(exit)
+		AlignItems(ui.Center).AlignSelf(ui.Start).FocusRing(false).Label(exit)
 	bg, fg, cross := ui.Transparent, white.Alpha(0.6), float32(0.5)
 	if chip.Hovered() {
 		bg, fg, cross = white.Alpha(0.12), white.Alpha(0.85), 1
@@ -466,10 +482,10 @@ func qualityBadge(c *ui.Context, st *netease.Stream) {
 
 // stageBar is the slim bar along the foot of the stage: what plays, where
 // it is, and the controls.
-func (a *app) stageBar(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color) {
+func (a *app) stageBar(c *ui.Context, tr *netease.Track, art *artwork) {
 	pl := a.pl
 	ui.Column(c).Padding(0, 48, 28, 48).Gap(10).Children(func() {
-		a.scrubber(c.Key("stage-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 14, accent.Mix(white, 0.35))
+		a.scrubber(c.Key("stage-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 14, ui.Color{})
 		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(12).AlignItems(ui.Center).Children(func() {
 				if bmp := bitmap(art); bmp != nil {
@@ -493,7 +509,8 @@ func (a *app) stageBar(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 }
 
 func (a *app) paneTab(c *ui.Context, i int, label string) ui.Element {
-	b := ui.ButtonBase(c.Key(i)).Padding(6, 14).Radius(999).FocusRing(false).Label(label)
+	b := ui.ButtonBase(c.Key(i)).Padding(6, 14).Radius(999).Gap(4).AlignItems(ui.Center).FocusRing(false).Label(label)
+	stageSelected := i == paneStage && i == a.npPane
 	bg, fg := ui.Transparent, white.Alpha(0.55)
 	if a.npPane == i {
 		fg = white
@@ -504,6 +521,9 @@ func (a *app) paneTab(c *ui.Context, i int, label string) ui.Element {
 	b.Children(func() {
 		if i != paneComments {
 			ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(fg)
+			if stageSelected {
+				ui.Icon(c, iconDown).Size(12, 12).TextColor(fg)
+			}
 			return
 		}
 		// The count rolls as it changes, from one song's to the next.
@@ -515,7 +535,12 @@ func (a *app) paneTab(c *ui.Context, i int, label string) ui.Element {
 		rollCount(c, &a.tabCount, n, text, fg)
 	})
 	if b.Clicked() {
-		a.choosePane(i)
+		// Rhine: R10 click the selected rhythm tab again to choose its style.
+		if stageSelected {
+			a.stageStyleMenu(b)
+		} else {
+			a.choosePane(i)
+		}
 	}
 	return b
 }

@@ -47,7 +47,8 @@ func (a *app) artistLinks(c *ui.Context, tr *netease.Track, color, hover ui.Colo
 
 // link is text in a RichText that opens a page.
 func (a *app) link(c *ui.Context, text string, color, hover ui.Color, r route) {
-	link := ui.Link(c, text, "").TextColor(color)
+	// Rhine: R7 credits brighten on hover without underlining.
+	link := ui.Text(c, text).Role(ui.RoleLink).Focusable().Cursor(ui.CursorPointer).TextColor(color)
 	if link.Hovered() {
 		link.TextColor(hover)
 	}
@@ -271,6 +272,13 @@ func (a *app) artistPage(c *ui.Context) {
 		return
 	}
 	header := func(c *ui.Context) { a.artistHeader(c, d) }
+	// Rhine: R10 animate the artist section when its tab changes.
+	content := ui.Column(c.Key(a.artistTab)).Grow(1).MinHeight(0)
+	a.pageMotion(content)
+	content.Children(func() { a.artistTabContent(c, d, id, header) })
+}
+
+func (a *app) artistTabContent(c *ui.Context, d *artistData, id int64, header func(*ui.Context)) {
 	switch a.artistTab {
 	case artistAlbums:
 		a.scrollPage(c, func() {

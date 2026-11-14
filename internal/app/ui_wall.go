@@ -368,7 +368,7 @@ func (a *app) wallTile(c *ui.Context, tr *netease.Track, i int, x float32, playi
 func (a *app) wallBar(c *ui.Context, accent ui.Color) {
 	pl := a.pl
 	ui.Column(c.Key("wall-bar")).Absolute().Left(0).Right(0).Bottom(0).Padding(0, 48, 24, 48).Gap(10).Children(func() {
-		a.scrubber(c.Key("wall-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 14, accent.Mix(white, 0.35))
+		a.scrubber(c.Key("wall-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 14, ui.Color{})
 		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
 				ui.Text(c, clock(pl.Position())).FontSize(11.5).FontFeatures("tnum").TextColor(white.Alpha(0.5))

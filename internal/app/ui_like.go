@@ -57,6 +57,14 @@ func (a *app) toggleLike(tr *netease.Track) {
 		a.liked = map[int64]bool{}
 	}
 	id, like := tr.ID, !a.liked[tr.ID]
+	// Rhine: a song has one write in flight, and a failed write rolls the heart back.
+	if a.likePending[id] {
+		return
+	}
+	if a.likePending == nil {
+		a.likePending = map[int64]bool{}
+	}
+	a.likePending[id] = true
 	gen := a.accountGen
 	a.setLiked(id, like)
 	go func() {
@@ -68,6 +76,13 @@ func (a *app) toggleLike(tr *netease.Track) {
 }
 
 func (a *app) toggleProgramLike(id int64) {
+	if a.programLikePending[id] {
+		return
+	}
+	if a.programLikePending == nil {
+		a.programLikePending = map[int64]bool{}
+	}
+	a.programLikePending[id] = true
 	like := !a.likedPrograms[id]
 	gen := a.accountGen
 	a.setProgramLiked(id, like)
@@ -91,7 +106,7 @@ func (a *app) isLiked(tr *netease.Track) bool {
 // keyboard (⌘D), which shows no heart: a toast says which it did.
 func (a *app) likeCurrent() {
 	tr := a.pl.Current()
-	if tr == nil || tr.LocalPath != "" {
+	if tr == nil || tr.LocalPath != "" || (tr.ProgramID == 0 && a.likePending[tr.ID]) || a.programLikePending[tr.ProgramID] {
 		return
 	}
 	a.toggleLike(tr)
@@ -276,6 +291,7 @@ func (a *app) likeAnswered(gen int, id int64, like bool, err error) {
 	if gen != a.accountGen || a.profile == nil {
 		return
 	}
+	delete(a.likePending, id)
 	if err != nil {
 		a.setLiked(id, !like)
 		a.toast = "操作失败，请稍后再试"
@@ -297,6 +313,7 @@ func (a *app) programLikeAnswered(gen int, id int64, like bool, err error) {
 	if gen != a.accountGen || a.profile == nil {
 		return
 	}
+	delete(a.programLikePending, id)
 	if err != nil {
 		a.setProgramLiked(id, !like)
 		a.toast = "操作失败，请稍后再试"

@@ -49,6 +49,39 @@ func TestSettingsOverTheWindow(t *testing.T) {
 	}
 }
 
+// Escape returns from a submenu, closes the menu, and only then closes Now Playing.
+func TestEscapeClosesOneLayer(t *testing.T) {
+	a, tt, _ := playingApp()
+	a.nowPlaying = true
+	tt.Frame()
+	a.openMenu(300, 150, 150, true, [][]menuAction{{{label: "子菜单", sub: [][]menuAction{{{label: "选项", do: func() {}}}}}}}, nil)
+	tt.Frame()
+	tt.Advance(time.Second)
+	tt.Frame()
+	if err := tt.Click("子菜单"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.menu.sub == nil {
+		t.Fatal("submenu did not open")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.menu.sub != nil || !a.menu.open || !a.nowPlaying {
+		t.Fatal("Escape closed more than the submenu")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.menu.open || !a.nowPlaying {
+		t.Fatal("Escape closed more than the menu")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.nowPlaying {
+		t.Fatal("Escape did not close Now Playing")
+	}
+}
+
 // A menu stays in the window: under what opened it where it fits, and over
 // it where it doesn't, as at the foot of a list.
 func TestMenuStaysInTheWindow(t *testing.T) {

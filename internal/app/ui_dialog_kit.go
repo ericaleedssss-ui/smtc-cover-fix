@@ -37,7 +37,12 @@ func dialogFooter(c *ui.Context, buttons func()) {
 // primaryButton is the button that does what a dialog is for: a capsule in
 // the accent.
 func primaryButton(c *ui.Context, label string, icon *ui.SVG, pal palette, disabled bool) ui.Element {
-	return fillButton(c, label, icon, pal.accent, pal.onAccent, disabled)
+	// Rhine: primary actions use the legacy gray-green, with red for destructive actions.
+	fill := ui.Hex("#6f8562")
+	if pal.dark {
+		fill = ui.Hex("#637555")
+	}
+	return fillButton(c, label, icon, fill, ui.Hex("#fffdf7"), disabled)
 }
 
 // dangerButton is the button that deletes what a dialog names: red, whatever
@@ -48,7 +53,7 @@ func dangerButton(c *ui.Context, label string, icon *ui.SVG, disabled bool) ui.E
 
 // fillButton is a capsule of 32 filled with bg.
 func fillButton(c *ui.Context, label string, icon *ui.SVG, fill, fg ui.Color, disabled bool) ui.Element {
-	b := ui.ButtonBase(c).Height(32).PaddingX(18).Gap(6).Radius(999).AlignItems(ui.Center).Shrink(0).
+	b := ui.ButtonBase(c).Height(32).PaddingX(18).Gap(6).Radius(10).AlignItems(ui.Center).Shrink(0).
 		FocusRing(false).Label(label).Disabled(disabled)
 	bg := fill
 	if b.Hovered() && !disabled {

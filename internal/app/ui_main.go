@@ -134,7 +134,9 @@ func (a *app) shortcuts(c *ui.Context) {
 		a.searchBox.Focus(c)
 	})
 	if a.nowPlaying {
-		c.OnShortcut(0, ui.KeyEscape, func() { a.nowPlaying = false })
+		if !a.menu.open {
+			c.OnShortcut(0, ui.KeyEscape, func() { a.nowPlaying = false })
+		}
 		// ⌘ and a number choose Now Playing's tab of that place.
 		if a.pl.Current() != nil {
 			for i, t := range a.npTabs() {

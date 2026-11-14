@@ -24,6 +24,7 @@ type scrubState struct {
 	// lamp gives the bar its glow in Now Playing (ui_light.go).
 	lamp  bool
 	level barState
+	solid bool // Rhine: R11 the detail progress track is solid and uses a glass thumb
 }
 
 func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
@@ -64,22 +65,25 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 		pl.Seek(secs(min(st.v, max(0, dur-1))))
 	}
 	hot := s.Hovered() || pressed
+	lens := st.lens || st.solid
 	thick := float32(4)
-	if hot {
-		thick = 6
+	if !st.solid {
+		if hot {
+			thick = 6
+		}
+		thick = s.AnimateTo("thick", thick, ui.Snappy)
 	}
-	thick = s.AnimateTo("thick", thick, ui.Snappy)
 	knob := float32(0)
 	if hot {
 		knob = 1
 	}
-	if st.lens {
+	if lens && !st.solid {
 		// The lens swells as it is held, and settles with a little spring.
 		if pressed {
 			knob = 1.25
 		}
 		knob = s.AnimateTo("knob", knob, ui.Animation{Spring: ui.SpringOptions{Duration: 340 * time.Millisecond, Bounce: 0.3}})
-	} else {
+	} else if !st.solid {
 		knob = s.AnimateTo("knob", knob, ui.Snappy)
 	}
 	// The smoke settles away as the music pauses, and while dragging.
@@ -115,7 +119,7 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 		} else {
 			p.Fill(played, fill, thick/2)
 		}
-		if st.lens && knob > 0.01 {
+		if lens && knob > 0.01 {
 			w, h := 30*knob, 18*knob
 			k := ui.Rect{X: head - w/2, Y: r.Y + (r.H-h)/2, W: w, H: h}
 			p.Shadow(k, h/2, 0, 1, 6, 0, ui.RGBA(0, 0, 0, 0.25))
@@ -275,7 +279,6 @@ type hoverOpen struct {
 // volumeLinger is how long the volume stays after the pointer left it, for
 // a pointer passing from the speaker up to the slider, or out a moment.
 const volumeLinger = 350 * time.Millisecond
-
 
 // popover holds the colors of a popover as AppKit draws them.
 type popover struct {

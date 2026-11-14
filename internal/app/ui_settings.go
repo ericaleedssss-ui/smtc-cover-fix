@@ -121,7 +121,7 @@ func (a *app) settingsSidebar(c *ui.Context) {
 	ink := a.inkOn(false)
 	searching := strings.TrimSpace(a.settingsQuery) != ""
 	ui.Column(c.Key("settings-nav")).Width(208).Shrink(0).Padding(2, 12, 16, 22).Gap(3).Label("设置分类").Children(func() {
-		field := ui.Row(c.Key("settings-search")).Height(36).PaddingX(12).Gap(8).Radius(999).AlignItems(ui.Center).
+		field := ui.Row(c.Key("settings-search")).Height(36).PaddingX(12).Gap(8).Radius(10).AlignItems(ui.Center).
 			Background(ink.hover).Border(0.5, ink.line).Margin(0, 0, 10, 0)
 		field.Children(func() {
 			ui.Icon(c, iconSearch).Size(15, 15).Shrink(0).TextColor(ink.muted)
@@ -337,11 +337,9 @@ func (k *settingsKit) rowOf(r settingRow, control func()) {
 		})
 }
 
-// infoTip is an ⓘ that says tip as the pointer is over it.
+// Rhine: R8 show settings help inline without a hover tooltip.
 func infoTip(c *ui.Context, tip string, ink paneInk) {
-	ui.Box(c.Key("tip")).Size(16, 16).Center().Shrink(0).Tooltip(tip).Label(tip).Children(func() {
-		ui.Icon(c, iconInfo).Size(14, 14).TextColor(ink.faint)
-	})
+	ui.Text(c.Key("tip"), tip).FontSize(11).TextColor(ink.muted).Shrink(1)
 }
 
 // block is a part of a card that is not a row, found by words.
@@ -364,7 +362,7 @@ func (k *settingsKit) button(key any, label string, icon *ui.SVG, disabled, dang
 }
 
 func settingButton(c *ui.Context, ink paneInk, label string, icon *ui.SVG, disabled, danger bool) ui.Element {
-	b := ui.ButtonBase(c).Height(32).PaddingX(16).Gap(6).Radius(999).AlignItems(ui.Center).Shrink(0).
+	b := ui.ButtonBase(c).Height(32).PaddingX(16).Gap(6).Radius(10).AlignItems(ui.Center).Shrink(0).
 		FocusRing(false).Label(label).Disabled(disabled)
 	bg, fg := ink.hover, ink.text
 	if danger {
@@ -422,7 +420,12 @@ func (a *app) settingsBody(c *ui.Context) {
 	if k.query != "" {
 		key, scroll, label = "search", &a.settingsSearchScroll, "搜索"
 	}
-	ui.Scroll(c.Key(key)).Label(label+"设置项").TrackScroll(scroll).Grow(1).Shrink(1).MinWidth(0).Padding(0, 30, 30, 18).Children(func() {
+	tabs := ui.Scroll(c.Key(key)).Label(label+"设置项").TrackScroll(scroll).Grow(1).Shrink(1).MinWidth(0).Padding(0, 30, 30, 18)
+	// Rhine: R10 animate the settings content when switching categories.
+	if !k.searching {
+		a.pageMotion(tabs)
+	}
+	tabs.Children(func() {
 		if k.query == "" {
 			ui.Column(c.Key(a.settingsTab)).Margin(-12, 0, 0, 0).Children(func() { a.settingsPage(k, a.settingsTab) })
 			return

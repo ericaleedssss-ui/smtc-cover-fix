@@ -80,6 +80,7 @@ type app struct {
 	// The episodes the listener likes, and doesn't, as far as NetEase has
 	// answered, and those asked about: see ui_like.go.
 	likedPrograms, askedPrograms map[int64]bool
+	likePending, programLikePending map[int64]bool
 
 	daily             []netease.Track
 	dailySpin         spinState // the record on the daily card
@@ -160,6 +161,8 @@ type app struct {
 	underTop, underBottom bool
 	barScrub              scrubState
 	npScrub               scrubState
+	npPaneChanged         bool
+	npPaneAt              time.Time
 	glowColor             ui.Color          // the color of Now Playing's glow, from the cover's
 	menu                  paneMenu          // the menu open, if one is (ui_pane.go)
 	npPill                ui.Rect           // where the tab chosen is, in the row of tabs

@@ -24,29 +24,8 @@ var stageStyles = []struct{ id, label string }{
 	{"tilt", "倾诉"},
 }
 
-// stageStyleButton names the stage's style, and opens the menu of the
-// others.
-func (a *app) stageStyleButton(c *ui.Context) {
-	label := stageStyles[0].label
-	for _, s := range stageStyles {
-		if s.id == a.settings.StageStyle {
-			label = s.label
-		}
-	}
-	b := ui.ButtonBase(c.Key("stage-style")).Padding(6, 10, 6, 14).Radius(999).Gap(4).AlignItems(ui.Center).
-		FocusRing(false).Label("律动效果").Tooltip("律动效果")
-	bg, fg := ui.Transparent, white.Alpha(0.55)
-	if b.Hovered() {
-		bg, fg = white.Alpha(0.06), white.Alpha(0.8)
-	}
-	b.Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
-	b.Children(func() {
-		ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(fg)
-		ui.Icon(c, iconDown).Size(12, 12).TextColor(fg)
-	})
-	if !b.Clicked() {
-		return
-	}
+// stageStyleMenu opens the style choices under the selected rhythm tab.
+func (a *app) stageStyleMenu(b ui.Element) {
 	var styles []menuAction
 	for _, s := range stageStyles {
 		styles = append(styles, menuAction{label: s.label, checked: a.settings.StageStyle == s.id, do: func() {

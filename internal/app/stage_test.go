@@ -17,7 +17,7 @@ func TestStageStyleMenu(t *testing.T) {
 	tt.Advance(time.Second)
 	tt.Frame()
 	for _, c := range []struct{ item, want string }{{"云阶", "partita"}, {"倾诉", "tilt"}, {"流光", ""}} {
-		if err := tt.Click("律动效果"); err != nil {
+		if err := tt.Click("律动"); err != nil {
 			t.Fatal(err)
 		}
 		if err := chooseItem(tt, c.item); err != nil {
@@ -40,7 +40,7 @@ func TestStageSparksMenu(t *testing.T) {
 	tt.Advance(time.Second)
 	tt.Frame()
 	for _, want := range []bool{true, false} {
-		if err := tt.Click("律动效果"); err != nil {
+		if err := tt.Click("律动"); err != nil {
 			t.Fatal(err)
 		}
 		if err := chooseItem(tt, "火花"); err != nil {

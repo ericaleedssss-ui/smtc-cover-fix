@@ -353,12 +353,12 @@ func TestDialogComesAndGoes(t *testing.T) {
 	}
 }
 
-// The corners of the app keep to four sizes: 8 for what is small, 14 for cards,
+// The corners use 8 for small details, 10 for inputs and buttons, and 14 for cards,
 // rows and covers, 20 for panes, 26 for the largest. Circles, capsules and the
 // smallest badges are shapes, not corners, and the notch is a Mac's.
-func TestCornersKeepToFour(t *testing.T) {
+func TestCornerSizes(t *testing.T) {
 	shapes := map[string]bool{"3": true, "4": true, "13": true, "17": true, "36": true, "999": true}
-	corners := map[string]bool{"8": true, "14": true, "20": true, "26": true}
+	corners := map[string]bool{"8": true, "10": true, "14": true, "20": true, "26": true}
 	files, _ := filepath.Glob("*.go")
 	radius := regexp.MustCompile(`\.Radius\((\d+)\)|a\.pane\([\w.]+, (\d+),`)
 	for _, f := range files {

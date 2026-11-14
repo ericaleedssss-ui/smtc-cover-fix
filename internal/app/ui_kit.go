@@ -232,6 +232,7 @@ func greeting(now time.Time) string {
 	}
 }
 
+// Rhine: R9 bars follow the decoded audio bands and decay to rest on pause.
 // bars draws n bars of an equalizer in r, from the levels of what plays,
 // smoothed in st between frames; idle bars rest low.
 type barState struct {

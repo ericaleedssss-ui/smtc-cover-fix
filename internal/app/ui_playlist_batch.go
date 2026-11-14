@@ -115,7 +115,7 @@ func (a *app) setLikedAll(tracks []netease.Track, like bool) {
 	seen := map[int64]bool{}
 	var ids []int64
 	for _, tr := range tracks {
-		if tr.LocalPath != "" || tr.ProgramID != 0 || tr.ID == 0 || seen[tr.ID] || a.liked[tr.ID] == like {
+		if tr.LocalPath != "" || tr.ProgramID != 0 || tr.ID == 0 || seen[tr.ID] || a.likePending[tr.ID] || a.liked[tr.ID] == like {
 			continue
 		}
 		seen[tr.ID] = true
@@ -130,7 +130,11 @@ func (a *app) setLikedAll(tracks []netease.Track, like bool) {
 		a.redraw()
 		return
 	}
+	if a.likePending == nil {
+		a.likePending = map[int64]bool{}
+	}
 	for _, id := range ids {
+		a.likePending[id] = true
 		a.setLiked(id, like)
 	}
 	doing, done := "正在喜欢 %d 首…", "已喜欢 %d 首"
@@ -142,14 +146,18 @@ func (a *app) setLikedAll(tracks []netease.Track, like bool) {
 	go func() {
 		failed := 0
 		for i, id := range ids {
-			if err := likeSong(id, like); err != nil {
+			err := likeSong(id, like)
+			if err != nil {
 				failed++
-				a.post(func() {
-					if gen == a.accountGen {
+			}
+			a.post(func() {
+				if gen == a.accountGen {
+					delete(a.likePending, id)
+					if err != nil {
 						a.setLiked(id, !like)
 					}
-				})
-			}
+				}
+			})
 			if i+1 < len(ids) && batchLikePause > 0 {
 				time.Sleep(batchLikePause)
 			}

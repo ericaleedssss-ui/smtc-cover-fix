@@ -50,6 +50,7 @@ var uiFonts = []uiFont{
 // system's reads Chinese well; on Windows Segoe UI has no Han characters.
 // Noto Sans SC has Medium and Black as well, where Microsoft YaHei
 // has Light, Regular and Bold alone.
+// Rhine: Noto Sans SC first, then Microsoft YaHei UI. MyGo maps font weight to the variable axis.
 func defaultFontFamily() string {
 	if runtime.GOOS == "windows" {
 		return "Noto Sans SC, Microsoft YaHei UI"

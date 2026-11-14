@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -41,6 +42,7 @@ func TestLikeFromPlayerBar(t *testing.T) {
 	if like := <-calls; !like {
 		t.Error("asked NetEase to unlike")
 	}
+	a.likeAnswered(a.accountGen, 7, true, nil)
 	tt.Frame()
 	if err := tt.Click("取消喜欢"); err != nil {
 		t.Fatal(err)
@@ -50,6 +52,30 @@ func TestLikeFromPlayerBar(t *testing.T) {
 	}
 	if like := <-calls; like {
 		t.Error("asked NetEase to like again")
+	}
+}
+
+// A second click while a write is pending is ignored, and a failed write restores the heart.
+func TestLikePendingRollback(t *testing.T) {
+	calls := make(chan bool, 2)
+	old := likeSong
+	likeSong = func(_ int64, like bool) error { calls <- like; return errors.New("offline") }
+	defer func() { likeSong = old }()
+	a := newTestApp()
+	a.profile = &netease.Profile{UserID: 1}
+	tr := &netease.Track{ID: 7}
+	a.toggleLike(tr)
+	a.toggleLike(tr)
+	if !wait(t, calls, "the pending like") || !a.isLiked(tr) {
+		t.Fatal("the repeated click changed the pending like")
+	}
+	a.likeAnswered(a.accountGen, tr.ID, true, errors.New("offline"))
+	if a.isLiked(tr) || a.likePending[tr.ID] {
+		t.Fatal("failed write did not restore the heart")
+	}
+	a.toggleLike(tr)
+	if !wait(t, calls, "the retried like") {
+		t.Fatal("retry did not issue a like")
 	}
 }
 
@@ -88,6 +114,7 @@ func TestLikeEpisode(t *testing.T) {
 	if c := wait(t, calls, "the like"); c != (call{3, true}) {
 		t.Errorf("asked NetEase for %+v", c)
 	}
+	a.programLikeAnswered(a.accountGen, 3, true, nil)
 	tt.Frame()
 	if err := tt.Click("取消喜欢"); err != nil {
 		t.Fatal(err)
@@ -476,6 +503,7 @@ func TestLikeCurrent(t *testing.T) {
 	if !a.liked[7] || a.toast != "已添加到我喜欢的音乐" {
 		t.Fatalf("liked %v, toast %q", a.liked[7], a.toast)
 	}
+	a.likeAnswered(a.accountGen, 7, true, nil)
 	a.likeCurrent()
 	if a.liked[7] || a.toast != "已取消喜欢" {
 		t.Fatalf("unliked: liked %v, toast %q", a.liked[7], a.toast)
