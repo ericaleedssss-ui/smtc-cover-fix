@@ -18,6 +18,7 @@ type plView struct {
 	query string
 	sort  int
 	long  bool // what it says shows in full
+	hero  ui.Handle
 	// What these gave last, sorting and searching a thousand songs being more
 	// than a frame should do each time.
 	of      *netease.Track
@@ -60,6 +61,19 @@ func (a *app) listShown(tracks []netease.Track) []netease.Track {
 	}
 	v.of, v.n, v.asked, v.sorted, v.tracks, v.matched = &tracks[0], len(tracks), q, v.sort, out, true
 	return out
+}
+
+// Rhine: playlists keep the album column alongside the title's 3:2 split
+// at compact widths too. Album pages already show the album in the header.
+func (a *app) trackAlbumColumn(w float32) bool {
+	switch a.route.page {
+	case pagePlaylist:
+		return true
+	case pageAlbum:
+		return false
+	default:
+		return w-a.sideWidth(w) > 820
+	}
 }
 
 // toolRows lists tracks as trackRows does, with listTools under the header.
@@ -224,6 +238,10 @@ func (a *app) playlistSays(c *ui.Context, text string) {
 		lines = 8
 	}
 	more := ui.ButtonBase(c.Key("says")).Gap(8).AlignItems(ui.End).Justify(ui.Start).FocusRing(false).Label("歌单简介").Margin(2, 0, 0, 0)
+	// Rhine: keep the inline description readable over the cover wash.
+	if a.settings.LiquidGlass {
+		more.Radius(14).Padding(8, 12).Material(a.liquidGlass())
+	}
 	more.Children(func() {
 		ui.Text(c, text).FontSize(12.5).TextColor(p.muted).MaxLines(lines).LineHeight(1.45).Grow(1).Shrink(1).MinWidth(0)
 		if len([]rune(text)) > 60 {
@@ -304,41 +322,41 @@ func (a *app) listTools(c *ui.Context, tracks, shown []netease.Track) {
 	})
 }
 
-// playlistTop is a playlist over the page once its header has scrolled away,
-// in the strip along the window's top, by the back button: a click goes back
-// to the header, and the button plays it.
-func (a *app) playlistTop(c *ui.Context) {
-	pl := a.playlists[a.route.id]
-	if a.route.page != pagePlaylist || pl == nil {
+// Rhine: a 52 DIP header stays above the songs once the playlist hero
+// scrolls away. The list can virtualize its first row by then.
+const playlistTopHeight = 52
+
+func (a *app) playlistTop(c *ui.Context, top float32) {
+	if a.route.page != pagePlaylist {
 		return
 	}
-	if a.batchActive(pl.ID) {
+	pl := a.playlists[a.route.id]
+	if pl == nil || a.batchActive(pl.ID) {
+		return
+	}
+	hero := a.plView.hero.Bounds(c)
+	first, _ := a.trackList.Visible()
+	if first == 0 && (hero.W <= 0 || hero.Y+hero.H > top) {
 		return
 	}
 	p := a.pal
-	bar := ui.Row(c.Key("list-top")).Gap(10).AlignItems(ui.Center).Margin(0, 0, 0, 8).Padding(4, 4, 4, 4)
-	k := b2f(a.headGone > 250)
-	if a.motion != motionOff {
-		k = bar.AnimateTo("in", k, motionPane)
-	}
-	if k <= 0 {
-		return
-	}
-	// On a pane of its own: the songs scroll under it.
-	a.pane(bar, 20, false).Opacity(k)
-	if a.motion == motionFull {
-		bar.Translate(0, 6*(1-k))
-	}
+	// When the title is pinned, songs passing it should not reappear above it.
+	ui.Box(c.Key("list-top-mask")).Absolute().Top(0).Left(0).Right(0).Height(top).PassThrough().Background(p.bg)
+	bar := ui.Row(c.Key("list-top")).Absolute().Top(top).Left(pagePad - 12).Right(pagePad - 12).
+		Height(playlistTopHeight).PaddingX(12).Gap(10).AlignItems(ui.Center).
+		Radius(14).Background(p.bg).Border(1, p.hairline)
 	bar.Children(func() {
-		up := ui.ButtonBase(c.Key("up")).Gap(10).AlignItems(ui.Center).FocusRing(false).Label("回到歌单开头")
+		up := ui.ButtonBase(c.Key("up")).Height(playlistTopHeight).Shrink(1).MinWidth(0).Gap(10).
+			AlignItems(ui.Center).FocusRing(false).Label("回到歌单开头")
 		up.Children(func() {
 			a.cover(c, pl.Cover(), 96, 28, 8)
-			ui.Text(c, pl.Name).FontSize(13.5).FontWeight(700).SingleLine().MaxWidth(320)
+			ui.Text(c, pl.Name).FontSize(13.5).FontWeight(700).SingleLine().Shrink(1).MinWidth(0)
 		})
 		if up.Clicked() {
 			a.trackList.ScrollTo(0, ui.Start)
 		}
-		play := iconButton(c.Key("list-play"), iconPlay, 13, p.onAccent, "播放").Size(28, 28).Background(p.accent)
+		play := iconButton(c.Key("list-play"), iconPlay, 13, p.onAccent, "播放歌单").Size(28, 28).
+			Shrink(0).Background(p.accent).Disabled(len(pl.Tracks) == 0)
 		if play.Clicked() {
 			a.playList(pl.Tracks, false)
 		}

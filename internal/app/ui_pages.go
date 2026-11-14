@@ -270,7 +270,7 @@ func (a *app) playlistPage(c *ui.Context) {
 
 func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 	p := a.pal
-	head := ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0)
+	head := ui.Row(c).Bind(&a.plView.hero).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0)
 	head.Children(func() {
 		a.headCover(c, pl.Cover())
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
@@ -372,8 +372,7 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 		pid = a.route.id
 	}
 	w, _ := c.Size()
-	// An album's page has no column of the album its songs are on.
-	wide := w-a.sideWidth(w) > 820 && a.route.page != pageAlbum
+	wide := a.trackAlbumColumn(w)
 	top, bottom := a.insets(c)
 	listBottom := bottom
 	if batch {
@@ -420,9 +419,14 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 				bg = tint.Alpha(0.16)
 			}
 		}
-		row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 140 * time.Millisecond}))
-		if playing && !batch {
-			a.rowGlow(row)
+		if playing && !batch && pid != 0 && a.settings.LiquidGlass {
+			// Rhine: the current playlist row uses the player's liquid glass.
+			row.Material(a.liquidGlass())
+		} else {
+			row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 140 * time.Millisecond}))
+			if playing && !batch {
+				a.rowGlow(row)
+			}
 		}
 		shown := a.rowIn(c, i)
 		if shown < 1 {

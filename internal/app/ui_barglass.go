@@ -30,6 +30,10 @@ type barGlass struct {
 	clear, bend float32
 }
 
+func (a *app) liquidGlass() barGlass {
+	return barGlass{dark: a.pal.dark, clear: float32(a.settings.GlassClear), bend: float32(a.settings.GlassBend)}
+}
+
 // How the glass of the bar looks, whatever the listener chose.
 const (
 	barGlassSpread  = 0.05 // how far apart red and blue bend, of the bend

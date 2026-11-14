@@ -496,7 +496,7 @@ func (a *app) playerBar(c *ui.Context) {
 	a.barBox = bar.LayoutBounds()
 	if liquid {
 		bar.Left(glassBarSide).Right(glassBarSide).Bottom(glassBarFoot).Height(glassH).Padding(0, 20, 0, glassBarInset).
-			Radius(glassH/2).Shadow(0, 6, 24, -6, ui.RGBA(0, 0, 0, 0.3)).Material(barGlass{dark: p.dark, clear: float32(a.settings.GlassClear), bend: float32(a.settings.GlassBend)})
+			Radius(glassH/2).Shadow(0, 6, 24, -6, ui.RGBA(0, 0, 0, 0.3)).Material(a.liquidGlass())
 	} else {
 		bar.Left(0).Right(0).Bottom(0).Height(playerBarHeight).PaddingX(20)
 	}

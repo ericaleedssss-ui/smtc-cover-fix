@@ -420,6 +420,7 @@ func (a *app) pageTop(c *ui.Context) {
 			Material(glass.ScrollEdge{Hard: true, Background: a.pal.bg})
 		edge.Opacity(edgeShown(edge, a.underTop))
 	}
+	a.playlistTop(c, top)
 	if len(a.history) > 0 || len(a.forward) > 0 {
 		ui.Row(c).Absolute().Top(0).Left(20).Height(topBar(c)).AlignItems(ui.Center).Children(func() {
 			back := iconButton(c.Key("back"), iconBack, 18, a.pal.muted, "返回").Disabled(len(a.history) == 0)
@@ -432,7 +433,6 @@ func (a *app) pageTop(c *ui.Context) {
 			if len(a.forward) > 0 && iconButton(c.Key("forward"), iconForward, 18, a.pal.muted, "前进").Clicked() {
 				a.goForward()
 			}
-			a.playlistTop(c)
 		})
 	}
 }

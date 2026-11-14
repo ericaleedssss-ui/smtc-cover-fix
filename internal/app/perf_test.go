@@ -201,3 +201,29 @@ func TestHomeMemoRestFrames(t *testing.T) {
 		}
 	}
 }
+
+// The playlist's glass and sticky header request no frames when the page is
+// still, including after scrolling with the current track held in view.
+func TestPlaylistDetailRestFrames(t *testing.T) {
+	a := playlistDetailFixture()
+	a.pl.Cue(a.playlists[42].Tracks[8:])
+	tt := ui.NewTester(a.view, 1280, 960)
+	tt.Frame()
+	for _, scrolled := range []bool{false, true} {
+		if scrolled {
+			tt.Wheel(700, 500, 0, 315)
+		}
+		tt.Advance(time.Second)
+		tt.Frame()
+		_, sticky := tt.Find("回到歌单开头")
+		if sticky != scrolled {
+			t.Fatalf("sticky header shown = %v, wanted %v", sticky, scrolled)
+		}
+		for range 10 {
+			tt.Advance(100 * time.Millisecond)
+			if tt.FramePending() {
+				t.Fatalf("settled playlist requests a frame, scrolled = %v", scrolled)
+			}
+		}
+	}
+}
