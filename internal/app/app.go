@@ -31,6 +31,7 @@ const (
 	pagePodcasts
 	pageDownloads
 	pageRecent
+	pageStyle
 )
 
 type route struct {
@@ -61,6 +62,8 @@ type app struct {
 	history []route
 	forward []route // the pages gone back from, the last first to go to
 
+	homeMemo     homeMemoState
+	style        styleState
 	profile      *netease.Profile
 	accountGen   int                // rejects results from an earlier login, including the same account
 	mine, saved  []netease.Playlist // the listener's playlists: made, and saved
@@ -336,6 +339,7 @@ func Run() error {
 		a.applyOutput()
 		a.settings.applyAppearance()
 		a.loadFont()
+		loadHomeScoreFont()
 		a.npPane = a.lyricsPaneChosen()
 		// Before the window: on Windows it lays out its content as it is
 		// made, and the view asks the player what plays.
@@ -348,6 +352,7 @@ func Run() error {
 		a.pl.Cache = newSongCache(a.settings.CacheMB)
 		a.pl.Listened = func(t netease.Track, played time.Duration, ended bool) {
 			a.listened(t, played, ended)
+			a.recordHomeListen(t, played, ended, time.Now())
 			a.remember(t, played, ended)
 		}
 		a.pl.SongStopped = func() {

@@ -24,6 +24,7 @@ func newTestApp() *app {
 	a.downloadsFixed = true
 	// The songs played on this computer are none, not the developer's.
 	a.recent.loaded = true
+	a.homeMemo = homeMemoState{loaded: true, accounts: make(map[string]*memoAccount)}
 	// The system is not asked, as no app runs: starting at login is off,
 	// and the outputs are none.
 	off := false

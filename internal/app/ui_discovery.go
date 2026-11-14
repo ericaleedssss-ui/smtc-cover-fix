@@ -132,19 +132,23 @@ func (a *app) playlistFilterAnswered(gen, filter int, data *playlistBrowseData, 
 
 // recommendedPlaylists changes only the grid below the category menu.
 func (a *app) recommendedPlaylists(c *ui.Context) {
+	a.recommendedPlaylistsGrid(c, a.columns(c, 168), 1)
+}
+
+func (a *app) recommendedPlaylistsGrid(c *ui.Context, cols int, scale float32) {
 	a.section(c, "推荐歌单")
 	a.playlistFilterMenu(c)
 	filter := a.playlistFilter
 	lists := a.featured
 	if filter == 0 && len(lists) == 0 && a.homeLoading {
-		a.playlistCardsSkeleton(c.Key("category-loading"), a.pageShimmer(c), a.columns(c, 168)*2, 168, false)
+		a.playlistCardsSkeleton(c.Key("category-loading"), a.pageShimmer(c), cols*2, 168, false)
 		return
 	}
 	if filter != 0 {
 		a.loadPlaylistFilter(filter)
 		data := a.filteredPlaylists[filter]
 		if data.loading {
-			a.playlistCardsSkeleton(c.Key("category-loading"), a.pageShimmer(c), a.columns(c, 168)*2, 168, false)
+			a.playlistCardsSkeleton(c.Key("category-loading"), a.pageShimmer(c), cols*2, 168, false)
 			return
 		}
 		if data.err != "" || len(data.lists) == 0 {
@@ -163,7 +167,7 @@ func (a *app) recommendedPlaylists(c *ui.Context) {
 		}
 		lists = data.lists
 	}
-	ui.Grid(c.Key(filter)).Columns(a.columns(c, 168)).GapX(20).GapY(28).Children(func() {
+	ui.Grid(c.Key(filter)).Columns(cols).GapX(20 * scale).GapY(28 * scale).Children(func() {
 		for i := range lists {
 			a.playlistCard(c.Key(lists[i].ID), &lists[i])
 		}

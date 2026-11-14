@@ -186,3 +186,18 @@ func TestPlaylistFilterRestFrames(t *testing.T) {
 		}
 	}
 }
+
+// The home cards and listening memo stop requesting frames once settled.
+func TestHomeMemoRestFrames(t *testing.T) {
+	a := homeFixture(t)
+	tt := ui.NewTester(a.view, 1280, 1100)
+	tt.Frame()
+	tt.Advance(3 * time.Second)
+	tt.Frame()
+	for range 10 {
+		tt.Advance(100 * time.Millisecond)
+		if tt.FramePending() {
+			t.Fatal("the settled home page asks for another frame")
+		}
+	}
+}

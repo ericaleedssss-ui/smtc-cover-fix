@@ -47,6 +47,7 @@ func (a *app) boot() {
 // signedIn shows what is personal to prof, or to nobody.
 func (a *app) signedIn(prof *netease.Profile) {
 	a.accountGen++
+	a.style = styleState{}
 	a.cancelRadioStart()
 	a.profile = prof
 	// Playback picks up where it was left, once the session that lets

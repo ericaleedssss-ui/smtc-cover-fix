@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -52,36 +51,29 @@ func (a *app) homePage(c *ui.Context) {
 	ui.Scroll(c.Key("home")).TrackScroll(&a.pageScroll).Grow(1).Padding(top+pageGap, pagePad, bottom+48, pagePad).ScrollbarInsets(top, 0, bottom, 0).Children(func() {
 		a.startMark(c)
 		defer a.endMark(c)
-		hello := greeting(now)
-		if a.profile != nil {
-			hello += "，" + a.profile.Nickname
-		}
-		a.heading(c, hello, fmt.Sprintf("%d月%d日 %s", now.Month(), now.Day(), weekday(now)))
+		cols, scale, heading := homeMeasures(c)
+		a.homeHeading(c, now, heading)
 		if loading {
 			a.homeSkeleton(c, a.pageShimmer(c))
 			return
 		}
 		a.dailyCard(c, now)
-
-		if len(a.recPlaylists) > 0 {
+		a.homeShortcuts(c, scale)
+		if len(a.recPlaylists) > 0 || a.styleCardShown() {
 			a.section(c, "今日为你推荐")
-			ui.Grid(c).Columns(a.columns(c, 168)).GapX(20).GapY(28).Children(func() {
-				for i := range a.recPlaylists[:min(len(a.recPlaylists), a.columns(c, 168)*2)] {
-					a.playlistCard(c.Key(a.recPlaylists[i].ID), &a.recPlaylists[i])
-				}
-			})
+			a.recommendedGrid(c, cols, scale)
 		}
-
+		a.homeListening(c, now, scale)
 		a.section(c, "官方榜单")
 		official := a.charts[:min(4, len(a.charts))]
-		cols := min(4, max(2, a.columns(c, 260)))
-		ui.Grid(c).Columns(cols).Gap(20).Children(func() {
+		chartCols := min(4, max(2, a.columns(c, 260)))
+		ui.Grid(c).Columns(chartCols).Gap(20).Children(func() {
 			for i := range official {
 				a.chartCard(c.Key(official[i].ID), &official[i])
 			}
 		})
 
-		a.recommendedPlaylists(c)
+		a.recommendedPlaylistsGrid(c, cols, scale)
 	})
 }
 

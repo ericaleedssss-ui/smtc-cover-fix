@@ -102,6 +102,7 @@ func (a *app) view(c *ui.Context) {
 		a.splash(c)
 	})
 	a.loginDialog(c)
+	a.stylePickerDialog(c)
 	a.playlistNameDialog(c)
 	a.deletePlaylistDialog(c)
 	a.downloadDeleteDialog(c)
@@ -204,6 +205,10 @@ func (a *app) load(r route) {
 		a.loadDownloads(false)
 	case pageRecent:
 		a.recent.sure = false
+	case pageStyle:
+		if !a.style.loaded {
+			a.loadStyle()
+		}
 	}
 }
 
@@ -476,6 +481,8 @@ func (a *app) content(c *ui.Context) {
 			a.podcastsPage(c)
 		case pageDownloads:
 			a.downloadsPage(c)
+		case pageStyle:
+			a.stylePage(c)
 		case pageRecent:
 			a.recentPage(c)
 		}
@@ -499,8 +506,10 @@ func (a *app) centered(c *ui.Context, err string, retry func()) {
 
 func (a *app) loadHome() {
 	a.homeLoading, a.homeErr = true, ""
+	a.loadStyle()
 	a.filteredPlaylists = [len(playlistFilters)]*playlistBrowseData{}
 	signedIn := a.profile != nil
+	gen := a.accountGen
 	at := time.Now()
 	go func() {
 		featured, err1 := netease.FeaturedPlaylists(30)
@@ -511,6 +520,9 @@ func (a *app) loadHome() {
 			rec, _ = netease.RecommendedPlaylists()
 		}
 		a.post(func() {
+			if gen != a.accountGen {
+				return
+			}
 			a.homeLoading = false
 			if err1 != nil && err2 != nil {
 				// Loading the new day's again, what shows stays, to try
