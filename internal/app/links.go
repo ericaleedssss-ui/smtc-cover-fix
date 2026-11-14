@@ -19,4 +19,4 @@ var manualDownloadURL = ""
 
 // feedbackBilibiliUID is the author's Bilibili account, whose private
 // messages feedback goes to.
-var feedbackBilibiliUID int64 = 229474180
+var feedbackBilibiliUID int64

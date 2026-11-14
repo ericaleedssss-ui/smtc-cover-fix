@@ -23,9 +23,9 @@ func (a *app) recentPage(c *ui.Context) {
 	tracks := a.recentSongs()
 	header := func(c *ui.Context) {
 		p := a.pal
-		sub := "在这台电脑上用 Cloudy 听过的歌曲"
+		sub := "在这台电脑上用 RHINE 听过的歌曲"
 		if len(tracks) > 0 {
-			sub = fmt.Sprintf("在这台电脑上用 Cloudy 听过的 %d 首", len(tracks))
+			sub = fmt.Sprintf("在这台电脑上用 RHINE 听过的 %d 首", len(tracks))
 		}
 		a.heading(c, "最近播放", sub)
 		if len(tracks) > 0 {
@@ -57,7 +57,7 @@ func (a *app) recentPage(c *ui.Context) {
 		}
 	}
 	if len(tracks) == 0 {
-		a.centered(c, "还没有播放记录：在 Cloudy 里听过的歌会出现在这里", nil)
+		a.centered(c, "还没有播放记录：在 RHINE 里听过的歌会出现在这里", nil)
 		return
 	}
 	a.toolRows(c, tracks, true, header)

@@ -89,7 +89,7 @@ func TestRecentPageIsThisComputers(t *testing.T) {
 	a.route = route{page: pageRecent}
 	tt := ui.NewTester(a.view, 1280, 820)
 	tt.Frame()
-	if !tt.HasText("昨天听的") || !tt.HasText("在这台电脑上用 Cloudy 听过的 2 首") {
+	if !tt.HasText("昨天听的") || !tt.HasText("在这台电脑上用 RHINE 听过的 2 首") {
 		t.Fatalf("the page shows %v", tt.Texts())
 	}
 	if err := tt.Click("清空记录"); err != nil {
@@ -103,7 +103,7 @@ func TestRecentPageIsThisComputers(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if len(a.recent.played) != 0 || !tt.HasText("还没有播放记录：在 Cloudy 里听过的歌会出现在这里") {
+	if len(a.recent.played) != 0 || !tt.HasText("还没有播放记录：在 RHINE 里听过的歌会出现在这里") {
 		t.Errorf("cleared, the page shows %v", tt.Texts())
 	}
 }

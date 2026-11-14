@@ -1,8 +1,10 @@
-# Cloudy
+# RHINE
 
-<img src="resources/icon.png" width="120" alt="Cloudy 图标">
+本项目基于 [Cloudy](https://github.com/nya-owo/cloudy) 提交 `250da6d` 修改，原作者为 nya-owo。Cloudy 基于 [egoist/mygo-cloudmusic](https://github.com/egoist/mygo-cloudmusic) 修改。
 
-nya 维护的第三方网易云音乐 Windows 客户端（原名 Cloud-nya），基于 [egoist/mygo-cloudmusic](https://github.com/egoist/mygo-cloudmusic) 修改。用 Go 和 [MyGo](https://github.com/egoist/mygo) 编写，原生界面，不用 WebView，占用小、启动快。
+<img src="resources/icon.png" width="120" alt="RHINE 图标">
+
+RHINE 是第三方网易云音乐桌面客户端。用 Go 和 [MyGo](https://github.com/egoist/mygo) 编写，原生界面，不用 WebView，占用小、启动快。
 
 ## 特色功能
 
@@ -36,14 +38,13 @@ nya 维护的第三方网易云音乐 Windows 客户端（原名 Cloud-nya），
 - **全局快捷键**：每一项都能自己录制，按键被其他软件占用时会提示。
 - **设置好找**：9 个分类，左上角可以搜索，输入「翻译」「缓存」「玻璃」就能找到对应的设置。
 - 开机启动并隐藏到托盘；只运行一个实例，再次打开会唤出已有的窗口。
-- 应用内检查更新，连不上 GitHub 时自动改用镜像，也可以选择在后台自动装好更新。
-- 多种中文字体，在列表里直接预览；设置里可以把反馈发到作者的 B 站私信。
+- 多种中文字体，在列表里直接预览。
 
 完整的变化见 [更新日志](CHANGELOG.md)。
 
 ## 下载
 
-到 [Releases](https://github.com/nya-owo/cloudy/releases) 下载安装包。目前只提供 Windows 版本（x64 和 ARM64）。安装包没有代码签名，Windows 可能提示“已保护你的电脑”，点“更多信息”后选“仍要运行”。
+RHINE Go 版目前在本地验证阶段，自动更新已关闭。
 
 ## 原项目的功能
 
@@ -83,7 +84,8 @@ Cloudy 由 **nya-owo** 开发并维护，同时借助 AI 工具协助完成开�
 
 ## 致谢
 
-- [egoist/mygo-cloudmusic](https://github.com/egoist/mygo-cloudmusic)：本项目修改自它，原作者 egoist
+- [Rhine 原项目](https://github.com/ericaleedssss-ui/smtc-cover-fix)：沿用原应用图标，保留原项目的许可证和版权声明。
+- [egoist/mygo-cloudmusic](https://github.com/egoist/mygo-cloudmusic)：Cloudy 的上游，原作者 egoist
 - [Lucide](https://lucide.dev)：部分图标（ISC 许可）
 - [MyGo](https://github.com/egoist/mygo)：原生 UI 与应用框架
 - [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi)：eapi 加密与登录流程的参考

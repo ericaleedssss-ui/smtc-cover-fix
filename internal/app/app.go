@@ -316,8 +316,6 @@ func Run() error {
 		return nil
 	}
 	mygo.App.OnSecondInstance(func([]string, string) { a.showMain() })
-	moveOldData()
-	copyFormerData()
 	mygo.App.SetLanguages(appLanguage)
 	a.useUpdater()
 	mygo.App.WhenReady(func() {

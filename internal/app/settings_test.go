@@ -298,6 +298,9 @@ func TestDeskFlyFrames(t *testing.T) {
 
 // The mail is off: its button says so and sending does nothing.
 func TestFeedbackMailClosed(t *testing.T) {
+	oldUID := feedbackBilibiliUID
+	defer func() { feedbackBilibiliUID = oldUID }()
+	feedbackBilibiliUID = 12345
 	if feedbackMailOpen {
 		t.Skip("the mail is open")
 	}

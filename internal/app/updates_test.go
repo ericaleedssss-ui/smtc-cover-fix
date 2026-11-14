@@ -86,6 +86,23 @@ func TestCheckForUpdatesFromSettings(t *testing.T) {
 	}
 }
 
+// An app without an update feed offers no update action and stays closed even if a check is requested.
+func TestUpdatesUnavailableWithoutFeed(t *testing.T) {
+	a := newTestApp()
+	a.settings = defaultSettings()
+	a.useUpdater()
+	a.settingsTab = settingsAbout
+	tt := ui.NewTester(a.settingsBody, 560, 3000)
+	tt.Frame()
+	if _, ok := tt.Find("检查更新"); ok {
+		t.Fatal("offers a manual check without an update feed")
+	}
+	a.checkForUpdates()
+	if a.update.checking || a.update.open {
+		t.Fatal("started a manual update check without an update feed")
+	}
+}
+
 // A check that finds nothing says so, one that finds an update offers it,
 // and one that fails says why; an install the listener asked for leaves the
 // asking out.
@@ -154,6 +171,7 @@ func TestUpdatePaneFrames(t *testing.T) {
 	show := func(dark bool, u updateState) *ui.Tester {
 		a := newTestApp()
 		accentHome(a)
+		a.updates = true
 		a.update = u
 		tt := ui.NewTester(a.view, 1280, 820)
 		tt.SetDark(dark)

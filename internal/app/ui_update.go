@@ -13,7 +13,7 @@ import (
 // Its head says where it is at, once, under the dialogs' one title.
 func (a *app) updateDialog(c *ui.Context) {
 	u := &a.update
-	if !u.open {
+	if !a.updates || !u.open {
 		return
 	}
 	p, ink := a.pal, a.inkOn(false)

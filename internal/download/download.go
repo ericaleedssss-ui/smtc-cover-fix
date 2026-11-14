@@ -129,7 +129,7 @@ func Fetch(ctx context.Context, tr netease.Track, level, dir string, progress Pr
 	if err != nil {
 		return Item{}, err
 	}
-	tmp, err := os.CreateTemp(dir, ".Cloudy-*.part")
+	tmp, err := os.CreateTemp(dir, ".RHINE-*.part")
 	if err != nil {
 		return Item{}, err
 	}

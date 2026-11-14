@@ -11,7 +11,7 @@ import (
 // feedbackMessage is what a listener sends: what they wrote, and what the
 // author needs to know to look into it.
 func feedbackMessage(text string) string {
-	return fmt.Sprintf("%s\n\n——\nCloudy %s · %s · %s", strings.TrimSpace(text), mygo.App.Version(), osVersion(), runtime.GOARCH)
+	return fmt.Sprintf("%s\n\n——\nRHINE %s · %s · %s", strings.TrimSpace(text), mygo.App.Version(), osVersion(), runtime.GOARCH)
 }
 
 // feedbackPage is the author's private messages on Bilibili.

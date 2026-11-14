@@ -36,7 +36,10 @@ type updateState struct {
 // offers them in the update pane rather than in a window of the updater
 // plugin, whose plain UI sat apart from the app's glass.
 func (a *app) useUpdater() {
-	a.updates = true
+	a.updates = mygo.Updater.Enabled()
+	if !a.updates {
+		return
+	}
 	mygo.Updater.SetMirrors(updateMirrors...)
 }
 
@@ -50,6 +53,9 @@ func (a *app) checkForUpdates() {
 // the listener only when there is one, else for the listener, who sees the
 // pane from the start.
 func (a *app) startCheck(auto bool) {
+	if !a.updates {
+		return
+	}
 	u := &a.update
 	if u.checking || u.downloading {
 		if !auto {
@@ -143,7 +149,7 @@ func updateError(err error) string {
 // autoCheckUpdates looks for updates soon after launch, and then once a day,
 // while the listener asked to be told of new versions.
 func (a *app) autoCheckUpdates() {
-	if !a.settings.UpdateChecks {
+	if !a.updates || !a.settings.UpdateChecks {
 		return
 	}
 	if last := time.Unix(a.settings.UpdateChecked, 0); time.Since(last) < 20*time.Hour {

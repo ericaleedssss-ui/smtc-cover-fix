@@ -241,7 +241,7 @@ func postFeedback(text, version string, images []string) error {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	fields := [][2]string{
-		{"_subject", "Cloudy 反馈"},
+		{"_subject", "RHINE 反馈"},
 		{"_template", "table"},
 		{"_captcha", "false"},
 		{"反馈内容", text},

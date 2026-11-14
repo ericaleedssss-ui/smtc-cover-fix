@@ -55,7 +55,7 @@ func (a *app) defaultDownloadFolder() string {
 	if dir == "" {
 		dir = "."
 	}
-	return filepath.Join(dir, "Cloudy Downloads")
+	return filepath.Join(dir, "RHINE Downloads")
 }
 
 // downloadFolder is where downloaded songs are kept.

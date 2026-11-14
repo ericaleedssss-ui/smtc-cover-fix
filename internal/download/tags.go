@@ -240,7 +240,7 @@ func tagFLAC(src []byte, t Tags) ([]byte, error) {
 		return nil, errors.New("download: FLAC without stream info")
 	}
 	if vendor == nil {
-		vendor = []byte("Cloudy")
+		vendor = []byte("RHINE")
 	}
 	var comments bytes.Buffer
 	binary.Write(&comments, binary.LittleEndian, uint32(len(vendor)))

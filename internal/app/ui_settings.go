@@ -910,7 +910,7 @@ func (a *app) settingsSystemPage(k *settingsKit) {
 	})
 	k.group("启动", func() {
 		login := a.openAtLogin()
-		k.row("开机时启动", "登录 Windows 后自动打开 Cloudy", func() {
+		k.row("开机时启动", "登录 Windows 后自动打开 RHINE", func() {
 			on := login
 			if ui.Switch(k.c.Key("open-at-login"), &on).Label("开机时启动").Changed() {
 				a.setOpenAtLogin(on)
@@ -949,16 +949,18 @@ func (a *app) settingsAboutPage(k *settingsKit) {
 			k.sub("自动安装更新", "在后台下载并装好新版本，不弹窗，下次打开软件时生效", s.UpdateChecks, func() {
 				k.toggle("update-downloads", "自动安装更新", &s.UpdateInstall, false, nil)
 			})
-			k.row("当前版本 "+mygo.App.Version(), "新版本来自 GitHub 的 nya-owo/cloudy", func() {
+			k.row("当前版本 "+mygo.App.Version(), "从应用配置的更新渠道检查新版本", func() {
 				if k.button("check-updates", "检查更新", nil, false, false).Clicked() {
 					a.checkForUpdates()
 				}
 			})
 		})
 	}
-	k.group("反馈", func() {
-		k.block("反馈 建议 问题 bug 私信 邮件", func() { a.feedbackCard(k.c, k.ink) })
-	})
+	if feedbackBilibiliUID != 0 || feedbackMailOpen {
+		k.group("反馈", func() {
+			k.block("反馈 建议 问题 bug 私信 邮件", func() { a.feedbackCard(k.c, k.ink) })
+		})
+	}
 }
 
 // settingSlider is a slider of a setting, from 0 to 1, with how far it is
