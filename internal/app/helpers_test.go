@@ -45,3 +45,16 @@ func chooseItem(tt *ui.Tester, path ...string) error {
 	tt.Frame()
 	return nil
 }
+
+func (a *app) legacySidebarFixture(c *ui.Context) {
+	a.pal = paletteFor(c.Theme())
+	width, _ := c.Size()
+	ui.Row(c).Fill().Children(func() {
+		ui.Column(c).Width(a.sideWidth(width)).Children(func() {
+			a.sidebar(c)
+			a.sidebarResizer(c, width)
+		})
+		ui.Box(c).Grow(1).Children(func() { a.content(c) })
+	})
+	a.playlistNameDialog(c)
+}

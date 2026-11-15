@@ -751,20 +751,6 @@ func (a *app) settingsAppearancePage(k *settingsKit) {
 				a.changed()
 			}
 		})
-		k.rowOf(settingRow{label: "侧边栏大小", desc: "歌单、专辑的封面和文字大小",
-			tip: "拖动侧边栏右边缘可以调整宽度，双击边缘恢复"}, func() {
-			labels := make([]string, len(sidebarSizes))
-			for i, sz := range sidebarSizes {
-				labels[i] = sz.label
-			}
-			k.choose("sidebar-size", "侧边栏大小", a.sidebarSizeLabel(), labels, func(i int) {
-				s.SidebarSize = sidebarSizes[i].id
-				a.changed()
-			})
-		})
-		k.row("侧边栏列出全部歌单", "关闭时每组只列出前 8 个，其余在「我的主页」里查看和搜索", func() {
-			k.toggle("sidebar-all", "侧边栏列出全部歌单", &s.SidebarAll, false, nil)
-		})
 	})
 }
 

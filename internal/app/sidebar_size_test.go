@@ -17,7 +17,7 @@ import (
 func TestSidebarDrags(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
-	tt := ui.NewTester(a.view, 1180, 780)
+	tt := ui.NewTester(a.legacySidebarFixture, 1180, 780)
 	tt.Frame()
 	r, ok := tt.Find("调整侧边栏宽度")
 	if !ok {
@@ -59,7 +59,7 @@ func TestSidebarSizeFrames(t *testing.T) {
 		a.profile = &netease.Profile{UserID: 1, Nickname: "nya_owo"}
 		a.mine = []netease.Playlist{{ID: 1, Name: "nya_owo喜欢的音乐", SpecialType: 5}, {ID: 2, Name: "此生无悔入MC（建造专用BGM合集）"}}
 		a.saved = []netease.Playlist{{ID: 3, Name: "大叔追云彩视频BGM收藏"}, {ID: 4, Name: "网易云欧美热歌榜"}}
-		tt := ui.NewTester(a.view, 1180, 780)
+		tt := ui.NewTester(a.legacySidebarFixture, 1180, 780)
 		tt.SetDark(true)
 		tt.Frame()
 		tt.Advance(time.Second)

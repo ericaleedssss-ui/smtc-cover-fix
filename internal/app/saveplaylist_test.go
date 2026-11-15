@@ -64,9 +64,9 @@ func TestOwnPlaylistNotSavable(t *testing.T) {
 	}
 }
 
-// Choosing 取消收藏 from a saved playlist's menu in the sidebar unsaves it,
+// Choosing 取消收藏 from a saved playlist in the profile unsaves it,
 // and its page, once loaded, no longer reads saved.
-func TestUnsavePlaylistFromSidebar(t *testing.T) {
+func TestUnsavePlaylistFromProfile(t *testing.T) {
 	calls := make(chan saveCall, 1)
 	savePlaylist = func(id int64, save bool) error { calls <- saveCall{id, save}; return nil }
 	defer func() { savePlaylist = netease.SubscribePlaylist }()
@@ -74,6 +74,8 @@ func TestUnsavePlaylistFromSidebar(t *testing.T) {
 	a := editTestApp()
 	a.saved[0].Subscribed = true
 	a.playlists[20] = &netease.Playlist{ID: 20, Name: "飙升榜", Subscribed: true}
+	a.route = route{page: pageUser, id: 1}
+	a.users[1] = &userData{user: &netease.User{UserID: 1, Nickname: "小明"}}
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
 	if err := tt.RightClick("飙升榜"); err != nil {

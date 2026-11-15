@@ -132,6 +132,10 @@ func TestCreatePlaylist(t *testing.T) {
 	a := editTestApp()
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
+	if err := tt.Click("我的账号"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if err := tt.Click("新建歌单"); err != nil {
 		t.Fatal(err)
 	}
@@ -175,8 +179,8 @@ func TestRenamePlaylist(t *testing.T) {
 	defer func() { renamePlaylist = netease.RenamePlaylist }()
 
 	a := editTestApp()
-	a.route = route{page: pageHome}
-	a.homeLoading = true
+	a.route = route{page: pageUser, id: 1}
+	a.users[1] = &userData{user: &netease.User{UserID: 1, Nickname: "小明"}}
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
 	if err := tt.RightClick("睡前"); err != nil {
@@ -207,8 +211,8 @@ func TestRenamePlaylist(t *testing.T) {
 // The liked songs can't be renamed: they offer no menu.
 func TestNoRenamingLikedSongs(t *testing.T) {
 	a := editTestApp()
-	a.route = route{page: pageHome}
-	a.homeLoading = true
+	a.route = route{page: pageUser, id: 1}
+	a.users[1] = &userData{user: &netease.User{UserID: 1, Nickname: "小明"}}
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
 	tt.RightClick("小明喜欢的音乐")
@@ -264,8 +268,8 @@ func TestCancelDeletingPlaylist(t *testing.T) {
 	defer func() { deletePlaylist = netease.DeletePlaylist }()
 
 	a := editTestApp()
-	a.route = route{page: pageHome}
-	a.homeLoading = true
+	a.route = route{page: pageUser, id: 1}
+	a.users[1] = &userData{user: &netease.User{UserID: 1, Nickname: "小明"}}
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
 	if err := tt.RightClick("睡前"); err != nil {

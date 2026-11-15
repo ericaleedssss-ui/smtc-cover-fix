@@ -23,7 +23,7 @@ func TestAccountMenu(t *testing.T) {
 	tt := ui.NewTester(a.view, 1000, 700)
 	tt.Frame()
 
-	if err := tt.Click("小明"); err != nil {
+	if err := tt.Click("我的账号"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -33,8 +33,9 @@ func TestAccountMenu(t *testing.T) {
 	if !tt.Focused("我的主页") {
 		t.Fatal("the first item has no focus")
 	}
-	tt.Key(0, ui.KeyDown)
-	tt.Key(0, ui.KeyDown)
+	for range 8 {
+		tt.Key(0, ui.KeyDown)
+	}
 	tt.Frame()
 	if !tt.Focused("退出登录") {
 		t.Fatal("Down did not move to signing out")
@@ -45,9 +46,9 @@ func TestAccountMenu(t *testing.T) {
 		t.Fatal("Escape left the menu open")
 	}
 
-	tt.Click("小明")
+	tt.Click("我的账号")
 	tt.Frame()
-	tt.Click("小明")
+	tt.Click("我的账号")
 	tt.Frame()
 	if a.accountOpen {
 		t.Fatal("a second click left the menu open")
@@ -67,7 +68,7 @@ func TestAccountMenuOpensOwnPage(t *testing.T) {
 	a.profile = &netease.Profile{UserID: 42, Nickname: "小明"}
 	tt := ui.NewTester(a.view, 1000, 700)
 	tt.Frame()
-	tt.Click("小明")
+	tt.Click("我的账号")
 	tt.Frame()
 	if err := tt.Click("我的主页"); err != nil {
 		t.Fatal(err)
@@ -202,7 +203,7 @@ func TestAccountMenuFrames(t *testing.T) {
 		tt := ui.NewTester(a.view, 1000, 600)
 		tt.SetDark(dark)
 		tt.Frame()
-		tt.Click("小明")
+		tt.Click("我的账号")
 		tt.Advance(time.Second)
 		tt.Frame()
 		img := tt.Image()

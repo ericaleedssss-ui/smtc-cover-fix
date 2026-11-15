@@ -2,6 +2,7 @@ package app
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/plugins/glass"
@@ -24,6 +25,7 @@ type scrubState struct {
 	// lamp gives the bar its glow in Now Playing (ui_light.go).
 	lamp  bool
 	level barState
+	dots  bool
 	solid bool // Rhine: R11 the detail progress track is solid and uses a glass thumb
 }
 
@@ -40,11 +42,27 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 	if !st.active && !st.held {
 		st.v = pl.Position().Seconds()
 	}
-	s := ui.SliderBase(c, &st.v, 0, max(dur, 1)).Height(height).FocusRing(false).Label("播放进度").Cursor(ui.CursorPointer)
+	s := ui.SliderBase(c, &st.v, 0, max(dur, 1)).Height(height).FocusRing(false).Label("播放进度").Cursor(ui.CursorPointer).Disabled(dur <= 0)
 	// The press and its release come to the bar wherever the pointer is,
 	// and go on to the slider, which follows the pointer.
 	s.HandleInput(func(ev ui.InputEvent) bool {
 		switch ev.Kind {
+		case ui.InputKeyDown:
+			if st.dots && dur > 0 {
+				switch ev.Key {
+				case ui.KeyLeft:
+					pl.Seek(secs(max(0, st.v-5)))
+				case ui.KeyRight:
+					pl.Seek(secs(min(dur, st.v+5)))
+				case ui.KeyHome:
+					pl.Seek(0)
+				case ui.KeyEnd:
+					pl.Seek(pl.Duration())
+				default:
+					return false
+				}
+				return true
+			}
 		case ui.InputPointerDown:
 			st.held = ev.Button == 0
 		case ui.InputPointerUp:
@@ -92,6 +110,7 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 		smoking = 1
 	}
 	smoking = s.AnimateTo("smoke", smoking, ui.Animation{Duration: 600 * time.Millisecond})
+	pointerX, _, over := s.PointerPosition()
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
 		at := st.v
 		if !st.active {
@@ -103,6 +122,43 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 		}
 		y := r.Y + (r.H-thick)/2
 		head, cy := r.X+r.W*frac, r.Y+r.H/2
+		if st.dots {
+			const steps = 60
+			space := r.W / steps
+			if space <= 0 {
+				return
+			}
+			levels, live := pl.Levels()
+			hovered := -1
+			if dur > 0 && (over || pressed) {
+				hovered = min(steps-1, max(0, int(pointerX/space)))
+			}
+			for i := range steps {
+				color := track
+				if float32(i)/steps < frac || i == hovered {
+					color = fill
+				}
+				w := max(1, space-1.5)
+				h := float32(3)
+				if live && pl.Playing() && a.motion == motionFull {
+					h += 13 * min(1, max(0, levels[i*len(levels)/steps]))
+				}
+				y := cy
+				if i == hovered {
+					h *= 1.6
+					y -= 5
+				}
+				p.Fill(ui.Rect{X: r.X + float32(i)*space, Y: y - h/2, W: w, H: h}, color, w/2)
+			}
+			if pl.Playing() && !st.active && dur > 0 {
+				if live && a.motion == motionFull {
+					p.After(time.Second / 15)
+				} else {
+					p.After(secs(min(1, dur/steps)))
+				}
+			}
+			return
+		}
 		p.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: thick}, track, thick/2)
 		// What has downloaded, a shade lighter.
 		if got, ok := pl.Downloaded(); ok && float32(got) < 1 {
@@ -459,72 +515,55 @@ func (a *app) playerBar(c *ui.Context) {
 		// Played, or gone: it says what it is again.
 		a.picked = pickedUp{}
 	}
-	liquid := a.settings.LiquidGlass
-	a.barScrub.lens = liquid
-	// Glass shows anything through: what is on it keeps its contrast by
-	// being stronger than over the plain page.
-	muted, faint, track, cover := p.muted, p.faint, p.press, float32(8)
-	glassH := float32(playerBarHeight - glassBarFoot)
-	if liquid {
-		muted, faint, track = p.text.Alpha(0.84), p.text.Alpha(0.74), p.text.Alpha(0.22)
-		cover = glassH/2 - glassBarInset - 8
-	} else {
-		// Over the foot of the page: while content is under it, its edge
-		// frosts it, with a hairline along the top.
-		edge := ui.Box(c.Key("bottom-edge")).Absolute().Left(0).Right(0).Bottom(0).Height(playerBarHeight).
-			Material(glass.ScrollEdge{Hard: true, Bottom: true, Background: p.bg})
-		edge.Opacity(edgeShown(edge, a.underBottom))
-	}
-	// A record, as it turns.
+	a.barScrub.dots = true
+	muted, faint, track := white.Alpha(0.82), white.Alpha(0.65), white.Alpha(0.25)
 	spinning := tr != nil && a.spins()
-	if spinning {
-		cover = 24
-	}
-	// The controls keep the middle, between sides that share what is left:
-	// narrower, the middle gives up to 140 DIPs, and what plays keeps room
-	// for its cover, some of its title and its heart.
-	// A window of the least width has room for four of the six buttons on the
-	// right: the floating windows give way, which the tray and the settings
-	// open too.
 	ww, _ := c.Size()
-	roomy := ww >= 1100
-	controls := float32(4*32 + 3*4) // translation, adding to a playlist, the speaker and the details
-	if roomy {
-		controls = 6*32 + 5*4 // and the floating windows
-	}
-	bar := ui.Row(c).Absolute().Gap(20).AlignItems(ui.Center)
+	unit := playerIslandScale(ww)
+	controls := 136 * unit
+	discSize := 48 * unit
+	cover := discSize / 2
+	inset := max(float32(20), (ww-860*unit)/2)
+	glassH := 72 * unit
+	bar := ui.Row(c.Key("rhine-player-island")).Absolute().Left(inset).Right(inset).Bottom(18*unit).
+		Height(glassH).Padding(0, 34*unit, 0, 12*unit).Gap(14*unit).AlignItems(ui.Center).
+		Radius(glassH/2).Shadow(0, 6, 24, -6, ui.RGBA(0, 0, 0, 0.36)).TextColor(white)
 	a.barBox = bar.LayoutBounds()
-	if liquid {
-		bar.Left(glassBarSide).Right(glassBarSide).Bottom(glassBarFoot).Height(glassH).Padding(0, 20, 0, glassBarInset).
-			Radius(glassH/2).Shadow(0, 6, 24, -6, ui.RGBA(0, 0, 0, 0.3)).Material(a.liquidGlass())
+	if a.settings.LiquidGlass {
+		material := a.liquidGlass()
+		material.dark, material.island = true, true
+		bar.Material(material)
 	} else {
-		bar.Left(0).Right(0).Bottom(0).Height(playerBarHeight).PaddingX(20)
+		bar.Background(ui.RGB(29, 29, 34))
 	}
 	bar.Children(func() {
 		// What plays.
-		ui.Row(c).Grow(1).Basis(0).MinWidth(150).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).MinWidth(120).Children(func() {
 			if tr == nil {
 				ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(48, 48).Radius(cover).Background(p.hover).Center().Children(func() {
+					ui.Box(c).Size(discSize, discSize).Radius(cover).Background(p.hover).Center().Children(func() {
 						ui.Icon(c, iconNote).Size(18, 18).TextColor(faint)
 					})
-					ui.Text(c, "未在播放").FontSize(13).TextColor(muted)
+					ui.Column(c).MinWidth(0).Shrink(1).Gap(2).Children(func() {
+						ui.Text(c, "还没有播放音乐").FontSize(13).FontWeight(650).TextColor(white).SingleLine()
+						ui.Text(c, "选择一首喜欢的歌").FontSize(11).TextColor(muted).SingleLine()
+					})
 				})
 				return
 			}
 			info := ui.ButtonBase(c.Key("info")).Gap(12).AlignItems(ui.Center).FocusRing(false).Shrink(1).MinWidth(0).Label("打开正在播放")
 			hovered := info.Hovered()
 			info.Children(func() {
-				art := ui.Box(c).Size(48, 48).Shrink(0)
+				art := ui.Box(c).Size(discSize, discSize).Shrink(0)
 				a.barSpot.cover = art.LayoutBounds()
 				a.lifted(art)
 				art.Children(func() {
 					// Another song's comes in over the last one's.
 					var shown ui.Element
 					if spinning {
-						shown = a.barDisc(c, tr, 48, discFrame)
+						shown = a.barDisc(c, tr, discSize, discFrame)
 					} else {
-						shown = a.cover(c.Key(tr.ID), tr.Album.PicURL, 120, 48, cover)
+						shown = a.cover(c.Key(tr.ID), tr.Album.PicURL, 120, discSize, cover)
 					}
 					shown.Shadow(0, 2, 8, 0, p.cardShade).
 						Transition(ui.ElementTransition{Animation: &motionPane, Enter: &ui.Motion{Scale: 0.9}, Exit: &ui.Motion{Scale: 0.9}})
@@ -552,7 +591,7 @@ func (a *app) playerBar(c *ui.Context) {
 						sub, color = pl.Err(), p.accent
 					}
 					if sub == "" {
-						a.artistLinks(c, tr, muted, p.text).FontSize(12).SingleLine()
+						a.artistLinks(c, tr, muted, white).FontSize(12).SingleLine()
 					} else {
 						ui.Text(c, sub).FontSize(12).TextColor(color).SingleLine()
 					}
@@ -562,72 +601,115 @@ func (a *app) playerBar(c *ui.Context) {
 				a.nowPlaying = true
 			}
 			a.likeButton(c.Key("like"), tr, 16, muted).Margin(0, 0, 0, 4).Shrink(0)
+			if iconButton(c.Key("bar-comments"), iconComment, 16, muted, "当前歌曲评论").Size(30, 30).Clicked() {
+				a.choosePane(paneComments)
+				a.nowPlaying = true
+			}
 		})
 
 		// Controls over the progress.
-		middle := float32(300)
-		if !roomy {
-			middle = 240
-		}
-		ui.Column(c).Width(440).Shrink(1).MinWidth(middle).Gap(0).AlignItems(ui.Stretch).Children(func() {
-			a.playFlies = a.lifted
-			a.transport(c, p.text, muted, p.accent, 18)
-			a.playFlies = nil
-			a.barSpot.play = a.playSpot
-			if tr == nil {
-				// Nothing to show the progress of: what to do, where the
-				// times and an empty bar said 0:00 of nothing.
-				ui.Row(c).Height(14).Margin(-4, 0, 0, 0).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "从左侧挑一张歌单，或搜索一首歌开始播放").FontSize(10.5).TextColor(faint).SingleLine()
-				})
-				return
-			}
+		ui.Column(c).Width(310 * unit).Shrink(1).MinWidth(190 * unit).AlignItems(ui.Stretch).Children(func() {
+			a.islandTransport(c, tr != nil, muted)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Margin(-4, 0, 0, 0).Children(func() {
 				ui.Text(c, clock(pl.Position())).FontSize(10.5).FontFeatures("tnum").TextColor(faint).Width(34).TextAlign(ui.End)
-				scrub := a.scrubber(c.Key("bar-scrub"), &a.barScrub, track, p.text.Alpha(0.75), 14, p.accent).Grow(1)
+				scrub := a.scrubber(c.Key("bar-scrub"), &a.barScrub, track, ui.RGB(255, 106, 61), 16, ui.Transparent).Grow(1)
 				a.barSpot.scrub = scrub.LayoutBounds()
-				a.barSpot.radius, a.barSpot.track, a.barSpot.fill, a.barSpot.smoke = cover, track, p.text.Alpha(0.75), p.accent
+				a.barSpot.radius, a.barSpot.track, a.barSpot.fill, a.barSpot.smoke = cover, track, white.Alpha(0.75), ui.Transparent
 				a.lifted(scrub)
 				ui.Text(c, clock(pl.Duration())).FontSize(10.5).FontFeatures("tnum").TextColor(faint).Width(34)
 			})
 		})
 
-		// The floating windows, the volume, and the song's details.
-		ui.Row(c).Grow(1).Basis(0).MinWidth(controls).Justify(ui.End).AlignItems(ui.Center).Gap(4).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).MinWidth(controls).Justify(ui.End).AlignItems(ui.Center).Gap(2).Children(func() {
 			desk := muted
 			if a.settings.DeskLyrics {
 				desk = p.accent
 			}
-			if roomy {
-				deskBtn := iconButton(c.Key("desk-lyrics"), iconSubtitles, 16, desk, "桌面歌词")
-				a.deskBtn = deskBtn.LayoutBounds()
-				if deskBtn.Clicked() {
-					a.toggleDeskLyrics()
-				}
-				if iconButton(c.Key("mini"), iconMiniWin, 16, muted, "迷你窗口").Clicked() {
-					a.showMini()
-				}
+			deskBtn := iconButton(c.Key("desk-lyrics"), iconSubtitles, 16, desk, "桌面歌词")
+			a.deskBtn = deskBtn.LayoutBounds()
+			if deskBtn.Clicked() {
+				a.toggleDeskLyrics()
 			}
-			// The song's translation under each line of its lyrics, lit
-			// while it shows: Now Playing's and the desktop lyrics'.
-			trans := muted
-			if a.settings.LyricTrans {
-				trans = p.accent
+			add := iconButton(c.Key("add-to-playlist"), iconListPlus, 16, muted, "添加当前歌曲到歌单").
+				Disabled(tr == nil || tr.ProgramID != 0 || tr.ID <= 0)
+			if add.Clicked() && tr != nil {
+				a.addToPlaylistMenu(add, tr)
 			}
-			if iconButton(c.Key("lyric-trans"), iconTranslate, 16, trans, "歌词翻译").Clicked() {
-				a.toggleLyricTrans()
-			}
-			// Adding the song playing to one of the listener's playlists.
-			if tr != nil && tr.ProgramID == 0 && tr.ID > 0 {
-				add := iconButton(c.Key("add-to-playlist"), iconListPlus, 16, muted, "添加到歌单")
-				if add.Clicked() {
-					a.addToPlaylistMenu(add, tr)
-				}
-			}
-			a.volumeButton(c, p.text.Alpha(0.75))
+			a.volumeButton(c, muted)
 			if tr != nil {
 				a.songMenuLabeled(c.Key("details"), tr, 16, muted, "歌曲详情")
+			} else {
+				iconButton(c.Key("details"), iconMore, 16, faint, "歌曲更多选项").Disabled(true)
 			}
 		})
+	})
+}
+
+func (a *app) islandTransport(c *ui.Context, hasTrack bool, ink ui.Color) {
+	pl := a.pl
+	ui.Row(c).Height(35).Gap(10).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		modeIcon, modeLabel := iconRepeat, "顺序播放"
+		switch {
+		case pl.Radio() == heartRadio:
+			modeIcon, modeLabel = iconHeart, "心动模式"
+		case pl.Shuffle():
+			modeIcon, modeLabel = iconShuffle, "随机播放"
+		case pl.Repeat() == player.RepeatOne:
+			modeIcon, modeLabel = iconRepeat1, "单曲循环"
+		}
+		fm := strings.HasPrefix(pl.Radio(), "fm:")
+		if iconButton(c.Key("mode"), modeIcon, 15, ink, modeLabel).Disabled(fm).Clicked() {
+			switch {
+			case pl.Radio() == heartRadio:
+				a.exitRadio()
+			case pl.Shuffle():
+				pl.ToggleShuffle()
+				if a.likedPlaylist() != 0 {
+					a.startHeartMode()
+				}
+			case pl.Repeat() == player.RepeatOne:
+				pl.CycleRepeat()
+				pl.ToggleShuffle()
+			default:
+				for pl.Repeat() != player.RepeatOne {
+					pl.CycleRepeat()
+				}
+			}
+		}
+		if iconButton(c.Key("prev"), iconPrev, 15, ink, "上一首").Disabled(!hasTrack || fm).Clicked() {
+			pl.Prev()
+		}
+		play := playButton(c.Key("play"), pl.Playing(), 19, white).Disabled(!hasTrack)
+		a.playSpot = play.LayoutBounds()
+		a.barSpot.play = a.playSpot
+		a.lifted(play)
+		if play.Clicked() {
+			pl.TogglePlay()
+		}
+		if iconButton(c.Key("next"), iconNext, 15, ink, "下一首").Disabled(!hasTrack).Clicked() {
+			pl.Next()
+		}
+		queue := iconButton(c.Key("island-queue"), iconQueue, 16, ink, "待播")
+		if queue.Clicked() {
+			a.islandQueueOpen = !a.islandQueueOpen
+		}
+		a.islandQueue(c, queue)
+	})
+}
+
+func (a *app) islandQueue(c *ui.Context, anchor ui.Element) {
+	ui.PopoverBase(c.Key("island-queue-panel"), anchor, &a.islandQueueOpen, func(panel ui.Element) {
+		_, height := c.Size()
+		panel.AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom).Margin(0, 0, 12, 0).
+			Width(390).Height(min(400, height-110)).Padding(14).Gap(6).Label("待播").
+			Radius(24).Background(ui.RGB(36, 36, 43)).TextColor(white).
+			Border(1, white.Alpha(0.1)).Shadow(0, 8, 28, -4, ui.RGBA(0, 0, 0, 0.4))
+		a.paneMotion(panel)
+		ui.Text(c, "待播").FontSize(18).FontWeight(650)
+		if len(a.pl.Queue()) == 0 {
+			ui.Text(c, "暂无待播歌曲").FontSize(13).TextColor(white.Alpha(0.65))
+			return
+		}
+		a.queuePane(c)
 	})
 }

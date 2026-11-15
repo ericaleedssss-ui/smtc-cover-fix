@@ -122,7 +122,7 @@ func (a *app) recommendedGrid(c *ui.Context, cols int, scale float32) {
 // gridCell is how wide a card is in a grid of cols on the page.
 func (a *app) gridCell(c *ui.Context, cols int, scale float32) float32 {
 	w, _ := c.Size()
-	return (w - a.sideWidth(w) - 2*pagePad - float32(cols-1)*20*scale) / float32(cols)
+	return (w - 2*pagePad - float32(cols-1)*20*scale) / float32(cols)
 }
 
 // The style card's measures.

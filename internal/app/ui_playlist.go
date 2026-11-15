@@ -72,7 +72,7 @@ func (a *app) trackAlbumColumn(w float32) bool {
 	case pageAlbum:
 		return false
 	default:
-		return w-a.sideWidth(w) > 820
+		return w > 820
 	}
 }
 
@@ -206,7 +206,7 @@ func (a *app) coverStack(c *ui.Context, pl *netease.Playlist) {
 // room for three.
 func (a *app) coverStackURLs(c *ui.Context, urls []string) {
 	w, _ := c.Size()
-	if w-a.sideWidth(w) < 860 {
+	if w < 860 {
 		return
 	}
 	if len(urls) < 3 {
@@ -342,7 +342,7 @@ func (a *app) playlistTop(c *ui.Context, top float32) {
 	p := a.pal
 	// When the title is pinned, songs passing it should not reappear above it.
 	ui.Box(c.Key("list-top-mask")).Absolute().Top(0).Left(0).Right(0).Height(top).PassThrough().Background(p.bg)
-	bar := ui.Row(c.Key("list-top")).Absolute().Top(top).Left(pagePad - 12).Right(pagePad - 12).
+	bar := ui.Row(c.Key("list-top")).Absolute().Top(top).Left(pagePad-12).Right(pagePad-12).
 		Height(playlistTopHeight).PaddingX(12).Gap(10).AlignItems(ui.Center).
 		Radius(14).Background(p.bg).Border(1, p.hairline)
 	bar.Children(func() {

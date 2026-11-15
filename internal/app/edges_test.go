@@ -75,7 +75,7 @@ func TestAccountMenuKeepsPlayerEdge(t *testing.T) {
 	}
 	want := bar()
 	for _, step := range []string{"open", "close"} {
-		if err := tt.Click("小明"); err != nil {
+		if err := tt.Click("我的账号"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()

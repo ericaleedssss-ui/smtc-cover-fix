@@ -27,6 +27,7 @@ import (
 // its curve reaches further in. At 0.5 they are the glass as it was tuned.
 type barGlass struct {
 	dark        bool
+	island      bool
 	clear, bend float32
 }
 
@@ -126,7 +127,9 @@ var barGlassShader = sync.OnceValue(func() *shader.Shader { return shader.MustCo
 func (g barGlass) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
 	if !p.Accelerated() {
 		tint := ui.RGBA(255, 255, 255, 0.24)
-		if g.dark {
+		if g.island {
+			tint = ui.RGBA(21, 21, 27, 0.85)
+		} else if g.dark {
 			tint = ui.RGBA(0, 0, 0, 0.32)
 		}
 		glass.Paint(p, box, radii[0], glass.Glass{Tint: tint})
@@ -137,6 +140,9 @@ func (g barGlass) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
 	tone := [4]float32{0.62 - 0.4*g.clear, 1, 1.2, 1.35}
 	if g.dark {
 		tone = [4]float32{0.03, 0.32 + 0.48*g.clear, 1.5, 2.4}
+	}
+	if g.island {
+		tone[1] = 0.18 + 0.27*g.clear
 	}
 	blur := 2.8 * (1 - g.clear) * (1 - g.clear)
 	ink := [4]float32{0.97, 0.97, 0.98, 0.85}

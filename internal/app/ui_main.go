@@ -58,45 +58,19 @@ func (a *app) view(c *ui.Context) {
 	}
 	npOpen, npSettled := a.npState(c)
 	root.Children(func() {
-		page := ui.Row(c).Fill().AlignItems(ui.Stretch)
-		page.Children(func() {
-			if npOpen && npSettled {
-				// Covered by Now Playing: not built, which would cost each
-				// of its frames as much again as the stage itself. Where
-				// it is scrolled is the app's (pageScroll, navScroll,
-				// trackList), so it shows again as it was.
-				return
+		if !npOpen || !npSettled {
+			surface := p.bg
+			if !p.dark && a.route.page == pageHome && a.settings.Accent == "" {
+				surface = ui.RGB(235, 236, 243)
 			}
-			winW, _ := c.Size()
-			side := ui.Column(c).Width(a.sideWidth(winW))
-			switch {
-			case !c.Vibrancy():
-				a.sideColor = side.AnimateColor("tint", a.sidebarColor(), ui.Animation{Duration: 700 * time.Millisecond})
-				side.Background(a.sideColor)
-				a.sideEdge = a.sideColor
-			case a.settings.Accent != "":
-				// The window's material shows through the sidebar, which has
-				// no color of its own: lay the color over it, thin enough
-				// that the material still shows, so the color covers the
-				// sidebar too.
-				a.sideColor = side.AnimateColor("tint", a.sidebarColor(), ui.Animation{Duration: 700 * time.Millisecond})
-				side.Background(a.sideColor.Alpha(0.55))
-			}
-			side.Children(func() {
-				a.sidebar(c)
-				a.sidebarResizer(c, winW)
-			})
-			// Keyed, so that a popover of the sidebar opening or closing
-			// keeps what the page and its bars hold, their edges' fades.
-			ui.Box(c.Key("main")).Grow(1).Background(p.bg).Children(func() {
+			a.sideEdge = surface
+			ui.Box(c.Key("main")).Fill().Background(surface).Children(func() {
 				a.content(c)
-				// The bars float over the page, which scrolls under them:
-				// positioned, they paint over it.
 				a.pageTop(c)
 				a.playerBar(c)
 				a.batchBar(c)
 			})
-		})
+		}
 		a.coverFlightView(c)
 		a.nowPlayingLayer(c, npOpen, npSettled)
 		a.splash(c)
@@ -345,12 +319,8 @@ const pageGap = 12
 // insets returns the room the bars over a page take at its top and its
 // bottom: pages pad their content by it, and scroll under the bars.
 func (a *app) insets(c *ui.Context) (top, bottom float32) {
-	top = topBar(c)
-	if runtime.GOOS == "darwin" {
-		// The edge reaches a little below the traffic lights' strip.
-		top += topEdgePad
-	}
-	return top, playerBarHeight
+	width, _ := c.Size()
+	return max(88*headerScale(width), topBar(c)), max(playerBarHeight, 90*playerIslandScale(width))
 }
 
 // topEdgePad is the room the edge over a page leaves below the strip, on
@@ -427,20 +397,7 @@ func (a *app) pageTop(c *ui.Context) {
 		edge.Opacity(edgeShown(edge, a.underTop))
 	}
 	a.playlistTop(c, top)
-	if len(a.history) > 0 || len(a.forward) > 0 {
-		ui.Row(c).Absolute().Top(0).Left(20).Height(topBar(c)).AlignItems(ui.Center).Children(func() {
-			back := iconButton(c.Key("back"), iconBack, 18, a.pal.muted, "返回").Disabled(len(a.history) == 0)
-			if len(a.history) == 0 {
-				back.Opacity(0.35)
-			}
-			if back.Clicked() {
-				a.back()
-			}
-			if len(a.forward) > 0 && iconButton(c.Key("forward"), iconForward, 18, a.pal.muted, "前进").Clicked() {
-				a.goForward()
-			}
-		})
-	}
+	a.shellHeader(c, top)
 }
 
 func (a *app) content(c *ui.Context) {

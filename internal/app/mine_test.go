@@ -124,7 +124,7 @@ func TestFilterArtistsAndPodcasts(t *testing.T) {
 // page, that kind opened there; set to, it lists them all.
 func TestSidebarListsTheFirstFew(t *testing.T) {
 	a := mineApp(t, 12)
-	tt := ui.NewTester(a.view, 1280, 820)
+	tt := ui.NewTester(a.legacySidebarFixture, 1280, 820)
 	tt.Frame()
 	if !tt.HasText(fmt.Sprintf("歌单 %d", sidebarShown)) || tt.HasText(fmt.Sprintf("歌单 %d", sidebarShown+1)) {
 		t.Fatalf("the sidebar does not list just the first %d", sidebarShown)
@@ -143,7 +143,7 @@ func TestSidebarListsTheFirstFew(t *testing.T) {
 
 	b := mineApp(t, 12)
 	b.settings.SidebarAll = true
-	bt := ui.NewTester(b.view, 1280, 820)
+	bt := ui.NewTester(b.legacySidebarFixture, 1280, 820)
 	bt.Frame()
 	if !bt.HasText("歌单 12") || bt.HasText("查看全部 12 个") {
 		t.Error("set to list them all, the sidebar still cuts the list short")

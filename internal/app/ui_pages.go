@@ -16,7 +16,7 @@ const pagePad = 40
 // columns returns how many cards of at least min DIPs fit across the page.
 func (a *app) columns(c *ui.Context, min float32) int {
 	w, _ := c.Size()
-	inner := w - a.sideWidth(w) - 2*pagePad
+	inner := w - 2*pagePad
 	return max(2, int((inner+20)/(min+20)))
 }
 
