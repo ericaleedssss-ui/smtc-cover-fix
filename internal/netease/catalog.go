@@ -119,23 +119,27 @@ func ArtistAlbums(id int64, limit, offset int) ([]AlbumProfile, bool, error) {
 
 // User is someone on NetEase, as their page shows them.
 type User struct {
-	UserID    int64  `json:"userId"`
-	Nickname  string `json:"nickname"`
-	AvatarURL string `json:"avatarUrl"`
-	Signature string `json:"signature"`
-	Followeds int    `json:"followeds"` // their followers
-	Follows   int    `json:"follows"`
-	Followed  bool   `json:"followed"`
+	UserID     int64  `json:"userId"`
+	Nickname   string `json:"nickname"`
+	AvatarURL  string `json:"avatarUrl"`
+	Signature  string `json:"signature"`
+	Followeds  int    `json:"followeds"` // their followers
+	Follows    int    `json:"follows"`
+	Followed   bool   `json:"followed"`
+	EventCount *int   `json:"eventCount"`
+	Level      *int   `json:"-"`
 }
 
 // UserDetail returns who a user is.
 func UserDetail(id int64) (*User, error) {
 	var res struct {
 		Profile User `json:"profile"`
+		Level   *int `json:"level"`
 	}
 	if err := get("/api/v1/user/detail/"+strconv.FormatInt(id, 10), nil, &res); err != nil {
 		return nil, err
 	}
+	res.Profile.Level = res.Level
 	return &res.Profile, nil
 }
 

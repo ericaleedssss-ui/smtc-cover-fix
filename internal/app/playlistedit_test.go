@@ -130,11 +130,9 @@ func TestCreatePlaylist(t *testing.T) {
 	defer func() { createPlaylist = netease.CreatePlaylist }()
 
 	a := editTestApp()
+	a.route = route{page: pageUser, id: 1}
+	a.users[1] = &userData{user: &netease.User{UserID: 1, Nickname: "小明"}}
 	tt := ui.NewTester(a.view, 1200, 800)
-	tt.Frame()
-	if err := tt.Click("我的账号"); err != nil {
-		t.Fatal(err)
-	}
 	tt.Frame()
 	if err := tt.Click("新建歌单"); err != nil {
 		t.Fatal(err)

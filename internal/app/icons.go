@@ -69,3 +69,9 @@ var (
 	iconInfo     = strokeIcon(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/>`)
 	iconSignOut  = strokeIcon(`<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>`)
 )
+
+var (
+	iconWindowMinimize = strokeIcon(`<path d="M4 12h16"/>`)
+	iconWindowMaximize = strokeIcon(`<rect x="4" y="4" width="16" height="16"/>`)
+	iconWindowRestore  = strokeIcon(`<rect x="4" y="8" width="12" height="12"/><path d="M8 4h12v12"/>`)
+)

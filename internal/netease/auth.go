@@ -139,6 +139,57 @@ type Profile struct {
 	AvatarURL string `json:"avatarUrl"`
 }
 
+type AccountLevel struct {
+	Level    *int    `json:"level"`
+	Progress float64 `json:"progress"`
+	Full     bool    `json:"-"`
+}
+
+func ReadAccountLevel() (AccountLevel, error) {
+	var res struct {
+		Data AccountLevel `json:"data"`
+		Full bool         `json:"full"`
+	}
+	err := webAPI("/api/user/level", nil, &res)
+	res.Data.Full = res.Full
+	return res.Data, err
+}
+
+type AccountMembership struct {
+	Label   string
+	Expires time.Time
+}
+
+func ReadAccountMembership(uid int64) (AccountMembership, error) {
+	type expiry struct {
+		At int64 `json:"expireTime"`
+	}
+	var res struct {
+		Data *struct {
+			Now    int64  `json:"now"`
+			Plus   expiry `json:"redplus"`
+			Normal expiry `json:"associator"`
+		} `json:"data"`
+	}
+	err := webAPI("/api/music-vip-membership/client/vip/info", map[string]any{"userId": strconv.FormatInt(uid, 10)}, &res)
+	if err != nil || res.Data == nil {
+		return AccountMembership{}, err
+	}
+	d := res.Data
+	now := d.Now
+	if now <= 0 {
+		now = time.Now().UnixMilli()
+	}
+	switch {
+	case d.Plus.At > now:
+		return AccountMembership{"SVIP", time.UnixMilli(d.Plus.At)}, nil
+	case d.Normal.At > now:
+		return AccountMembership{"黑胶 VIP", time.UnixMilli(d.Normal.At)}, nil
+	default:
+		return AccountMembership{Label: "普通账户"}, nil
+	}
+}
+
 // Account returns the profile of who is signed in, or nil.
 func Account() (*Profile, error) {
 	var res struct {

@@ -133,7 +133,7 @@ type app struct {
 	npOpen      bool      // Now Playing as it last showed: open or not
 	npChangedAt time.Time // when it last opened or closed
 	islandQueueOpen bool
-	accountHover    bool
+	accountPanel    shellAccountState
 
 	npPane      int       // paneLyrics, paneQueue, paneStage, paneComments, paneProgram or paneCaptions
 	npPaneTop   float32   // how far the cover beside the pane starts below its top
@@ -392,7 +392,15 @@ func Run() error {
 			Content:              ui.View(a.view),
 			// Started at login, as the listener asked: to the tray.
 			Hidden: a.startsHidden(),
+			// Rhine reveals its own caption buttons on Windows.
+			HideWindowButtons: runtime.GOOS == "windows",
 		})
+		if runtime.GOOS == "windows" {
+			a.win.OnFocus(a.win.Invalidate)
+			a.win.OnBlur(a.win.Invalidate)
+			a.win.OnMaximize(a.win.Invalidate)
+			a.win.OnUnmaximize(a.win.Invalidate)
+		}
 		a.setMenu()
 		a.boot()
 		a.applyGlobalKeys()

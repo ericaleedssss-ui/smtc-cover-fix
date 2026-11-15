@@ -37,3 +37,13 @@ Qt 的 [AppHeaderB.qml](../../smtc-source-migration/app/Qt/qml/AppHeaderB.qml)�
 - 主窗口 `WM_NCHITTEST` 对头部空白、导航和搜索均报客户区。MyGo 的 `DragWindow` 从客户区按下事件调用窗口拖动，因此这次探测无法验收鼠标拖动、双击或独立标题栏按钮。客户端截图确认账号菜单和待播实际绘出，Qt 的账号内容、抽屉位置和玻璃效果仍待对齐。
 
 原始记录：[首轮帧日志](../../rhine-go-artifacts/M9/live/frames.log)、[复测帧日志](../../rhine-go-artifacts/M9/live-recheck/frames.log)、[首轮指标](../../rhine-go-artifacts/M9/live/account-frame-results.csv)、[复测指标](../../rhine-go-artifacts/M9/live-recheck/account-frame-results.csv)。M9 保持部分一致。
+
+## 顶栏悬停与头像菜单修正
+
+根据 `AppHeaderB.qml`，Windows 窗口按钮收起时显示短竖条。进入头像或右边缘后展开，移开 300ms 后收起。按钮的圆形高亮、关闭按钮的橙底和最大化后的还原图标都随状态变化。最小化、最大化／还原和关闭接 MyGo 的窗口操作。
+
+根据 [PersonalMenusB.qml](../../smtc-source-migration/app/Qt/qml/PersonalMenusB.qml)，悬停预览和点击固定共用一张可滚动的个人音乐档案。面板按原版顺序呈现头像、签名、等级、会员、统计、菜单入口与账号操作。空白处的首次点击只关闭固定菜单，Esc 或再次点击头像也可收起。下载入口移到设置的存储区，新建歌单移到歌单页。
+
+- 离屏截图：[顶栏按钮展开](../../rhine-go-artifacts/M9/avatar-correction/caption-hover.png)、[浅色账号面板](../../rhine-go-artifacts/M9/avatar-correction/account-light.png)、[深色账号面板](../../rhine-go-artifacts/M9/avatar-correction/account-dark.png)。账号信息为测试夹具。
+- 笔记显示数量，详情尚未接入。播放历史、音乐来源和我的歌单与收藏暂复用 Go 的现有入口。Qt 原版的抽屉导航、在线会员接口和 Win32 真窗按钮仍需并排验证。
+- 离屏三档各 15 秒空闲仍为 0 帧。本次真窗 FPS、p95、切歌帧耗时与常驻内存待测。

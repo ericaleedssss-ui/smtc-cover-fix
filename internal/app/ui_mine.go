@@ -215,6 +215,9 @@ func (a *app) mineSearch(c *ui.Context) {
 		if a.segmented(c.Key("mine-only"), &v.only, mineFilters...) {
 			v.box.Focus(c)
 		}
+		if iconButton(c.Key("mine-new"), iconPlus, 16, a.pal.text, "新建歌单").Clicked() {
+			a.newPlaylist(nil)
+		}
 	})
 }
 

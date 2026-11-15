@@ -816,6 +816,12 @@ func (a *app) settingsEffectsPage(k *settingsKit) {
 func (a *app) settingsStoragePage(k *settingsKit) {
 	c, ink, s := k.c, k.ink, &a.settings
 	k.group("下载", func() {
+		k.row("下载歌曲", "查看已下载歌曲与下载队列", func() {
+			if k.button("open-downloads-page", "打开", iconDownload, false, false).Clicked() {
+				a.settingsOpen = false
+				a.open(route{page: pageDownloads})
+			}
+		})
 		k.row("下载音质", "可以和播放音质不同；无损与 Hi-Res 占用的空间大得多", func() {
 			labels := make([]string, len(downloadLevels))
 			chosen := downloadLevels[0].label

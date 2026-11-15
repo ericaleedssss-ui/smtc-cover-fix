@@ -20,25 +20,23 @@ func TestAccountMenu(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
 	a.profile = &netease.Profile{UserID: 1, Nickname: "小明"}
-	tt := ui.NewTester(a.view, 1000, 700)
+	tt := ui.NewTester(a.view, 1000, 1000)
 	tt.Frame()
 
 	if err := tt.Click("我的账号"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !a.accountOpen || !tt.HasText("退出登录") {
+	if !a.accountOpen || !tt.HasText("RHINE / 个人音乐档案") {
 		t.Fatalf("menu not open: %v", a.accountOpen)
 	}
-	if !tt.Focused("我的主页") {
+	if !tt.Focused("消息") {
 		t.Fatal("the first item has no focus")
 	}
-	for range 8 {
-		tt.Key(0, ui.KeyDown)
-	}
+	tt.Key(0, ui.KeyDown)
 	tt.Frame()
-	if !tt.Focused("退出登录") {
-		t.Fatal("Down did not move to signing out")
+	if !tt.Focused("播放历史") {
+		t.Fatal("Down did not move to playback history")
 	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
@@ -55,7 +53,7 @@ func TestAccountMenu(t *testing.T) {
 	}
 }
 
-// 我的主页 in the account menu opens the page of who is signed in and puts
+// 个人主页 in the account menu opens the page of who is signed in and puts
 // the menu away.
 func TestAccountMenuOpensOwnPage(t *testing.T) {
 	detail, playlists := userDetail, userPlaylists
@@ -66,11 +64,11 @@ func TestAccountMenuOpensOwnPage(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
 	a.profile = &netease.Profile{UserID: 42, Nickname: "小明"}
-	tt := ui.NewTester(a.view, 1000, 700)
+	tt := ui.NewTester(a.view, 1000, 1000)
 	tt.Frame()
 	tt.Click("我的账号")
 	tt.Frame()
-	if err := tt.Click("我的主页"); err != nil {
+	if err := tt.Click("个人主页"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -189,7 +187,7 @@ func TestOwnPageFrames(t *testing.T) {
 	}
 }
 
-// With NM_FRAMES set, saves the foot of the sidebar with the account menu
+// With NM_FRAMES set, saves the header and its account panel
 // open, light and dark.
 func TestAccountMenuFrames(t *testing.T) {
 	dir := os.Getenv("NM_FRAMES")
@@ -200,15 +198,19 @@ func TestAccountMenuFrames(t *testing.T) {
 		a := newTestApp()
 		a.settings = defaultSettings()
 		a.profile = &netease.Profile{UserID: 1, Nickname: "小明"}
-		tt := ui.NewTester(a.view, 1000, 600)
+		level, notes := 10, 5
+		a.users[1] = &userData{user: &netease.User{UserID: 1, Signature: "愿好音乐留下痕迹。", EventCount: &notes, Follows: 31, Followeds: 8}}
+		a.accountPanel.level = netease.AccountLevel{Level: &level, Progress: 1, Full: true}
+		a.accountPanel.member = netease.AccountMembership{Label: "SVIP", Expires: time.Date(2027, 5, 23, 0, 0, 0, 0, time.Local)}
+		tt := ui.NewTester(a.view, 1280, 1000)
 		tt.SetDark(dark)
 		tt.Frame()
 		tt.Click("我的账号")
 		tt.Advance(time.Second)
 		tt.Frame()
 		img := tt.Image()
-		s := float32(img.Bounds().Dx()) / 1000
-		crop := image.Rect(0, int(400*s), int((sidebarWidth+20)*s), img.Bounds().Dy())
+		s := float32(img.Bounds().Dx()) / 1280
+		crop := image.Rect(int(710*s), 0, img.Bounds().Dx(), img.Bounds().Dy())
 		out := image.NewRGBA(image.Rect(0, 0, crop.Dx(), crop.Dy()))
 		draw.Draw(out, out.Bounds(), img, crop.Min, draw.Src)
 		name := "account-light.png"

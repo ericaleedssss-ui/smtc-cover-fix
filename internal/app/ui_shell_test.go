@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -42,6 +43,65 @@ func TestRhineShellLayout(t *testing.T) {
 	}
 }
 
+func TestRhineShellCaptionReveal(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("custom caption is only enabled on Windows")
+	}
+	a := homeFixture(t)
+	tt := ui.NewTester(a.view, 1280, 720)
+	tt.Frame()
+	avatar, ok := tt.Find("我的账号")
+	if !ok {
+		t.Fatal("account button is missing")
+	}
+	if _, ok := tt.Find("最大化"); ok {
+		t.Fatal("caption controls are visible before hover")
+	}
+	tt.Move(avatar.X+avatar.W/2, avatar.Y+avatar.H/2)
+	tt.Frame()
+	tt.Advance(310 * time.Millisecond)
+	tt.Frame()
+	button, ok := tt.Find("最大化")
+	if !ok || button.W == 0 {
+		t.Fatal("hovering the avatar did not reveal the window controls")
+	}
+	tt.Move(button.X+button.W/2, button.Y+button.H/2)
+	tt.Frame()
+	if dir := os.Getenv("NM_FRAMES"); dir != "" {
+		f, err := os.Create(filepath.Join(dir, "caption-hover.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = png.Encode(f, tt.Image())
+		closeErr := f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+	}
+	tt.Advance(time.Second)
+	tt.Frame()
+	if !a.accountPanel.captionOpen {
+		t.Fatal("caption closed while moving from the avatar to the controls")
+	}
+	tt.Move(20, 120)
+	tt.Frame()
+	tt.Advance(290 * time.Millisecond)
+	tt.Frame()
+	if !a.accountPanel.captionOpen {
+		t.Fatal("caption closed before its exit delay")
+	}
+	tt.Advance(340 * time.Millisecond)
+	tt.Frame()
+	tt.Advance(310 * time.Millisecond)
+	tt.Frame()
+	if _, ok := tt.Find("最大化"); ok {
+		t.Fatal("caption controls are visible after leaving")
+	}
+}
+
 func TestRhineShellEntries(t *testing.T) {
 	a := homeFixture(t)
 	a.profile = &netease.Profile{UserID: 1, Nickname: "Rhine"}
@@ -53,7 +113,20 @@ func TestRhineShellEntries(t *testing.T) {
 	}
 	tt.Move(r.X+r.W/2, r.Y+r.H/2)
 	tt.Frame()
-	if !a.accountHover || !tt.HasText("RHINE / 个人音乐档案") {
+	if a.accountOpen {
+		t.Fatal("preview opened before the hover delay")
+	}
+	if runtime.GOOS == "windows" {
+		// The caption opens from the right and moves the avatar to the left.
+		tt.Advance(310 * time.Millisecond)
+		tt.Frame()
+		r, _ = tt.Find("我的账号")
+		tt.Move(r.X+r.W/2, r.Y+r.H/2)
+		tt.Frame()
+	}
+	tt.Advance(270 * time.Millisecond)
+	tt.Frame()
+	if !a.accountOpen || a.accountPanel.pinned || !tt.HasText("RHINE / 个人音乐档案") {
 		t.Fatal("account hover preview did not open")
 	}
 	click := func(label string) {
@@ -66,13 +139,18 @@ func TestRhineShellEntries(t *testing.T) {
 		tt.Frame()
 	}
 	click("我的账号")
-	if !a.accountOpen {
+	if !a.accountOpen || !a.accountPanel.pinned {
 		t.Fatal("account menu did not open")
 	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
 	if a.accountOpen || a.route.page != pageHome {
 		t.Fatal("Escape did not close only the account menu")
+	}
+	click("我的账号")
+	click("设置")
+	if a.accountOpen || a.settingsOpen {
+		t.Fatal("the first click outside the pinned account menu must only dismiss it")
 	}
 	click("待播")
 	if !a.islandQueueOpen || a.nowPlaying {

@@ -78,6 +78,7 @@ func (a *app) view(c *ui.Context) {
 	a.messageDrawer(c)
 	a.collectionSocialDrawer(c)
 	a.loginDialog(c)
+	a.shellAccountSwitch(c)
 	a.stylePickerDialog(c)
 	a.playlistNameDialog(c)
 	a.deletePlaylistDialog(c)
