@@ -26,3 +26,14 @@ Qt 的 [AppHeaderB.qml](../../smtc-source-migration/app/Qt/qml/AppHeaderB.qml)�
 `TestRhineShell*` 连续运行 5 次通过。用 PowerShell 每 250ms 读取同一离屏测试进程的 `WorkingSet64`，92 次采样最高为 128,098,304 字节（122.2 MiB），包含离屏渲染及 PNG 导出。真实应用的常驻工作集留待实测。
 
 `go test ./internal/...` 仍报 M8 已记录的 `TestNotchGreetsOnce` 与 `TestNotchGreetingKeptUnderPointer`，其余包通过。
+
+## Type‑C 副屏真窗复测
+
+在 Windows 的 Type‑C 副屏以两个独立进程运行 `6a21080`。用 Go overlay 安排窗口位置、填充测试账号与待播夹具，数据目录各自隔离。M9 外壳使用原代码路径。菜单由测试代码设置开合状态，离屏测试补足点击和 Esc。运行结束后测试窗口自动退出。
+
+- 真窗截图：[960 DIP](../../rhine-go-artifacts/M9/live/native-960.png)、[1280 DIP](../../rhine-go-artifacts/M9/live/native-1280.png)、[账号菜单](../../rhine-go-artifacts/M9/live/native-account.png)、[待播](../../rhine-go-artifacts/M9/live/native-queue.png)。副屏工作区宽 2560 像素、DPI 144，1920 DIP 需要 2880 像素。该档保留离屏证据。
+- 两轮各 15 秒空闲均为 0 帧。每 500ms 读取 `WorkingSet64`，两轮各 29 个空闲样本，合计 167.41–173.37 MiB。
+- 头像菜单按 280ms 动画窗口从 MyGo 帧日志计数，用最近秩求 p95。首轮首开 64.3 fps / 9.9ms，最大帧间隙 160.6ms，后四次均为 157.1 fps / 1.5–2.1ms。复测首开 150.0 fps / 1.6ms，后四次为 110.7–135.7 fps / 1.2–1.6ms，其中两次低于 120 fps。日志记录应用渲染完成时间，未测屏幕扫描输出。此次使用暂停的离线队列，切歌与在线账号未复测。
+- 主窗口 `WM_NCHITTEST` 对头部空白、导航和搜索均报客户区。MyGo 的 `DragWindow` 从客户区按下事件调用窗口拖动，因此这次探测无法验收鼠标拖动、双击或独立标题栏按钮。客户端截图确认账号菜单和待播实际绘出，Qt 的账号内容、抽屉位置和玻璃效果仍待对齐。
+
+原始记录：[首轮帧日志](../../rhine-go-artifacts/M9/live/frames.log)、[复测帧日志](../../rhine-go-artifacts/M9/live-recheck/frames.log)、[首轮指标](../../rhine-go-artifacts/M9/live/account-frame-results.csv)、[复测指标](../../rhine-go-artifacts/M9/live-recheck/account-frame-results.csv)。M9 保持部分一致。
