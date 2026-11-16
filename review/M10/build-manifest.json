@@ -1,0 +1,67 @@
+{
+  "commit": "8bcef99df28a03c01e26c57226edf5042cb38855",
+  "sha256": "9B0FA2B566C6DC029E7BAAF8C60568C9F740A72CCB4E57B3A08CB95109D85AFC",
+  "dependency": "github.com/nya-owo/mygo@v0.7.1-0.20261107230755-f7032a2cc755",
+  "dependencyChecksum": "h1:l5ULjFyV4tzxx++/dohqYPlvgSc0lue6pjFD7giQOFM=",
+  "patchSha256": "66F2318FC84F6DC9A4EDD961B90B042454B06C3E6A3F14D87BA951E12C97D321",
+  "toolchain": "go version go1.27.3 windows/amd64",
+  "environment": {
+    "GOTOOLCHAIN": "local",
+    "GOAMD64": "v1",
+    "GOWORK": "off",
+    "GOARCH": "amd64",
+    "GOOS": "windows",
+    "GOFLAGS": "",
+    "CGO_ENABLED": "0"
+  },
+  "resources": [
+    {
+      "sha256": "74B8F2C5AF197A54DACC479C2E6F00B11EAC69CF5F79BE66997AD0EDB70797EC",
+      "path": "resources\\.DS_Store"
+    },
+    {
+      "sha256": "1F9D81D094273D82F3898A1EE8B598A717D050ECBF5FF7BEDE105B704880157B",
+      "path": "resources\\fonts\\Caveat-OFL.txt"
+    },
+    {
+      "sha256": "0BDB6B660482D31531B3945849FBA5916B3EF8695DA7024A9E6B9EE3C4157988",
+      "path": "resources\\fonts\\Caveat.ttf"
+    },
+    {
+      "sha256": "D0E49ABE9E5E97DC815EE52248CB54C6C3758A1008B4A1B1BA921F362588C8A6",
+      "path": "resources\\fonts\\LongCang-OFL.txt"
+    },
+    {
+      "sha256": "E5BF2C3F24EF2327C6F136D8F73E2F9DFDF44896FDBEB35A9515F44777BB91BC",
+      "path": "resources\\fonts\\LongCang-Regular.ttf"
+    },
+    {
+      "sha256": "F4B8A34D1F838FE411540CB7C97B1C384AC9738A876C4104500BC42508B2312A",
+      "path": "resources\\fonts\\LXGWWenKai-Medium.ttf"
+    },
+    {
+      "sha256": "2D73EEA94AD808999D90C0000C239A84A33B09D4BC6AB6C5B8BBF1EDA8A7FC8B",
+      "path": "resources\\fonts\\LXGWWenKai-Regular.ttf"
+    },
+    {
+      "sha256": "1679CB60544990B4C2445320C6D5298E4BB0C08FF00DBB5A526F3793FDAA1E6F",
+      "path": "resources\\fonts\\NotoMusic-Regular-OFL.txt"
+    },
+    {
+      "sha256": "AEB2998C380F5807CDA77E1D94E4AC596429CB74D4FFFB8DA279D4F3144C0EAE",
+      "path": "resources\\fonts\\NotoMusic-Regular.ttf"
+    },
+    {
+      "sha256": "CB973995026E28C931886A1D127397152187E03E53B2F71864E86CEE8C25E54A",
+      "path": "resources\\fonts\\OFL.txt"
+    },
+    {
+      "sha256": "CD47E64297231507558B52BF9BB5ECCAEE54D69223B0B4E3A97FB9A68C9A8E14",
+      "path": "resources\\icon-dev.png"
+    },
+    {
+      "sha256": "CD47E64297231507558B52BF9BB5ECCAEE54D69223B0B4E3A97FB9A68C9A8E14",
+      "path": "resources\\icon.png"
+    }
+  ]
+}
