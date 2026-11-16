@@ -174,6 +174,7 @@ func (a *app) load(r route) {
 	switch r.page {
 	case pageHome:
 		a.freshenHome()
+		a.loadHomeWeekly()
 	case pagePlaylist:
 		a.loadPlaylist(r.id, false)
 	case pageSearch:
@@ -496,7 +497,6 @@ func (a *app) loadHome() {
 	a.loadHomeDaily()
 	a.loadHomeModes()
 	a.loadHomeRecent()
-	a.loadHomeWeekly()
 	a.loadHomeFeatured()
 	a.loadHomeChartCatalog()
 	a.filteredPlaylists = [len(playlistFilters)]*playlistBrowseData{}

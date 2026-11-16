@@ -47,8 +47,8 @@ func scoreTime(minutes float64) string {
 func (a *app) rhineWeekly(c *ui.Context, width, u float32) {
 	now := c.Now()
 	state := &a.homeSections.weekly
-	if a.win != nil && a.profile != nil && !state.loading && !state.fetched.IsZero() {
-		if remaining := state.fetched.Add(2 * time.Minute).Sub(now); remaining > 0 {
+	if a.win != nil && !state.loading {
+		if remaining := state.fetched.Add(homeWeeklyRefreshInterval).Sub(now); remaining > 0 {
 			c.After(remaining)
 		} else {
 			a.loadHomeWeekly()
@@ -105,7 +105,7 @@ func (a *app) rhineWeekly(c *ui.Context, width, u float32) {
 				}
 			})
 		} else if hasScore && width > 0 {
-			key := fmt.Sprintf("%.2f:%s", width, state.scoreKey)
+			key := fmt.Sprintf("%.2f:%.3f", width, u)
 			if key != state.drawingKey {
 				state.drawingKey = key
 				state.drawing, state.labels = buildScoreDrawing(c, w, width, u)

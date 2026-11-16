@@ -81,6 +81,7 @@ func (a *app) signedIn(prof *netease.Profile) {
 	a.searches = map[route]*searchData{}
 	a.load(a.route)
 	a.loadHome()
+	a.loadHomeWeekly()
 	if prof == nil {
 		return
 	}

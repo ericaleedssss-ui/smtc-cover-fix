@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -25,29 +26,28 @@ type homeWeeklyState struct {
 	fetched      time.Time
 	quote        memoScoreQuote
 	quoteMeasure scoreQuoteMeasure
-	quoteKey     string
 	drawingKey   string
 	drawing      *ui.SVG
 	labels       []scoreLabel
-	scoreKey     string
+	hasSnapshot  bool
 	cached       scoreWeek
 }
 
-// Rebuild the score only when its source changes, never on every hover frame.
+const homeWeeklyRefreshInterval = 12 * time.Hour
+
 func (a *app) cachedHomeScore(now time.Time) scoreWeek {
 	s := &a.homeSections.weekly
-	m := a.homeMemoAccount()
-	var last memoListen
-	if len(m.Listens) > 0 {
-		last = m.Listens[len(m.Listens)-1]
-	}
-	key := fmt.Sprintf("%p:%p:%d:%d:%v:%s", m, s.report, len(m.Listens), len(m.Recent), last, now.Format("2006-01-02"))
-	if key != s.scoreKey {
-		s.scoreKey = key
-		s.cached = a.homeScore(now)
-		s.drawingKey = ""
+	if !s.hasSnapshot {
+		a.publishHomeScore(now)
 	}
 	return s.cached
+}
+
+func (a *app) publishHomeScore(now time.Time) {
+	s := &a.homeSections.weekly
+	s.cached = a.homeScore(now)
+	s.hasSnapshot = true
+	s.drawingKey = ""
 }
 
 var fetchHomeWeekly = netease.HomeWeeklyScoreProgress
@@ -55,70 +55,53 @@ var fetchScoreComments = netease.HomeScoreComments
 
 func (a *app) loadHomeWeekly() {
 	s := &a.homeSections.weekly
-	if a.profile == nil || s.loading {
+	if s.loading {
+		return
+	}
+	if a.profile == nil {
+		s.fetched = time.Now()
+		a.publishHomeScore(s.fetched)
 		return
 	}
 	s.loading, s.err = true, ""
 	gen, uid := a.accountGen, a.profile.UserID
+	memo := a.homeMemoAccount()
+	quotes := maps.Clone(memo.ScoreQuotes)
 	go func() {
-		report, err := fetchHomeWeekly(uid, func(report netease.WeeklyScore) {
-			a.post(func() {
-				if gen != a.accountGen {
-					return
+		report, err := fetchHomeWeekly(uid, nil)
+		valid := err == nil && report != nil && len(report.Days) > 0
+		var key string
+		var quote memoScoreQuote
+		if valid {
+			top := scoreTop(report.Ranking)
+			key = fmt.Sprint(report.Days[0].Date, ":", top.SongID)
+			quote = quotes[key]
+			if top.SongID > 0 && quote.Content == "" {
+				if comments, err := fetchScoreComments(top.SongID); err == nil {
+					selected := scoreQuote(comments, fmt.Sprint(uid, ":", key))
+					quote = memoScoreQuote{selected.Content, selected.User.Nickname, selected.ID}
 				}
-				if previous := s.report; previous != nil && previous.StartTime == report.StartTime {
-					report.Ranking, report.RankingLabel = previous.Ranking, previous.RankingLabel
-					report.Recent = previous.Recent
-					report.PreviousMinutes, report.ComparisonAvailable = previous.PreviousMinutes, previous.ComparisonAvailable
-				} else {
-					s.quoteKey, s.quote = "", memoScoreQuote{}
-				}
-				s.report = &report
-			})
-		})
+			}
+		}
 		a.post(func() {
 			if gen != a.accountGen {
 				return
 			}
 			s.loading, s.fetched = false, time.Now()
-			if err != nil || report == nil || len(report.Days) == 0 {
+			if !valid {
 				s.err = "听歌周报加载失败"
 				return
 			}
-			s.report = report
-			top := scoreTop(report.Ranking)
-			key := fmt.Sprint(report.Days[0].Date, ":", top.SongID)
-			if key == s.quoteKey {
-				return
+			s.report, s.quote = report, quote
+			a.publishHomeScore(s.fetched)
+			if quote.Content != "" && quotes[key].Content == "" {
+				if memo.ScoreQuotes == nil {
+					memo.ScoreQuotes = make(map[string]memoScoreQuote)
+				}
+				memo.ScoreQuotes[key] = quote
+				a.pruneScoreMemo(memo, s.fetched)
+				a.persistHomeMemo()
 			}
-			memo := a.homeMemoAccount()
-			s.quoteKey, s.quote = key, memo.ScoreQuotes[key]
-			if top.SongID <= 0 || s.quote.Content != "" {
-				return
-			}
-			go func() {
-				comments, err := fetchScoreComments(top.SongID)
-				a.post(func() {
-					if gen != a.accountGen || key != s.quoteKey {
-						return
-					}
-					if err != nil {
-						s.quoteKey = ""
-						return
-					}
-					selected := scoreQuote(comments, fmt.Sprint(uid, ":", key))
-					if selected.Content == "" {
-						return
-					}
-					s.quote = memoScoreQuote{selected.Content, selected.User.Nickname, selected.ID}
-					if memo.ScoreQuotes == nil {
-						memo.ScoreQuotes = make(map[string]memoScoreQuote)
-					}
-					memo.ScoreQuotes[key] = s.quote
-					a.pruneScoreMemo(memo, time.Now())
-					a.persistHomeMemo()
-				})
-			}()
 		})
 	}()
 }

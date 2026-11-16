@@ -190,3 +190,22 @@ func TestHomeScoreFrames(t *testing.T) {
 		}
 	}
 }
+
+// Listening records accumulate without changing the visible score until a refresh.
+func TestHomeScoreKeepsSnapshotBetweenRefreshes(t *testing.T) {
+	a := newTestApp()
+	now := time.Date(2026, 11, 16, 12, 0, 0, 0, time.Local)
+	if score := a.cachedHomeScore(now); score.minutes != 0 {
+		t.Fatalf("unexpected initial minutes: %g", score.minutes)
+	}
+	at := now.Add(-time.Hour)
+	a.homeMemoAccount().Listens = []memoListen{{"52", at.UnixMilli(), at.Add(time.Minute).UnixMilli(), 60000}}
+	a.homeSections.weekly.drawingKey = "same-width"
+	if score := a.cachedHomeScore(now.Add(time.Hour)); score.minutes != 0 || a.homeSections.weekly.drawingKey != "same-width" {
+		t.Fatal("a read rebuilt the score after a listen")
+	}
+	a.publishHomeScore(now.Add(time.Hour))
+	if score := a.cachedHomeScore(now); score.minutes != 1 || a.homeSections.weekly.drawingKey != "" {
+		t.Fatal("refresh did not publish the new score and invalidate the drawing")
+	}
+}
