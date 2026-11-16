@@ -2,6 +2,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,14 +27,27 @@ func homeMeasures(c *ui.Context) (cols int, content, header float32) {
 func loadHomeScoreFont() {
 	dir, err := mygo.App.Path(mygo.PathResources)
 	if err == nil {
-		for _, name := range []string{"LongCang-Regular.ttf", "Caveat.ttf", "NotoMusic-Regular.ttf"} {
-			if b, err := os.ReadFile(filepath.Join(dir, "fonts", name)); err == nil {
-				if err := ui.RegisterFont(b, ""); err != nil {
-					fmt.Fprintf(os.Stderr, "score font %s: %v\n", name, err)
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, "score font %s: %v\n", name, err)
-			}
+		err = registerHomeScoreFonts(dir)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+}
+
+func registerHomeScoreFonts(dir string) error {
+	var fontErrors []error
+	for _, name := range []string{"LongCang-Regular.ttf", "Caveat.ttf", "NotoMusic-Regular.ttf"} {
+		data, err := os.ReadFile(filepath.Join(dir, "fonts", name))
+		if os.IsNotExist(err) {
+			// MyGo returns the executable directory for a standalone Windows build.
+			data, err = os.ReadFile(filepath.Join(dir, "resources", "fonts", name))
+		}
+		if err == nil {
+			err = ui.RegisterFont(data, "")
+		}
+		if err != nil {
+			fontErrors = append(fontErrors, fmt.Errorf("score font %s: %w", name, err))
 		}
 	}
+	return errors.Join(fontErrors...)
 }

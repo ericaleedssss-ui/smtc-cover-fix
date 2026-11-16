@@ -142,14 +142,12 @@ func TestHomeScoreFrames(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NM_FRAMES")
 	}
-	for _, name := range []string{"LongCang-Regular.ttf", "Caveat.ttf", "NotoMusic-Regular.ttf"} {
-		data, err := os.ReadFile(filepath.Join("..", "..", "resources", "fonts", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := ui.RegisterFont(data, ""); err != nil {
-			t.Fatal(err)
-		}
+	root := os.Getenv("NM_SCORE_RESOURCES")
+	if root == "" {
+		root = filepath.Join("..", "..")
+	}
+	if err := registerHomeScoreFonts(root); err != nil {
+		t.Fatal(err)
 	}
 	for i, width := range []int{960, 1280, 1600, 1920, 2560} {
 		a := newTestApp()
