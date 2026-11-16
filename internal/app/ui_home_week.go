@@ -26,6 +26,7 @@ type scoreLabel struct {
 	weight                   int
 	track                    netease.Track
 	highlight                bool
+	decoration               int
 }
 
 func scoreHand(text string) (string, bool) {
@@ -158,8 +159,22 @@ func (a *app) rhineWeekly(c *ui.Context, width, u float32) {
 					}
 					b.Children(func() {
 						text := ui.Text(c, label.track.Name).Font(label.family).FontSize(label.size * u).FontWeight(label.weight).TextColor(ink).SingleLine()
-						if label.family != "" {
-							scoreUnderline(text, u, ink.Alpha(.75))
+						if label.decoration != 0 {
+							opacity := float32(.75)
+							if b.Hovered() {
+								opacity = .15
+							}
+							decorationInk := ui.Hex("#71737F")
+							if label.highlight {
+								decorationInk = homeOrange
+							}
+							if label.decoration == 1 {
+								scoreUnderline(text, u, decorationInk.Alpha(opacity))
+							} else {
+								text.Draw(func(p *ui.Painter, r ui.Rect) {
+									p.Icon(scoreWaveIcon, iconRect(p, ui.Rect{X: r.X, Y: r.Y + r.H - 2*u, W: r.W, H: 7 * u}), decorationInk.Alpha(opacity))
+								})
+							}
 						}
 					})
 					hot := b.Hovered() || b.FocusVisible()
@@ -361,15 +376,21 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 	for i, d := range w.days {
 		x, span := scoreDayBounds(w, width, i)
 		end := x + span
-		path(fmt.Sprintf("M%g 64 V100", end), "#C9CBD4", 1)
 		if i == 6 {
 			path(fmt.Sprintf("M%g 64 V100", end), "#1A1B22", 2.6)
 			path(fmt.Sprintf("M%g 64 V100", end-5), "#1A1B22", 1)
+		} else {
+			path(fmt.Sprintf("M%g 64 V100", end), "#C9CBD4", 1)
 		}
 		if d.minutes == 0 {
 			fmt.Fprintf(&svg, `<rect x="%g" y="78" width="10" height="4" fill="#9699A4"/>`, x+span/2-5)
+		}
+	}
+	for i, d := range w.days {
+		if d.minutes == 0 {
 			continue
 		}
+		x, span := scoreDayBounds(w, width, i)
 		values := scoreRhythm(d.minutes, (i+w.variant)%4)
 		var required float32
 		for _, v := range values {
@@ -438,11 +459,16 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 					path(fmt.Sprintf("M%g %g Q%g %g %g %g", stemX, fy, stemX+8.1, fy+direction*9.9, stemX+6.75, fy+direction*20.7), color, 1.3)
 				}
 			}
+			rx, ry, angle, stroke := 6.12, 4.5, -22, 1.5
+			if v == 16 {
+				rx, ry, angle, stroke = rx*1.18, ry*1.1, -12, 9*.32
+			}
+			ellipse := fmt.Sprintf(`<ellipse cx="%g" cy="%g" rx="%g" ry="%g" transform="rotate(%d %g %g)"`, nx, ny, rx, ry, angle, nx, ny)
 			fill := color
 			if v >= 8 {
 				fill = "#ECEDF3"
 			}
-			fmt.Fprintf(&svg, `<ellipse cx="%g" cy="%g" rx="6.12" ry="4.5" transform="rotate(-22 %g %g)" fill="%s" stroke="%s" stroke-width="1.5"/>`, nx, ny, nx, ny, fill, color)
+			fmt.Fprintf(&svg, `%s fill="%s"/>%s fill="none" stroke="%s" stroke-width="%g"/>`, ellipse, fill, ellipse, color, stroke)
 			if v == 3 || v == 6 || v == 12 {
 				fmt.Fprintf(&svg, `<circle cx="%g" cy="%g" r="1.6" fill="%s"/>`, nx+10.62, ny-2.7, color)
 			}
@@ -519,6 +545,7 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 		occupied = append(occupied, box{lx - 4, 3, lw + 8, 37})
 	}
 	var perDay [7]int
+	decorated := 0
 	for candidateIndex, item := range candidates {
 		_, span := scoreDayBounds(w, width, item.day)
 		if len(labels) >= int((width-78)/85)+4 || perDay[item.day] >= min(4, max(2, int(span/75))) {
@@ -558,7 +585,7 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 		if hash%3 == 0 {
 			lower = []float32{151, 130}
 		}
-		preferAbove := hand
+		preferAbove := family != ""
 		switch w.variant % 4 {
 		case 0:
 			upper = []float32{-24, 8}
@@ -609,12 +636,19 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 					}
 					bestCost = cost
 					bestBox = b
-					best = scoreLabel{x, y, tw, size, angle, family, weight, item.session.track, item.high}
+					best = scoreLabel{x, y, tw, size, angle, family, weight, item.session.track, item.high, 0}
 				}
 			}
 		}
 		if bestCost < float32(math.MaxFloat32) {
 			occupied = append(occupied, bestBox)
+			if best.family != "" && decorated < 2 {
+				best.decoration = 2
+				if best.highlight {
+					best.decoration = 1
+				}
+				decorated++
+			}
 			labels = append(labels, best)
 			perDay[item.day]++
 		}
@@ -625,23 +659,30 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 	raw := svg.String()
 	header := raw[:strings.Index(raw, ">")+1]
 	elements := regexp.MustCompile(`<[^/][^>]*(?:/>|></[^>]+>)`).FindAllString(raw[len(header):], -1)
-	groups := map[string]string{}
+	// Keep SVG paint order when tinting monochrome masks. Grouping all elements
+	// of one color would move the staff lines over the note stems.
 	colors := regexp.MustCompile(`(?:stroke|fill)="(#[0-9A-Fa-f]{6})"`)
-	for _, element := range elements {
-		m := colors.FindStringSubmatch(element)
-		if len(m) > 1 {
-			groups[m[1]] += element
+	var layers []scoreLayer
+	var group strings.Builder
+	var ink string
+	flush := func() {
+		if group.Len() > 0 {
+			layers = append(layers, scoreLayer{ui.MustParseSVG([]byte(header + group.String() + "</svg>")), ui.Hex(ink)})
+			group.Reset()
 		}
 	}
-	keys := make([]string, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
+	for _, element := range elements {
+		match := colors.FindStringSubmatch(element)
+		if len(match) == 0 {
+			continue
+		}
+		if match[1] != ink {
+			flush()
+			ink = match[1]
+		}
+		group.WriteString(element)
 	}
-	sort.Strings(keys)
-	layers := make([]scoreLayer, 0, len(keys))
-	for _, key := range keys {
-		layers = append(layers, scoreLayer{ui.MustParseSVG([]byte(header + groups[key] + "</svg>")), ui.Hex(key)})
-	}
+	flush()
 	return layers, labels
 }
 
@@ -680,6 +721,8 @@ func scoreHandCircle(p *ui.Painter, r ui.Rect, u, progress, opacity float32) {
 }
 
 // Cached vector ornament, matching the two loose strokes on QML handwritten labels.
+var scoreWaveIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 7" width="100" height="7"><path d="M8 3 Q18 1 28 3 Q38 5 48 3 Q58 1 68 3 Q78 5 88 3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>`))
+
 var scoreUnderlineIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 7" width="100" height="7"><path d="M4 1 Q45 2 96 1 M4 4 Q45 5 88 4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>`))
 
 func scoreUnderline(e ui.Element, u float32, ink ui.Color) {
