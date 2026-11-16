@@ -13,6 +13,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/egoist/mygo/ui"
+
 	"netease-music-mygo/internal/netease"
 )
 
@@ -25,7 +27,7 @@ type homeWeeklyState struct {
 	quoteMeasure scoreQuoteMeasure
 	quoteKey     string
 	drawingKey   string
-	drawing      []scoreLayer
+	drawing      *ui.SVG
 	labels       []scoreLabel
 	scoreKey     string
 	cached       scoreWeek

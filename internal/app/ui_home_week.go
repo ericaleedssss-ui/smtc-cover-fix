@@ -4,7 +4,6 @@ package app
 import (
 	"fmt"
 	"math"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -14,11 +13,6 @@ import (
 	"github.com/egoist/mygo/ui"
 	"netease-music-mygo/internal/netease"
 )
-
-type scoreLayer struct {
-	icon  *ui.SVG
-	color ui.Color
-}
 
 type scoreLabel struct {
 	x, y, width, size, angle float32
@@ -116,13 +110,9 @@ func (a *app) rhineWeekly(c *ui.Context, width, u float32) {
 				state.drawingKey = key
 				state.drawing, state.labels = buildScoreDrawing(c, w, width, u)
 			}
-			staff.Draw(func(p *ui.Painter, r ui.Rect) {
-				r = iconRect(p, r)
-				for _, layer := range state.drawing {
-					p.Icon(layer.icon, r, layer.color)
-				}
-			})
+
 			staff.Children(func() {
+				ui.Image(c.Key("notation"), state.drawing).Absolute().Left(0).Right(0).Top(0).Bottom(0).Fit(ui.FillBox).PassThrough()
 				ui.Text(c, "𝄞").Absolute().Top(23 * u).Left(2 * u).Font("Noto Music").FontSize(40 * u).TextColor(a.pal.text)
 				ui.Column(c).Absolute().Left(34 * u).Top(62 * u).Width(36 * u).Gap(-3 * u).Children(func() {
 					ui.Textf(c, "%d", int(math.Round(w.minutes))/60).FontSize(21 * u).FontWeight(900).TextAlign(ui.Center)
@@ -354,7 +344,7 @@ func scoreDayBounds(w scoreWeek, width float32, index int) (float32, float32) {
 
 // Draw the original QML notation with SVG paths: MyGo Painter.Line cannot
 // represent sloping stems, curved flags, ties, or the loose handwritten rings.
-func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLayer, []scoreLabel) {
+func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) (*ui.SVG, []scoreLabel) {
 	var svg strings.Builder
 	fmt.Fprintf(&svg, `<svg xmlns="http://www.w3.org/2000/svg" width="%g" height="174" viewBox="0 0 %g 174">`, width, width)
 	path := func(d, color string, stroke float32) {
@@ -655,35 +645,7 @@ func buildScoreDrawing(c *ui.Context, w scoreWeek, width, u float32) ([]scoreLay
 	}
 
 	svg.WriteString("</svg>")
-	// Icon is a monochrome mask; keep each ink as a separate cached layer.
-	raw := svg.String()
-	header := raw[:strings.Index(raw, ">")+1]
-	elements := regexp.MustCompile(`<[^/][^>]*(?:/>|></[^>]+>)`).FindAllString(raw[len(header):], -1)
-	// Keep SVG paint order when tinting monochrome masks. Grouping all elements
-	// of one color would move the staff lines over the note stems.
-	colors := regexp.MustCompile(`(?:stroke|fill)="(#[0-9A-Fa-f]{6})"`)
-	var layers []scoreLayer
-	var group strings.Builder
-	var ink string
-	flush := func() {
-		if group.Len() > 0 {
-			layers = append(layers, scoreLayer{ui.MustParseSVG([]byte(header + group.String() + "</svg>")), ui.Hex(ink)})
-			group.Reset()
-		}
-	}
-	for _, element := range elements {
-		match := colors.FindStringSubmatch(element)
-		if len(match) == 0 {
-			continue
-		}
-		if match[1] != ink {
-			flush()
-			ink = match[1]
-		}
-		group.WriteString(element)
-	}
-	flush()
-	return layers, labels
+	return ui.MustParseSVG([]byte(svg.String())), labels
 }
 
 func weekDifference(ms int64) string {

@@ -37,21 +37,30 @@ func TestHomeScoreDSTBoundary(t *testing.T) {
 	}
 }
 
-// The SVG icon renderer is monochrome: staff and orange accents must retain separate masks.
-func TestHomeScoreKeepsInkLayers(t *testing.T) {
-	var layers []scoreLayer
+// A colored score image must preserve both the staff and the orange highlight.
+func TestHomeScoreKeepsInks(t *testing.T) {
 	w := scoreWeek{top: netease.ScoreRank{SongID: 1}}
 	w.days[0].minutes = 25
 	w.days[0].sessions = []scoreSession{{track: netease.Track{ID: 1}, weight: 1}}
-	tt := ui.NewTester(func(c *ui.Context) { layers, _ = buildScoreDrawing(c, w, 1200, 1) }, 1200, 300)
+	var score *ui.SVG
+	tt := ui.NewTester(func(c *ui.Context) {
+		if score == nil {
+			score, _ = buildScoreDrawing(c, w, 1200, 1)
+		}
+		ui.Image(c, score).Size(1200, 174).Fit(ui.FillBox)
+	}, 1200, 174)
 	tt.Frame()
+	img := tt.Image()
 	gray, orange := false, false
-	for _, layer := range layers {
-		gray = gray || layer.color == ui.Hex("#C9CBD4")
-		orange = orange || layer.color == homeOrange
+	for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+		for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			gray = gray || (y >= 63 && y <= 65 && r>>8 >= 195 && r>>8 <= 226 && b > r)
+			orange = orange || (r>>8 >= 245 && g>>8 >= 85 && g>>8 <= 128 && b>>8 < 100)
+		}
 	}
 	if !gray || !orange {
-		t.Fatalf("notation lost staff or highlight ink: %v", layers)
+		t.Fatalf("notation lost staff or highlight ink: staff=%t highlight=%t", gray, orange)
 	}
 }
 
