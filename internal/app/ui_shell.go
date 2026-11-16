@@ -31,7 +31,8 @@ func (a *app) shellHeader(c *ui.Context, height float32) {
 	width, _ := c.Size()
 	u := headerScale(width)
 	chrome := c.TitleBar()
-	padding := 40 * playerIslandScale(width)
+	_, contentScale, _ := homeMeasures(c)
+	padding := 40 * contentScale
 	accent := ui.RGB(255, 106, 61)
 	ink := ui.RGB(26, 27, 34)
 	right := max(padding, chrome.Right)
@@ -59,7 +60,7 @@ func (a *app) shellHeader(c *ui.Context, height float32) {
 		})
 	}
 	ui.Row(c.Key("rhine-header")).Absolute().Left(max(padding, chrome.Left)).Right(right).
-		Top(0).Height(height).AlignItems(ui.Center).Gap(24 * u).Children(func() {
+		Top(0).Height(height).AlignItems(ui.Center).Gap(0).Children(func() {
 		mark := ui.ButtonBase(c.Key("brand")).Label("Rhine 首页").Gap(0).AlignItems(ui.Center)
 		mark.Children(func() {
 			ui.Text(c, "rhine").FontSize(22 * u).FontWeight(900).TextColor(a.pal.text)
@@ -72,7 +73,7 @@ func (a *app) shellHeader(c *ui.Context, height float32) {
 				a.open(route{page: pageHome})
 			}
 		}
-		ui.Row(c.Key("rhine-nav")).Padding(3 * u).Radius(22 * u).Background(a.pal.hover.Over(a.pal.bg)).
+		ui.Row(c.Key("rhine-nav")).Margin(0, 0, 0, 28*u).Padding(3 * u).Gap(2 * u).Height(36 * u).Shrink(0).Radius(18 * u).Background(white.Alpha(.6)).
 			AlignItems(ui.Center).Children(func() {
 			mine := a.profile != nil && a.route.page == pageUser && a.route.id == a.profile.UserID
 			tabs := []struct {
@@ -109,7 +110,11 @@ func (a *app) shellHeader(c *ui.Context, height float32) {
 					button.Background(a.pal.press)
 				}
 				button.Children(func() {
-					ui.Text(c, tab.label).FontSize(14 * u).FontWeight(550).TextColor(color).SingleLine()
+					weight := 400
+					if tab.selected {
+						weight = 600
+					}
+					ui.Text(c, tab.label).FontSize(13 * u).FontWeight(weight).TextColor(color).SingleLine()
 				})
 				if button.Clicked() {
 					a.accountOpen = false
@@ -121,16 +126,16 @@ func (a *app) shellHeader(c *ui.Context, height float32) {
 		if customCaption {
 			spacer.Height(height).DragWindow()
 		}
-		searchWidth := min(320*u, 260*u+max(0, width-1280)*0.08)
+		searchWidth := (260 + min(60, max(0, width-1280)*0.08)) * u
 		ui.Box(c).Width(searchWidth).Shrink(1).MinWidth(100).Children(func() {
 			a.searchField(c)
 		})
-		if iconButton(c.Key("rhine-settings"), iconSettings, 19*u, a.pal.text, "设置").Clicked() {
+		if iconButton(c.Key("rhine-settings"), iconSettings, 19*u, a.pal.text, "设置").Margin(0, 10*u).Size(32*u, 36*u).Clicked() {
 			a.accountOpen = false
 			a.openSettings()
 		}
 		ui.Row(c.Key("account-and-caption")).Shrink(0).AlignItems(ui.Center).Children(func() {
-			avatar := a.shellAccount(c, 34*u)
+			avatar := a.shellAccount(c, 32*u)
 			if customCaption {
 				a.shellWindowControls(c, caption, avatar, u)
 			}

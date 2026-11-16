@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,16 +31,27 @@ type memoBookmark struct {
 	Position, At int64
 }
 
+type memoScoreQuote struct {
+	Content, Author string
+	CommentID       int64
+}
+
 type memoAccount struct {
-	Listens    []memoListen
-	Encounters map[string]memoEncounter
-	Recent     []memoBookmark
+	ScoreLayouts map[string]int            `json:",omitempty"`
+	ScoreQuotes  map[string]memoScoreQuote `json:",omitempty"`
+	Listens      []memoListen
+	Encounters   map[string]memoEncounter
+	Recent       []memoBookmark
 }
 
 type homeMemoState struct {
-	loaded   bool
-	accounts map[string]*memoAccount
-	imported map[string]json.RawMessage
+	loaded    bool
+	accounts  map[string]*memoAccount
+	imported  map[string]json.RawMessage
+	listening *memoAccount
+	session   int
+	saved     time.Time
+	painted   time.Time
 }
 
 func (a *app) homeMemoAccount() *memoAccount {
@@ -113,45 +125,104 @@ func (a *app) homeMemoAccount() *memoAccount {
 func (m *memoAccount) add(l memoListen) {
 	m.Listens = append(m.Listens, l)
 	if l.Milliseconds >= 30000 {
-		e := m.Encounters[l.ID]
-		if e.First == 0 || l.Start < e.First {
-			e.First = l.Start
-		}
-		e.Count++
-		m.Encounters[l.ID] = e
+		m.encounter(l.ID, l.Start)
 	}
 }
 
-// Rhine: keep the listening score on the existing playback event, free of a
-// home-page timer. Each account owns its scores and playback bookmarks.
-func (a *app) recordHomeListen(t netease.Track, played time.Duration, ended bool, now time.Time) {
-	if t.ProgramID != 0 || played < historyAfter {
-		return
-	}
-	m := a.homeMemoAccount()
+func (m *memoAccount) encounter(id string, start int64) {
 	if m.Encounters == nil {
 		m.Encounters = make(map[string]memoEncounter)
 	}
+	e := m.Encounters[id]
+	if e.First == 0 || start < e.First {
+		e.First = start
+	}
+	e.Count++
+	m.Encounters[id] = e
+}
+
+// recordHomeProgress accumulates confirmed audio time and splits calendar days.
+func (a *app) recordHomeProgress(t netease.Track, session int, position, elapsed time.Duration, now time.Time) {
+	if t.ProgramID != 0 || elapsed < time.Millisecond {
+		return
+	}
+	state := &a.homeMemo
+	m := a.homeMemoAccount()
 	id := historyKey(&t)
 	if t.ID != 0 {
 		id = strconv.FormatInt(t.ID, 10)
 	}
-	m.add(memoListen{id, now.Add(-played).UnixMilli(), now.UnixMilli(), played.Milliseconds()})
+	merge := state.listening == m && state.session == session
+	state.listening, state.session = m, session
+	for start := now.Add(-elapsed); start.Before(now); {
+		midnight := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+		end := midnight.AddDate(0, 0, 1)
+		if end.After(now) {
+			end = now
+		}
+		m.addProgress(id, start, end, midnight, merge)
+		merge = false
+		start = end
+	}
 	if len(m.Listens) > 5000 {
 		m.Listens = slices.Clone(m.Listens[len(m.Listens)-5000:])
 	}
-	position := played.Milliseconds()
-	if ended {
-		position = 0
+	if m.Listens[len(m.Listens)-1].Milliseconds >= historyAfter.Milliseconds() {
+		m.bookmark(t, position, now)
+	}
+	if now.Sub(state.saved) >= 10*time.Second {
+		a.persistHomeMemo()
+		state.saved = now
+	}
+	if now.Sub(state.painted) >= 15*time.Second && a.route.page == pageHome {
+		state.painted = now
+		a.redraw()
+	}
+}
+
+func (m *memoAccount) addProgress(id string, start, end, midnight time.Time, merge bool) {
+	delta := end.UnixMilli() - start.UnixMilli()
+	if n := len(m.Listens); merge && n > 0 {
+		last := &m.Listens[n-1]
+		if last.ID == id && last.Start >= midnight.UnixMilli() && start.UnixMilli()-last.Last <= (20*time.Minute).Milliseconds() {
+			if last.Milliseconds < 30000 && last.Milliseconds+delta >= 30000 {
+				m.encounter(id, last.Start)
+			}
+			last.Milliseconds += delta
+			last.Last = end.UnixMilli()
+			return
+		}
+	}
+	m.add(memoListen{id, start.UnixMilli(), end.UnixMilli(), delta})
+}
+
+func (m *memoAccount) bookmark(t netease.Track, position time.Duration, now time.Time) {
+	if len(m.Recent) > 0 && historyKey(&m.Recent[0].Track) == historyKey(&t) {
+		m.Recent[0] = memoBookmark{t, position.Milliseconds(), now.UnixMilli()}
+		return
 	}
 	recent := slices.DeleteFunc(m.Recent, func(b memoBookmark) bool {
 		return historyKey(&b.Track) == historyKey(&t)
 	})
-	m.Recent = append([]memoBookmark{{t, position, now.UnixMilli()}}, recent[:min(11, len(recent))]...)
-	path, err := historyPath()
-	if err == nil {
-		saveHomeMemo(filepath.Join(filepath.Dir(path), "home-memo.json"), a.homeMemo.accounts)
+	m.Recent = append([]memoBookmark{{t, position.Milliseconds(), now.UnixMilli()}}, recent[:min(11, len(recent))]...)
+}
+
+func (a *app) finishHomeListen(t netease.Track, ended bool) {
+	m := a.homeMemo.listening
+	if m == nil {
+		return
 	}
+	if ended && len(m.Recent) > 0 && historyKey(&m.Recent[0].Track) == historyKey(&t) {
+		m.Recent[0].Position = 0
+	}
+	a.persistHomeMemo()
+}
+
+func (a *app) persistHomeMemo() <-chan struct{} {
+	if path, err := historyPath(); a.homeMemo.loaded && err == nil {
+		return saveHomeMemo(filepath.Join(filepath.Dir(path), "home-memo.json"), a.homeMemo.accounts)
+	}
+	return nil
 }
 
 func (a *app) resumeMemo(b memoBookmark) {
@@ -179,36 +250,55 @@ func (m *memoAccount) week(now time.Time) [7]int64 {
 // Serialize snapshots per file so a slower write cannot lose a later listen.
 var homeMemoWrites = struct {
 	sync.Mutex
-	pending map[string][]byte
-}{pending: make(map[string][]byte)}
+	pending map[string]*homeMemoWrite
+}{pending: make(map[string]*homeMemoWrite)}
 
-func saveHomeMemo(path string, accounts map[string]*memoAccount) {
+type homeMemoWrite struct {
+	data []byte
+	done chan struct{}
+}
+
+func saveHomeMemo(path string, accounts map[string]*memoAccount) <-chan struct{} {
 	b, err := json.Marshal(accounts)
 	if err != nil {
-		return
+		return nil
 	}
 	w := &homeMemoWrites
 	w.Lock()
-	_, running := w.pending[path]
-	w.pending[path] = b
-	w.Unlock()
-	if running {
-		return
+	if pending := w.pending[path]; pending != nil {
+		pending.data = b
+		w.Unlock()
+		return pending.done
 	}
+	pending := &homeMemoWrite{data: b, done: make(chan struct{})}
+	w.pending[path] = pending
+	w.Unlock()
 	go func() {
 		for {
 			w.Lock()
-			b := w.pending[path]
+			b := pending.data
 			if b == nil {
 				delete(w.pending, path)
+				close(pending.done)
 				w.Unlock()
 				return
 			}
-			w.pending[path] = nil
+			pending.data = nil
 			w.Unlock()
-			if os.WriteFile(path+".part", b, 0o600) == nil {
-				_ = os.Rename(path+".part", path)
+			if err := writeHomeMemo(path, b); err != nil {
+				log.Printf("保存听歌记录：%v", err)
 			}
 		}
 	}()
+	return pending.done
+}
+
+func writeHomeMemo(path string, b []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path+".part", b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(path+".part", path)
 }

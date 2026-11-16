@@ -53,9 +53,15 @@ type Player struct {
 	// listener moves on from it or it plays to its end.
 	Listened func(t netease.Track, played time.Duration, ended bool)
 
-	stretcher *stretch // between the stream and what plays, for a speed
-	curSpeed  float64  // the speed the track playing plays at
-	heardGen  int      // the load whose listening was told, so it is told once
+	// ListeningProgress receives confirmed playback since the previous sample.
+	ListeningProgress func(track netease.Track, session int, position, elapsed time.Duration, at time.Time)
+	listeningTimer    *time.Timer
+	listeningAt       time.Time
+	listeningPosition time.Duration
+
+	stretcher *stretch                // between the stream and what plays, for a speed
+	curSpeed  float64                 // the speed the track playing plays at
+	heardGen  int                     // the load whose listening was told, so it is told once
 	fx        atomic.Pointer[Effects] // the effects, which every track's sound goes through
 	fxGlide   atomic.Bool             // the effects asked for glide to what they are
 
@@ -140,6 +146,7 @@ func (p *Player) Cover() []byte {
 
 // sync shows the system, and Changed, where playback is.
 func (p *Player) sync() {
+	p.armListening()
 	if p.Changed != nil {
 		defer p.Changed()
 	}
@@ -174,6 +181,7 @@ func (p *Player) announce(t *netease.Track, artwork []byte) {
 }
 
 func (p *Player) ended() {
+	p.ResetListeningSample()
 	p.tellListened(true)
 	if p.StopAfterSong {
 		p.StopAfterSong = false
@@ -535,6 +543,7 @@ func (p *Player) Jump(i int) {
 
 // TogglePlay pauses, fading out, or plays, fading in.
 func (p *Player) TogglePlay() {
+	p.ResetListeningSample()
 	if p.out == nil {
 		switch {
 		case p.loading:
@@ -583,6 +592,7 @@ const seekGap = 30 * time.Millisecond
 // which the audio player fades over a few milliseconds, rather than
 // cutting from one sound to the other with a click.
 func (p *Player) Seek(t time.Duration) {
+	p.ResetListeningSample()
 	if p.out == nil {
 		p.pending = t
 		return
@@ -675,6 +685,7 @@ func (p *Player) Levels() ([Bands]float32, bool) {
 }
 
 func (p *Player) stop() {
+	p.ResetListeningSample()
 	p.gen++
 	if p.retryTimer != nil {
 		p.retryTimer.Stop()

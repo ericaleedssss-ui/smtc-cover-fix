@@ -41,39 +41,28 @@ func (a *app) sectionLarge(c *ui.Context, title string) ui.Element {
 }
 
 func (a *app) homePage(c *ui.Context) {
-	loading := len(a.featured) == 0 && len(a.charts) == 0
-	if loading && !a.homeLoading {
-		a.centered(c, a.homeErr, a.loadHome)
-		return
-	}
-	now := c.Now()
-	top, bottom := a.insets(c)
-	ui.Scroll(c.Key("home")).TrackScroll(&a.pageScroll).Grow(1).Padding(top+pageGap, pagePad, bottom+48, pagePad).ScrollbarInsets(top, 0, bottom, 0).Children(func() {
-		a.startMark(c)
-		defer a.endMark(c)
-		cols, scale, heading := homeMeasures(c)
-		a.homeHeading(c, now, heading)
-		if loading {
-			a.homeSkeleton(c, a.pageShimmer(c))
-			return
-		}
-		a.dailyCard(c, now)
-		a.homeShortcuts(c, scale)
-		if len(a.recPlaylists) > 0 || a.styleCardShown() {
-			a.section(c, "今日为你推荐")
-			a.recommendedGrid(c, cols, scale)
-		}
-		a.homeListening(c, now, scale)
-		a.section(c, "官方榜单")
-		official := a.charts[:min(4, len(a.charts))]
-		chartCols := min(4, max(2, a.columns(c, 260)))
-		ui.Grid(c).Columns(chartCols).Gap(20).Children(func() {
-			for i := range official {
-				a.chartCard(c.Key(official[i].ID), &official[i])
+	width, _ := c.Size()
+	cols, u, header := homeMeasures(c)
+	top, bottom := 88*header, 116*u
+	inner := width - 80*u
+	reduceMotion := c.Preferences().ReduceMotion
+	ui.Box(c.Key("home-viewport")).Grow(1).Clip().Children(func() {
+		ui.Scroll(c.Key("home")).TrackScroll(&a.pageScroll).Fill().
+			Padding(top, 40*u, bottom, 40*u).ScrollbarInsets(top, -24*u, bottom, 0).
+			HandleInput(func(ev ui.InputEvent) bool { return a.homeWheel(ev, u, reduceMotion) }).Children(func() {
+			start := ui.Box(c.Key("start-mark")).Height(0).Bounds()
+			a.headGone = 0
+			if start.W > 0 {
+				a.headGone = top - start.Y
 			}
+			a.underTop = a.headGone > .5
+			defer a.endMark(c)
+			a.rhineHomeLead(c, inner, u)
+			a.rhineHomeRecent(c, cols, u)
+			a.rhineWeekly(c.Key("weekly"), inner, u)
+			a.rhineHomePlaylists(c, inner, cols, u)
 		})
-
-		a.recommendedPlaylistsGrid(c, cols, scale)
+		a.homeScrollbar(c.Key("edge"), top, u)
 	})
 }
 
@@ -140,7 +129,7 @@ func (a *app) coverCardOf(c *ui.Context, name, cover string, playCount float64, 
 	// From the top: a grid stretches the cards of a row as tall as the
 	// tallest, whose name or line under it takes two lines.
 	card := ui.ButtonBase(c).Column().Gap(10).AlignItems(ui.Stretch).Justify(ui.Start).FocusRing(false).Label(name)
-	hovered := card.Hovered()
+	hovered := card.Hovered() || card.FocusVisible()
 	var artAt ui.Rect
 	card.Children(func() {
 		art := ui.Box(c).AspectRatio(1).Radius(14)
@@ -149,13 +138,15 @@ func (a *app) coverCardOf(c *ui.Context, name, cover string, playCount float64, 
 		lift := ui.Pose{}
 		if hovered {
 			lift = ui.Pose{Y: -5, Scale: 1.015}
-			art.Shadow(0, 12, 28, -6, p.cardShade)
-		} else {
-			art.Shadow(0, 2, 8, -2, p.cardShade)
 		}
+		a.homeCoverShadow(c, art, hovered, 1)
 		art.AnimatePose(lift, ui.Snappy)
 		art.Children(func() {
-			a.coverFill(c, cover, 400, 14)
+			if a.route.page == pageHome {
+				a.coverFillOn(c, cover, 400, 14, a.homeCoverPlaceholder())
+			} else {
+				a.coverFill(c, cover, 400, 14)
+			}
 			if playCount > 0 {
 				ui.Row(c).Absolute().Top(8).Right(8).Padding(2, 7).Radius(999).Gap(3).AlignItems(ui.Center).
 					Background(ui.RGBA(0, 0, 0, 0.35)).TextColor(ui.RGB(255, 255, 255)).Children(func() {
@@ -181,11 +172,15 @@ func (a *app) coverCardOf(c *ui.Context, name, cover string, playCount float64, 
 // The cover rounds itself rather than its parent clipping it: a clip moved
 // by a transform, as a card lifting under the pointer, is drawn on the CPU.
 func (a *app) coverFill(c *ui.Context, url string, px int, radius float32) {
+	a.coverFillOn(c, url, px, radius, a.pal.hover)
+}
+
+func (a *app) coverFillOn(c *ui.Context, url string, px int, radius float32, placeholder ui.Color) {
 	bmp := bitmap(a.art.get(netease.Sized(url, px), false))
 	box := ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Radius(radius)
 	in := artIn(box, bmp)
 	if in < 1 {
-		box.Background(a.pal.hover)
+		box.Background(placeholder)
 	}
 	box.Children(func() { artImage(c, bmp, radius, in) })
 }

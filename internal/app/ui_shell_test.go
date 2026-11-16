@@ -24,7 +24,7 @@ func TestRhineShellLayout(t *testing.T) {
 			tt.Frame()
 			tt.Advance(2 * time.Second)
 			tt.Frame()
-			for _, label := range []string{"推荐", "FM", "排行榜", "播客", "我的", "搜索", "设置", "我的账号", "待播", "桌面歌词", "音量"} {
+			for _, label := range []string{"Rhine 首页", "FM", "排行榜", "播客", "我的", "搜索", "设置", "我的账号", "待播", "桌面歌词", "音量"} {
 				r, ok := tt.Find(label)
 				if !ok || r.W == 0 || r.X < 0 || r.X+r.W > float32(width) {
 					t.Errorf("%q is outside the shell: %+v", label, r)

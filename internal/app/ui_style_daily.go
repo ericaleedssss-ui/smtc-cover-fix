@@ -453,10 +453,6 @@ func (a *app) saveStyles() {
 	gen := a.accountGen
 	go func() {
 		err := saveStyleTags(cat, tags)
-		var songs netease.StyleSongs
-		if err == nil {
-			songs, err = dailyStyleSongs()
-		}
 		a.post(func() {
 			if gen != a.accountGen {
 				return
@@ -466,7 +462,8 @@ func (a *app) saveStyles() {
 				s.saveErr = "保存失败，请稍后再试"
 				return
 			}
-			s.songs, s.loaded, s.open = songs, true, false
+			s.open = false
+			a.loadStyle()
 		})
 	}()
 }
@@ -476,11 +473,24 @@ func (a *app) saveStyles() {
 func (a *app) stylePickerDialog(c *ui.Context) {
 	s := &a.style
 	p := a.pal
-	a.dialog(c, "style-picker", 0.35, &s.open, func(panel ui.Element) {
+	open := s.open
+	width, height := c.Size()
+	_, u, _ := homeMeasures(c)
+	panelWidth := min(560*u, width-32)
+	columns := 5
+	if panelWidth < 470*u {
+		columns = 4
+	}
+	maxTagsHeight := max(34*u, height-270*u)
+	a.dialog(c, "style-picker", 0.35, &open, func(panel ui.Element) {
 		a.pane(panel, 26, false)
 		ink := a.inkOn(false)
-		panel.Width(560).TextColor(ink.text)
-		dialogHeader(c, ink, "选择风格", "同一类里可以多选，和网易云官方客户端同步", func() { s.open = false })
+		panel.Width(panelWidth).TextColor(ink.text)
+		dialogHeader(c, ink, "选择风格", "同一类里可以多选，和网易云官方客户端同步", func() {
+			if !s.saving {
+				s.open = false
+			}
+		})
 		ui.Column(c).Padding(0, 28).Gap(16).MinHeight(250).Children(func() {
 			switch {
 			case s.catsLoading:
@@ -489,7 +499,7 @@ func (a *app) stylePickerDialog(c *ui.Context) {
 			case s.catsErr != "":
 				ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, s.catsErr).FontSize(13).TextColor(ink.muted)
-					if settingButton(c.Key("retry"), ink, "重试", nil, false, false).Clicked() {
+					if settingButton(c.Key("retry"), ink, "重新读取", nil, false, false).Clicked() {
 						a.openStylePicker()
 					}
 				})
@@ -499,7 +509,7 @@ func (a *app) stylePickerDialog(c *ui.Context) {
 				for _, cat := range s.cats {
 					on := cat.ID == s.tab
 					b := ui.ButtonBase(c.Key(cat.ID)).Height(32).PaddingX(14).Radius(999).Center().
-						FocusRing(false).Label("风格分类：" + cat.Name).Selected(on)
+						FocusRing(false).Label("风格分类：" + cat.Name).Selected(on).Disabled(s.saving)
 					bg, fg := ui.Transparent, ink.muted
 					switch {
 					case on:
@@ -524,26 +534,30 @@ func (a *app) stylePickerDialog(c *ui.Context) {
 				if cat.ID != s.tab {
 					continue
 				}
-				ui.Grid(c.Key(fmt.Sprint("tags-", cat.ID))).Columns(5).Gap(10).Children(func() {
-					for _, t := range cat.Tags {
-						on := s.cat == cat.ID && slices.Contains(s.picked, t.ID)
-						b := ui.ButtonBase(c.Key(t.ID)).Height(34).Radius(999).Center().FocusRing(false).
-							Label("风格：" + t.Name).Selected(on)
-						bg, fg := ink.hover, ink.text
-						switch {
-						case on:
-							bg, fg = p.accent, p.onAccent
-						case b.Hovered():
-							bg = ink.hover.Mix(ink.text, 0.08)
+				tagRows := (len(cat.Tags) + columns - 1) / columns
+				tagHeight := min(maxTagsHeight, float32(tagRows)*44*u)
+				ui.Scroll(c.Key(fmt.Sprint("tags-", cat.ID))).Height(tagHeight).Children(func() {
+					ui.Grid(c).Columns(columns).Gap(10 * u).Children(func() {
+						for _, t := range cat.Tags {
+							on := s.cat == cat.ID && slices.Contains(s.picked, t.ID)
+							b := ui.ButtonBase(c.Key(t.ID)).Height(34).Radius(999).Center().FocusRing(false).
+								Label("风格：" + t.Name).Selected(on).Disabled(s.saving)
+							bg, fg := ink.hover, ink.text
+							switch {
+							case on:
+								bg, fg = p.accent, p.onAccent
+							case b.Hovered():
+								bg = ink.hover.Mix(ink.text, 0.08)
+							}
+							b.Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
+							b.Children(func() {
+								ui.Text(c, t.Name).FontSize(13).FontWeight(600).TextColor(fg).SingleLine()
+							})
+							if b.Clicked() {
+								a.pickStyle(cat.ID, t.ID)
+							}
 						}
-						b.Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
-						b.Children(func() {
-							ui.Text(c, t.Name).FontSize(13).FontWeight(600).TextColor(fg).SingleLine()
-						})
-						if b.Clicked() {
-							a.pickStyle(cat.ID, t.ID)
-						}
-					}
+					})
 				})
 			}
 			if s.saveErr != "" {
@@ -551,7 +565,7 @@ func (a *app) stylePickerDialog(c *ui.Context) {
 			}
 		})
 		dialogFooter(c, func() {
-			if settingButton(c.Key("cancel"), ink, "取消", nil, false, false).Clicked() {
+			if settingButton(c.Key("cancel"), ink, "取消", nil, false, false).Disabled(s.saving).Clicked() {
 				s.open = false
 			}
 			label := "确认"
@@ -563,6 +577,9 @@ func (a *app) stylePickerDialog(c *ui.Context) {
 			}
 		})
 	})
+	if !s.saving && !open {
+		s.open = false
+	}
 }
 
 // pickedIn says how many tags of category cat are picked.

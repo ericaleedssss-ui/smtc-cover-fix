@@ -1,0 +1,226 @@
+--- a/ui/window.go
++++ b/ui/window.go
+@@ -154,11 +154,12 @@
+ 	// the GPU renderer or refresh, to be able to draw it (displayWaiter);
+ 	// wake and displayReady draw it then, at the time the display asked
+ 	// for it (waitedAt).
+-	waiting      bool
+-	waitingOn    displayWaiter
+-	waitedAt     time.Time
+-	wake         func()
+-	displayReady func()
++	waiting          bool
++	waitingOn        displayWaiter
++	waitedAt         time.Time
++	refreshCheckedAt time.Time
++	wake             func()
++	displayReady     func()
+ 	// refresh paces the frames drawn in memory on a surface that shows
+ 	// them at once (platform.RefreshSurface); nil until one is.
+ 	refresh *refreshWaiter
+@@ -353,7 +354,7 @@
+ 				return
+ 			}
+ 			h.waiting, h.waitingOn = false, nil
+-			h.rt.frameAt = h.waitedAt
++			h.rt.frameAt = time.Now()
+ 			p.FrameNow()
+ 		}
+ 		h.wake = func() { h.conn.Post(h.displayReady) }
+@@ -449,6 +450,12 @@
+ 	h.armIdle(frameIdle)
+ 	h.useWide(s, now)
+ 	defer h.ready()
++	if now.Sub(h.refreshCheckedAt) >= time.Second {
++		h.refreshCheckedAt = now
++		if paced, ok := h.gpu.(interface{ SetRefreshRate(float64) }); ok {
++			paced.SetRefreshRate(h.conn.Surface.RefreshRate())
++		}
++	}
+ 	if h.render(s) {
+ 		h.path = "drawn on the GPU"
+ 		if h.degraded {
+--- a/ui/wheel.go
++++ b/ui/wheel.go
+@@ -1,6 +1,7 @@
+ package ui
+ 
+ import (
++	"math"
+ 	"slices"
+ 	"time"
+ )
+@@ -8,6 +9,36 @@
+ // wheelAnimation is how the notches of a mouse wheel scroll: along a short
+ // ease out, as browsers scroll them, rather than the whole notch at once.
+ var wheelAnimation = Animation{Duration: 150 * time.Millisecond, Ease: EaseOut}
++
++// retargetWheel carries the velocity of a moving axis into a cubic Hermite
++// curve that ends at rest. A normalized slope of at most three keeps the
++// curve monotone, even when a notch brings the target much closer.
++func retargetWheel(ch *channel, delta float32) {
++	target := ch.target + float64(delta)
++	if !ch.moving {
++		ch.retarget(target, wheelAnimation)
++		return
++	}
++	distance := target - ch.value
++	if distance == 0 {
++		ch.target, ch.velocity, ch.moving = target, 0, false
++		return
++	}
++	duration := wheelAnimation.Duration
++	velocity := ch.velocity
++	if velocity*distance < 0 {
++		velocity = 0 // a reversal starts toward the new target
++	}
++	ch.velocity = velocity
++	if math.Abs(velocity)*duration.Seconds() > 3*math.Abs(distance) {
++		limit := 3 * math.Abs(distance/velocity)
++		duration = max(time.Nanosecond, time.Duration(limit*float64(time.Second)))
++	}
++	slope := float32(min(3, velocity*duration.Seconds()/distance))
++	ch.retarget(target, Animation{Duration: duration, Ease: func(t float32) float32 {
++		return t * (slope + t*(3-2*slope+t*(slope-2)))
++	}})
++}
+ 
+ // wheelGlide is the notches of a wheel on their way through a scroll
+ // container: x and y go from 0 to as far as all of them scroll, and done
+@@ -72,10 +103,10 @@
+ 	g.x.advance(now)
+ 	g.y.advance(now)
+ 	if dx != 0 {
+-		g.x.retarget(g.x.target+float64(dx), wheelAnimation)
++		retargetWheel(&g.x, dx)
+ 	}
+ 	if dy != 0 {
+-		g.y.retarget(g.y.target+float64(dy), wheelAnimation)
++		retargetWheel(&g.y, dy)
+ 	}
+ 	rt.requestFrame()
+ }
+--- a/internal/gpu/d3d11/d3d11.go
++++ b/internal/gpu/d3d11/d3d11.go
+@@ -297,13 +297,14 @@
+ 	// post, presentLater, and failed is why that failed; wake is what Ready
+ 	// was given meanwhile, or while refreshing tells that a frame that
+ 	// changed nothing waits for the display's next refresh (waitRefresh).
+-	lat          latency
+-	pending      bool
+-	refreshing   bool
+-	post         func(func())
+-	presentLater func()
+-	failed       error
+-	wake         func()
++	lat           latency
++	pending       bool
++	refreshing    bool
++	refreshPeriod time.Duration
++	post          func(func())
++	presentLater  func()
++	failed        error
++	wake          func()
+ 
+ 	vs, ps, layout      uintptr
+ 	blend, raster, samp uintptr
+@@ -316,6 +317,7 @@
+ 	mask, color texture
+ 	images      map[uint64]*texture
+ 	frame       uint64
++	lastDrawn   uint64 // unchanged frames advance frame without using textures
+ 	// canvases are the textures canvases are drawn into, and drawing the
+ 	// render target drawn into now: the back buffer's, or a canvas's.
+ 	canvases map[uint64]*canvasTexture
+@@ -917,6 +919,7 @@
+ 		r.diff.Remember(s)
+ 		r.pipelines.Remember()
+ 	}
++	r.lastDrawn = r.frame
+ 	return true, nil
+ }
+ 
+@@ -1415,6 +1418,10 @@
+ // compose, or wait until it next has, so the wait lasts at least
+ // minRefresh and at most maxRefresh.
+ var awaitRefresh = func() {
++	waitRefreshPeriod(minRefresh)
++}
++
++func waitRefreshPeriod(period time.Duration) {
+ 	start := time.Now()
+ 	done := make(chan struct{})
+ 	go func() {
+@@ -1423,9 +1430,9 @@
+ 	}()
+ 	select {
+ 	case <-done:
+-	case <-time.After(maxRefresh):
+-	}
+-	if d := minRefresh - time.Since(start); d > 0 {
++	case <-time.After(4 * period):
++	}
++	if d := period/2 - time.Since(start); d > 0 {
+ 		time.Sleep(d)
+ 	}
+ }
+@@ -1443,14 +1450,25 @@
+ // frame presented would (Ready), a goroutine waiting for it meanwhile:
+ // otherwise frames that change nothing, as an animation's moving less than
+ // a pixel, follow each other as fast as the main thread draws them.
++func (r *Renderer) SetRefreshRate(hz float64) {
++	if hz > 0 {
++		r.refreshPeriod = time.Duration(float64(time.Second) / hz)
++	}
++}
++
+ func (r *Renderer) waitRefresh() {
+ 	if r.post == nil || r.refreshing {
+ 		return
+ 	}
+ 	r.refreshing = true
+ 	post := r.post
++	period := r.refreshPeriod
+ 	go func() {
+-		awaitRefresh()
++		if period > 0 {
++			waitRefreshPeriod(period)
++		} else {
++			awaitRefresh()
++		}
+ 		post(r.refreshed)
+ 	}()
+ }
+@@ -1506,9 +1524,13 @@
+ 		id uint64
+ 		t  *texture
+ 	}
++	protected := r.lastDrawn
++	if protected == 0 {
++		protected = r.frame
++	}
+ 	var old []entry
+ 	for id, t := range r.images {
+-		if t.lastFrame != r.frame {
++		if t.lastFrame != protected {
+ 			old = append(old, entry{id, t})
+ 		}
+ 	}
+--- a/internal/gpu/d3d11/memory_test.go
++++ b/internal/gpu/d3d11/memory_test.go
+@@ -119,3 +119,15 @@
+ 	pix, stride := r.readBack(t)
+ 	gputest.Compare(t, "d3d11-canvas-after-idle", pix, stride, s)
+ }
++
++// An unchanged frame advances the renderer counter without drawing the covers.
++func TestIdleKeepsTexturesFromLastDrawnFrame(t *testing.T) {
++	r := &Renderer{frame: 5, lastDrawn: 3, images: map[uint64]*texture{
++		1: {w: 64, h: 64, lastFrame: 2},
++		2: {w: 64, h: 64, lastFrame: 3},
++	}}
++	r.Idle()
++	if len(r.images) != 1 || r.images[2] == nil {
++		t.Fatal("idle failed to keep the displayed cover after unchanged frames")
++	}
++}

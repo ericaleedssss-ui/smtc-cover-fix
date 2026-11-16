@@ -27,6 +27,27 @@ type scrubState struct {
 	level barState
 	dots  bool
 	solid bool // Rhine: R11 the detail progress track is solid and uses a glass thumb
+	wave  seekWave
+}
+
+// seekWave keeps the QML track's 120ms linear height transitions between PCM samples.
+type seekWave struct {
+	from, target [player.Bands]float32
+	at           [player.Bands]time.Time
+}
+
+func (s *seekWave) step(now time.Time, levels [player.Bands]float32) (out [player.Bands]float32, moving bool) {
+	for i, target := range levels {
+		k := min(1, max(0, float32(now.Sub(s.at[i]))/float32(120*time.Millisecond)))
+		value := s.from[i] + (s.target[i]-s.from[i])*k
+		target = min(1, max(0, target))
+		if target != s.target[i] {
+			s.from[i], s.target[i], s.at[i] = value, target, now
+		}
+		out[i] = value
+		moving = moving || value != target
+	}
+	return
 }
 
 func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
@@ -129,6 +150,10 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 				return
 			}
 			levels, live := pl.Levels()
+			if !live || !pl.Playing() || a.motion != motionFull {
+				levels = [player.Bands]float32{}
+			}
+			levels, moving := st.wave.step(p.Now(), levels)
 			hovered := -1
 			if dur > 0 && (over || pressed) {
 				hovered = min(steps-1, max(0, int(pointerX/space)))
@@ -140,9 +165,7 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 				}
 				w := max(1, space-1.5)
 				h := float32(3)
-				if live && pl.Playing() && a.motion == motionFull {
-					h += 13 * min(1, max(0, levels[i*len(levels)/steps]))
-				}
+				h += 13 * levels[i*len(levels)/steps]
 				y := cy
 				if i == hovered {
 					h *= 1.6
@@ -150,12 +173,10 @@ func (a *app) scrubber(c *ui.Context, st *scrubState, track, fill ui.Color, heig
 				}
 				p.Fill(ui.Rect{X: r.X + float32(i)*space, Y: y - h/2, W: w, H: h}, color, w/2)
 			}
-			if pl.Playing() && !st.active && dur > 0 {
-				if live && a.motion == motionFull {
-					p.After(time.Second / 15)
-				} else {
-					p.After(secs(min(1, dur/steps)))
-				}
+			if moving || (live && pl.Playing() && a.motion == motionFull) {
+				p.AnimationFrame()
+			} else if pl.Playing() && !st.active && dur > 0 {
+				p.After(secs(min(1, dur/steps)))
 			}
 			return
 		}

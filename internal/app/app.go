@@ -33,6 +33,7 @@ const (
 	pageRecent
 	pageStyle
 	pageLocalLibrary
+	pageHomeMix
 )
 
 type route struct {
@@ -47,12 +48,14 @@ type route struct {
 // app is the state both windows show. Everything in it is read and changed
 // on the main thread: by the views, and by goroutines through post.
 type app struct {
-	win   *mygo.Window
-	notch *notch
-	tray  *mygo.Tray // the icon in the menu bar or notification area, while it shows
-	art   *artCache
-	pl    *player.Player
-	pal   palette
+	searchOutsideFocus ui.Handle
+	searchHadFocus     bool
+	win                *mygo.Window
+	notch              *notch
+	tray               *mygo.Tray // the icon in the menu bar or notification area, while it shows
+	art                *artCache
+	pl                 *player.Player
+	pal                palette
 
 	// thumbsAt is what the taskbar thumbnail shows (thumbbar.go), and
 	// thumbDark whether the taskbar is dark.
@@ -63,30 +66,32 @@ type app struct {
 	history []route
 	forward []route // the pages gone back from, the last first to go to
 
-	messages     messageState
+	messages         messageState
 	collectionSocial collectionSocialState
-	localLibrary localLibraryState
-	homeMemo     homeMemoState
-	style        styleState
-	profile      *netease.Profile
-	accountGen   int                // rejects results from an earlier login, including the same account
-	mine, saved  []netease.Playlist // the listener's playlists: made, and saved
-	savingPl     map[int64]bool     // the playlists whose saving or its end is on its way
-	recPlaylists []netease.Playlist // the day's playlists picked for the listener
-	myAlbums     []netease.AlbumProfile
-	myAlbumsErr  string
-	myAlbumsBusy bool
-	login        loginState
-	accountOpen  bool           // the dropdown of the account row shows
-	naming       nameDialog     // the name of a playlist asked for
-	deleting     deleteDialog   // whether to delete a playlist, asked
-	liked        map[int64]bool // the songs the listener likes
-	toast        string         // a message to show once
-	picked       pickedUp       // the song a login picked up, waiting to play
+	localLibrary     localLibraryState
+	homeMemo         homeMemoState
+	homeRank         homeRankState
+	homeSections     homeSectionState
+	style            styleState
+	profile          *netease.Profile
+	accountGen       int                // rejects results from an earlier login, including the same account
+	mine, saved      []netease.Playlist // the listener's playlists: made, and saved
+	savingPl         map[int64]bool     // the playlists whose saving or its end is on its way
+	recPlaylists     []netease.Playlist // the day's playlists picked for the listener
+	myAlbums         []netease.AlbumProfile
+	myAlbumsErr      string
+	myAlbumsBusy     bool
+	login            loginState
+	accountOpen      bool           // the dropdown of the account row shows
+	naming           nameDialog     // the name of a playlist asked for
+	deleting         deleteDialog   // whether to delete a playlist, asked
+	liked            map[int64]bool // the songs the listener likes
+	toast            string         // a message to show once
+	picked           pickedUp       // the song a login picked up, waiting to play
 
 	// The episodes the listener likes, and doesn't, as far as NetEase has
 	// answered, and those asked about: see ui_like.go.
-	likedPrograms, askedPrograms map[int64]bool
+	likedPrograms, askedPrograms    map[int64]bool
 	likePending, programLikePending map[int64]bool
 
 	daily             []netease.Track
@@ -115,6 +120,7 @@ type app struct {
 	// Where the page and the sidebar are scrolled, kept while Now Playing
 	// covers them, unbuilt.
 	pageScroll ui.ScrollState
+	homeEdge   homeEdgeState
 	navScroll  ui.ScrollState
 	scrolled   route // the page trackList and pageScroll are of
 
@@ -129,41 +135,41 @@ type app struct {
 	searched    route                 // the search last shown, which the sidebar goes back to
 	suggestions suggestState          // what the search field's query may be after
 
-	nowPlaying  bool
-	npOpen      bool      // Now Playing as it last showed: open or not
-	npChangedAt time.Time // when it last opened or closed
+	nowPlaying      bool
+	npOpen          bool      // Now Playing as it last showed: open or not
+	npChangedAt     time.Time // when it last opened or closed
 	islandQueueOpen bool
 	accountPanel    shellAccountState
 
-	npPane      int       // paneLyrics, paneQueue, paneStage, paneComments, paneProgram or paneCaptions
-	npPaneTop   float32   // how far the cover beside the pane starts below its top
-	lyricScroll ui.ScrollState
-	lyricGlide  lyricGlide
-	lyricAt     int
-	lyricTrack  int64
-	queueList   ui.ListState
-	queueAt     int // the row of the queue pane last scrolled to, -1 while it is hidden
-	loginKnown  *bool // whether the app starts at login, once asked
-	sideDragging bool // the sidebar's edge is being dragged
-	shownTracks []netease.Track // the songs the page lists now, for choosing among them
-	recent      recentState     // the songs played on this computer
-	outputList  outputList // the audio outputs, as last listed
-	comments    commentState
-	tabCount    rollState // the count on the comments' tab, as it rolls
+	npPane       int     // paneLyrics, paneQueue, paneStage, paneComments, paneProgram or paneCaptions
+	npPaneTop    float32 // how far the cover beside the pane starts below its top
+	lyricScroll  ui.ScrollState
+	lyricGlide   lyricGlide
+	lyricAt      int
+	lyricTrack   int64
+	queueList    ui.ListState
+	queueAt      int             // the row of the queue pane last scrolled to, -1 while it is hidden
+	loginKnown   *bool           // whether the app starts at login, once asked
+	sideDragging bool            // the sidebar's edge is being dragged
+	shownTracks  []netease.Track // the songs the page lists now, for choosing among them
+	recent       recentState     // the songs played on this computer
+	outputList   outputList      // the audio outputs, as last listed
+	comments     commentState
+	tabCount     rollState // the count on the comments' tab, as it rolls
 
 	fmMode        int // the FM mode chosen, in fmModes
 	fmCoversState fmCoverStack
 	radioStarting string // the radio asked for its first songs, or ""
 	radioGen      int    // distinguishes requests for the same radio
 
-	scrub      float64
-	scrubbing  bool
-	volume     float64
-	volumeOpen bool // the volume popover of the player bar shows
-	volumeHover hoverOpen // how the pointer opened it, and when it last was over it
+	scrub       float64
+	scrubbing   bool
+	volume      float64
+	volumeOpen  bool        // the volume popover of the player bar shows
+	volumeHover hoverOpen   // how the pointer opened it, and when it last was over it
 	effects     effectsView // the pane of the sound effects
 	auto        autoState   // the effects chosen for the song playing
-	mutedFrom  float64
+	mutedFrom   float64
 
 	rowBars barState
 	// underTop and underBottom say whether the page has content under its
@@ -233,13 +239,13 @@ type app struct {
 	settingsQuery        string
 	settingsSearchBox    ui.Handle
 	settingsSearchScroll ui.ScrollState
-	settingsDirty  bool            // a slider moved, and the settings are not kept yet
-	accentDraft    accentPick      // the color well open, and the color it shows
-	update         updateState     // the update pane, and the update it found
-	cacheUsed      int64           // the bytes the song cache takes, -1 until measured
-	updates        bool            // the update plugin is used (useUpdater)
-	fontList       []uiFont        // the fonts on offer here (fontChoices)
-	fontsLoaded    map[string]bool // the fonts of files registered, by id (loadFont)
+	settingsDirty        bool            // a slider moved, and the settings are not kept yet
+	accentDraft          accentPick      // the color well open, and the color it shows
+	update               updateState     // the update pane, and the update it found
+	cacheUsed            int64           // the bytes the song cache takes, -1 until measured
+	updates              bool            // the update plugin is used (useUpdater)
+	fontList             []uiFont        // the fonts on offer here (fontChoices)
+	fontsLoaded          map[string]bool // the fonts of files registered, by id (loadFont)
 
 	// The songs saved to disk, the ones on their way there, and where both
 	// are kept.
@@ -253,8 +259,8 @@ type app struct {
 	downloadFailed    []failedDownload // songs that failed to download, to try again
 	downloadsRestored bool             // the queue left at the last quit is picked up
 	downloadsFixed    bool             // the downloads without tags were looked at
-	downloadArtDir    string // where covers found in the folder are kept
-	downloadIndex     string // where the index of downloaded songs is kept
+	downloadArtDir    string           // where covers found in the folder are kept
+	downloadIndex     string           // where the index of downloaded songs is kept
 	downloadBox       ui.Handle
 	downloadPathDraft string // the folder path being typed in the settings
 	queueView         downloadQueueView
@@ -357,9 +363,10 @@ func Run() error {
 		a.pl.Quality = func() string { return a.settings.Quality }
 		a.pl.Normalize = func() bool { return a.settings.Normalize }
 		a.pl.Cache = newSongCache(a.settings.CacheMB)
+		a.pl.ListeningProgress = a.recordHomeProgress
 		a.pl.Listened = func(t netease.Track, played time.Duration, ended bool) {
 			a.listened(t, played, ended)
-			a.recordHomeListen(t, played, ended, time.Now())
+			a.finishHomeListen(t, ended)
 			a.remember(t, played, ended)
 		}
 		a.pl.SongStopped = func() {
@@ -445,6 +452,12 @@ func Run() error {
 	})
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
 		a.quitting = true
+		if a.pl != nil {
+			a.pl.ResetListeningSample()
+			if done := a.persistHomeMemo(); done != nil {
+				<-done
+			}
+		}
 		a.settings.Volume = a.volume
 		a.settings.save()
 		a.saveSession()

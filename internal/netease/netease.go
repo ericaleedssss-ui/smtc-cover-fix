@@ -288,6 +288,48 @@ func Charts() ([]Playlist, error) {
 	return out, nil
 }
 
+type ChartTrack struct {
+	Track
+	Previous int
+	Ranked   bool
+}
+
+// ChartPreview reads the home chart without fetching the rest of its tracks.
+func ChartPreview(id int64) ([]ChartTrack, error) {
+	var result struct {
+		Playlist struct {
+			Tracks   []Track
+			TrackIDs []struct {
+				ID   int64
+				Last *int `json:"lr"`
+			}
+		}
+		Privileges []Privilege
+	}
+	query := url.Values{"id": {strconv.FormatInt(id, 10)}, "n": {"6"}}
+	if err := get("/api/v6/playlist/detail", query, &result); err != nil {
+		return nil, err
+	}
+	tracks := result.Playlist.Tracks
+	withPrivileges(tracks, result.Privileges)
+	previous := make(map[int64]int)
+	for _, entry := range result.Playlist.TrackIDs {
+		if entry.Last != nil {
+			previous[entry.ID] = *entry.Last
+		}
+	}
+	rows := make([]ChartTrack, 0, 6)
+	for _, track := range tracks {
+		if track.ID > 0 {
+			rows = append(rows, ChartTrack{track, previous[track.ID], len(previous) != 0})
+		}
+		if len(rows) == 6 {
+			break
+		}
+	}
+	return rows, nil
+}
+
 // playlistTrackLimit is far above what an ordinary listener keeps in one
 // playlist; NetEase itself may still cap a list below it.
 const playlistTrackLimit = 10000

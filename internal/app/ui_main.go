@@ -14,6 +14,13 @@ import (
 const sidebarWidth = 232
 
 func (a *app) view(c *ui.Context) {
+	ui.Box(c.Key("search-dismiss-focus")).Absolute().Size(0, 0).FocusRing(false).Bind(&a.searchOutsideFocus)
+	if a.route.page != pageHome {
+		a.homeSections.fmTitle = homeCopyTransition{}
+		a.homeSections.fmLevels = [30]float32{}
+		a.homeSections.fmPaintAt = time.Time{}
+		a.homeSections.fmNext = homeFMNextNudge{}
+	}
 	t := *c.Theme()
 	a.pal = paletteFor(&t)
 	if a.settings.Accent != "" {
@@ -60,11 +67,14 @@ func (a *app) view(c *ui.Context) {
 	root.Children(func() {
 		if !npOpen || !npSettled {
 			surface := p.bg
-			if !p.dark && a.route.page == pageHome && a.settings.Accent == "" {
-				surface = ui.RGB(235, 236, 243)
+			if a.route.page == pageHome {
+				surface = a.homeSurface()
 			}
 			a.sideEdge = surface
 			ui.Box(c.Key("main")).Fill().Background(surface).Children(func() {
+				if a.route.page == pageHome {
+					a.homeBackdrop(c.Key("home-backdrop"))
+				}
 				a.content(c)
 				a.pageTop(c)
 				a.playerBar(c)
@@ -387,6 +397,13 @@ func edgeShown(el ui.Element, under bool) float32 {
 // back to.
 func (a *app) pageTop(c *ui.Context) {
 	top, _ := a.insets(c)
+	// HomePageB keeps an opaque 76u navigation edge over scrolling artwork.
+	if a.route.page == pageHome {
+		width, _ := c.Size()
+		surface := a.homeSurface()
+		ui.Box(c.Key("home-navigation-wash")).Absolute().Top(0).Left(0).Right(0).
+			Height(76 * headerScale(width)).Background(surface).PassThrough()
+	}
 	if a.settings.LiquidGlass {
 		edge := ui.Box(c.Key("top-edge")).Absolute().Top(0).Left(0).Right(0).Height(top + 24).PassThrough().
 			Material(glass.ScrollEdge{Background: a.pal.bg})
@@ -406,6 +423,7 @@ func (a *app) content(c *ui.Context) {
 	// list, as a page's tabs in its header, opens it as the list builds.
 	if a.scrolled != a.route {
 		a.trackList, a.pageScroll, a.scrolled = ui.ListState{}, ui.ScrollState{}, a.route
+		a.homeEdge = homeEdgeState{}
 		a.pageScroll.Y, a.restoreY = a.restoreY, 0
 	}
 	a.headAt = ui.Rect{}
@@ -423,6 +441,8 @@ func (a *app) content(c *ui.Context) {
 		switch a.route.page {
 		case pageHome:
 			a.homePage(c)
+		case pageHomeMix:
+			a.homeMixPage(c)
 		case pageDaily:
 			a.dailyPage(c)
 		case pageCharts:
@@ -471,35 +491,59 @@ func (a *app) centered(c *ui.Context, err string, retry func()) {
 // Loading what the pages show.
 
 func (a *app) loadHome() {
-	a.homeLoading, a.homeErr = true, ""
+	a.homeAt = time.Now()
 	a.loadStyle()
+	a.loadHomeDaily()
+	a.loadHomeModes()
+	a.loadHomeRecent()
+	a.loadHomeWeekly()
+	a.loadHomeFeatured()
+	a.loadHomeChartCatalog()
 	a.filteredPlaylists = [len(playlistFilters)]*playlistBrowseData{}
-	signedIn := a.profile != nil
+}
+
+func (a *app) loadHomeFeatured() {
+	if a.homeLoading {
+		return
+	}
+	a.homeLoading, a.homeErr = true, ""
 	gen := a.accountGen
-	at := time.Now()
 	go func() {
-		featured, err1 := netease.FeaturedPlaylists(30)
-		charts, err2 := netease.Charts()
-		daily, _ := netease.DailySongs()
-		var rec []netease.Playlist
-		if signedIn {
-			rec, _ = netease.RecommendedPlaylists()
-		}
+		featured, err := netease.FeaturedPlaylists(30)
 		a.post(func() {
 			if gen != a.accountGen {
 				return
 			}
 			a.homeLoading = false
-			if err1 != nil && err2 != nil {
-				// Loading the new day's again, what shows stays, to try
-				// once more.
-				if len(a.featured) == 0 && len(a.charts) == 0 {
-					a.homeErr = "无法连接网易云音乐，请检查网络"
-				}
+			if err != nil {
+				a.homeErr = "推荐歌单加载失败"
 				return
 			}
-			a.featured, a.charts, a.daily, a.recPlaylists = featured, charts, daily, rec
-			a.homeAt = at
+			a.featured = featured
+		})
+	}()
+}
+
+func (a *app) loadHomeChartCatalog() {
+	s := &a.homeRank
+	if s.catalogLoading {
+		return
+	}
+	s.catalogLoading, s.err = true, ""
+	gen := a.accountGen
+	go func() {
+		charts, err := netease.Charts()
+		a.post(func() {
+			if gen != a.accountGen {
+				return
+			}
+			s.catalogLoading = false
+			if err != nil {
+				s.err = "榜单加载失败"
+				return
+			}
+			a.charts = charts
+			a.loadHomeRank(s.id, true)
 		})
 	}()
 }

@@ -46,7 +46,18 @@ func (a *app) boot() {
 
 // signedIn shows what is personal to prof, or to nobody.
 func (a *app) signedIn(prof *netease.Profile) {
+	if a.pl != nil {
+		a.pl.RestartListeningSample()
+	}
+	if a.homeMemo.listening != nil {
+		a.persistHomeMemo()
+		a.homeMemo.listening = nil
+	}
 	a.accountGen++
+	a.homeSections = homeSectionState{}
+	a.homeRank = homeRankState{}
+	a.homeLoading = false
+	a.daily = nil
 	a.style = styleState{}
 	a.messages = messageState{}
 	a.collectionSocial = collectionSocialState{}

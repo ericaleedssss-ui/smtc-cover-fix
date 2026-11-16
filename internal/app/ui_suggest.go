@@ -93,17 +93,25 @@ func suggestionList(res netease.Suggestions) []suggestion {
 // before.
 func (a *app) searchField(c *ui.Context) {
 	p := a.pal
-	field := ui.Row(c).Height(34).PaddingX(12).Gap(7).Radius(17).AlignItems(ui.Center)
+	w, _ := c.Size()
+	u := headerScale(w)
+	field := ui.Row(c).Height(36 * u).PaddingX(12 * u).Gap(7 * u).Radius(18 * u).AlignItems(ui.Center)
 	if c.Focused(a.searchBox) {
 		field.Background(p.bg).Shadow(0, 0, 0, 3, p.accent.Alpha(0.25)).Border(1, p.accent.Alpha(0.6))
 	} else {
-		field.Background(p.hover).Border(1, p.hairline)
+		field.Background(white.Alpha(.6)).Border(.5*u, ui.RGBA(0, 0, 0, .07))
 	}
 	field.Children(func() {
-		ui.Icon(c, iconSearch).Size(14, 14).TextColor(p.muted)
+		ui.Icon(c, iconSearch).Size(14*u, 14*u).TextColor(p.muted)
 		cb := ui.ComboboxBase(c.Key("search"), &a.query)
 		in := cb.Input.Bind(&a.searchBox).Grow(1).MinWidth(0).
-			Placeholder("搜索歌曲、歌手、播客").FontSize(13).Label("搜索")
+			Placeholder("搜索歌曲、歌手、播客").FontSize(13 * u).Label("搜索")
+		_ = in.Clicked() // Apply this frame's input before deciding outside dismissal.
+		if (a.searchHadFocus || in.Focused()) && field.PressedOutside() {
+			c.Resolve(a.searchOutsideFocus).Focus()
+			cb.SetOpen(false)
+		}
+		a.searchHadFocus = in.Focused()
 		q := strings.TrimSpace(a.query)
 		s := &a.suggestions
 		switch {
